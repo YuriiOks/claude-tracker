@@ -41,7 +41,7 @@ export const SessionsPage = ({ sessions, repos }) => {
                 </div>
                 <span className="tp">{s.agent}</span>
                 <span>{s.status === 'running' ? <Status kind="running" /> : <span className="mono" style={{ fontSize: '.68rem' }}>{s.duration}</span>}</span>
-                <span className="tg">{(s.tokens / 1000).toFixed(1)}k</span>
+                <span className="tg">{s.tokens >= 1_000_000 ? (s.tokens / 1_000_000).toFixed(1) + 'M' : (s.tokens / 1000).toFixed(1) + 'k'}</span>
                 <span className="tgr">${s.cost.toFixed(2)}</span>
               </div>
             );

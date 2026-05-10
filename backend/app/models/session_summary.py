@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, Integer, String
+from sqlalchemy import BigInteger, DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -18,7 +18,7 @@ class SessionSummaryRow(Base):
     agent: Mapped[str | None] = mapped_column(String, nullable=True)
     task: Mapped[str | None] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String, default="completed")
-    tokens: Mapped[int] = mapped_column(Integer, default=0)
+    tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     cost: Mapped[float] = mapped_column(Float, default=0.0)
     edits: Mapped[int] = mapped_column(Integer, default=0)
     file_path: Mapped[str] = mapped_column(String)

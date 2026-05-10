@@ -98,7 +98,15 @@ def _content_text(content) -> str:  # noqa: ANN001
 def _price(model: str | None) -> tuple[float, float]:
     if not model:
         return _DEFAULT_PRICE
-    return _PRICING.get(model.lower(), _DEFAULT_PRICE)
+    m = model.lower()
+    # Exact match first.
+    if m in _PRICING:
+        return _PRICING[m]
+    # Prefix match handles date-versioned names like "claude-opus-4-5-20251101".
+    for key, price in _PRICING.items():
+        if m.startswith(key):
+            return price
+    return _DEFAULT_PRICE
 
 
 _EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -172,9 +180,15 @@ def parse_jsonl(
                 usage = msg.get("usage", {}) or {}
                 in_tok = int(usage.get("input_tokens", 0) or 0)
                 out_tok = int(usage.get("output_tokens", 0) or 0)
-                tokens += in_tok + out_tok
+                cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+                tokens += in_tok + out_tok + cache_write + cache_read
                 input_price, output_price = _price(model_seen)
-                cost += (in_tok / 1_000_000) * input_price + (out_tok / 1_000_000) * output_price
+                cost += (in_tok / 1_000_000) * input_price
+                cost += (out_tok / 1_000_000) * output_price
+                # Cache write is 25% more expensive; cache read is 90% cheaper.
+                cost += (cache_write / 1_000_000) * input_price * 1.25
+                cost += (cache_read / 1_000_000) * input_price * 0.10
 
                 content = msg.get("content", [])
                 if isinstance(content, list) and ts is not None:

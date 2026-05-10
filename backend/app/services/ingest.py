@@ -50,11 +50,6 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
                 skipped += 1
                 continue
 
-            existing = await session.get(SessionSummaryRow, path.stem)
-            if existing and not rebuild and abs(existing.file_mtime - stat.st_mtime) < 0.5:
-                skipped += 1
-                continue
-
             summary, events = parse_jsonl(path, repo_paths)
             if summary is None:
                 continue
@@ -63,6 +58,14 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
             now_ts = time.time()
             if now_ts - stat.st_mtime < 60:
                 summary.status = "running"
+
+            # Look up by the session_id extracted from JSONL content (not the filename
+            # stem) so that continuation/agent files sharing a parent session_id
+            # correctly find the existing row instead of triggering a UNIQUE violation.
+            existing = await session.get(SessionSummaryRow, summary.session_id)
+            if existing and not rebuild and abs(existing.file_mtime - stat.st_mtime) < 0.5:
+                skipped += 1
+                continue
 
             if existing:
                 existing.repo = summary.repo
