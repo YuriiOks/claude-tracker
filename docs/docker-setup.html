@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>claude-tracker — Docker setup</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg:#FAF8F5; --surface:#F0EDE8; --border:#D4CFC7;
+    --text:#2C2825; --muted:#8A837A;
+    --accent:#B8602A; --clay:#D97757; --olive:#788C5D; --sky:#6A8CAF;
+    --oat:#E3DACC; --slate:#141413;
+    --radius:6px;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+  main { max-width:880px; margin:0 auto; padding:48px 28px 80px; }
+  h1,h2,h3 { font-family: ui-serif, Georgia, "Times New Roman", serif;
+    font-weight:600; letter-spacing:-0.01em; color:var(--slate); }
+  h1 { font-size:2rem; margin:0 0 .25em; }
+  h2 { font-size:1.35rem; margin:2.4em 0 .6em; padding-bottom:.3em;
+    border-bottom:1px solid var(--border); }
+  h3 { font-size:1.05rem; margin:1.6em 0 .4em; color:var(--accent); }
+  .lede { color:var(--muted); font-size:1.02rem; margin:0 0 1.4em; max-width:62ch; }
+  code, pre, .mono { font-family: ui-monospace, "SF Mono", "Menlo", monospace; font-size:.86em; }
+  code { background:var(--surface); padding:1px 5px; border-radius:3px; border:1px solid var(--border); }
+  pre { background:var(--slate); color:#E3DACC; padding:14px 16px; border-radius:var(--radius);
+    overflow-x:auto; line-height:1.55; font-size:.82rem; }
+  pre code { background:transparent; border:none; padding:0; color:inherit; }
+  table { border-collapse:collapse; width:100%; margin:.6em 0 1.2em;
+    font-size:.92em; background:var(--surface); border-radius:var(--radius); overflow:hidden; }
+  th,td { text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { background:var(--oat); font-weight:600; font-size:.78em; text-transform:uppercase;
+    letter-spacing:.05em; color:var(--slate); }
+  tr:last-child td { border-bottom:none; }
+  td.num { font-family: ui-monospace, monospace; color:var(--accent); white-space:nowrap; }
+  ul { padding-left:1.3em; }
+  li { margin:.25em 0; }
+  .callout { background:var(--surface); border-left:3px solid var(--accent);
+    padding:12px 16px; border-radius:var(--radius); margin:1em 0; }
+  .callout.warn { border-left-color:var(--clay); }
+  .callout strong { color:var(--accent); }
+  .meta { color:var(--muted); font-size:.82em; margin-top:.4em; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin:1em 0; }
+  .card { background:var(--surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px 16px; }
+  .card h3 { margin-top:0; color:var(--slate); border:none; }
+  .pill { display:inline-block; padding:1px 8px; border-radius:99px;
+    background:var(--oat); color:var(--slate); font-size:.72em;
+    font-family: ui-monospace, monospace; vertical-align: middle; margin-left:.4em; }
+  .pill.accent { background:var(--accent); color:#fff; }
+  hr { border:none; border-top:1px solid var(--border); margin:2.4em 0; }
+  svg.diagram { width:100%; height:auto; max-width:100%; display:block; margin:1em auto; }
+  @media print {
+    main { padding:18px; }
+    pre { font-size:.72rem; }
+    h1 { font-size:1.6rem; }
+    h2 { margin-top:1.4em; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<h1>claude-tracker — Docker setup</h1>
+<p class="lede">Local stack on uncommon ports
+  <span class="pill accent">47820</span>
+  <span class="pill accent">47821</span>
+  &mdash; Python 3.13 backend, Node 22 / Vite 8 frontend, all deps pinned. The backend mounts your
+  <code>~/.claude</code> directory read-only and watches it for live activity.
+</p>
+
+<h2>Topology</h2>
+
+<svg class="diagram" viewBox="0 0 760 280" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Two-container topology">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8A837A"/>
+    </marker>
+  </defs>
+  <rect x="20" y="60" width="160" height="120" rx="8" fill="#F0EDE8" stroke="#D4CFC7"/>
+  <text x="100" y="92" text-anchor="middle" font-family="ui-serif" font-size="15" fill="#141413" font-weight="600">Browser</text>
+  <text x="100" y="115" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">localhost:47820</text>
+  <text x="100" y="135" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">/api → :47821</text>
+  <text x="100" y="151" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">/ws  → :47821</text>
+
+  <rect x="240" y="20" width="220" height="100" rx="8" fill="#fff" stroke="#B8602A" stroke-width="1.5"/>
+  <text x="350" y="48" text-anchor="middle" font-family="ui-serif" font-size="15" font-weight="600" fill="#141413">frontend</text>
+  <text x="350" y="68" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">node:22.12-alpine</text>
+  <text x="350" y="84" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">vite dev :5173</text>
+  <text x="350" y="100" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">→ host :47820</text>
+
+  <rect x="240" y="160" width="220" height="100" rx="8" fill="#fff" stroke="#788C5D" stroke-width="1.5"/>
+  <text x="350" y="188" text-anchor="middle" font-family="ui-serif" font-size="15" font-weight="600" fill="#141413">backend</text>
+  <text x="350" y="208" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">python:3.13-slim</text>
+  <text x="350" y="224" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">uvicorn :8765</text>
+  <text x="350" y="240" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">→ host :47821</text>
+
+  <rect x="520" y="20" width="220" height="240" rx="8" fill="#F0EDE8" stroke="#D4CFC7"/>
+  <text x="630" y="48" text-anchor="middle" font-family="ui-serif" font-size="14" font-weight="600" fill="#141413">read-only volumes</text>
+  <text x="630" y="76" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">~/.claude</text>
+  <text x="630" y="91" text-anchor="middle" font-family="ui-monospace" font-size="10" fill="#B8602A">→ /host/.claude</text>
+  <text x="630" y="118" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">${HOME}</text>
+  <text x="630" y="133" text-anchor="middle" font-family="ui-monospace" font-size="10" fill="#B8602A">→ /host/home</text>
+  <text x="630" y="170" text-anchor="middle" font-family="ui-serif" font-size="13" font-weight="600" fill="#141413">named volume</text>
+  <text x="630" y="190" text-anchor="middle" font-family="ui-monospace" font-size="11" fill="#8A837A">claude-tracker-cache</text>
+  <text x="630" y="205" text-anchor="middle" font-family="ui-monospace" font-size="10" fill="#B8602A">→ /app/.cache</text>
+  <text x="630" y="223" text-anchor="middle" font-family="ui-monospace" font-size="10" fill="#8A837A">SQLite + offsets</text>
+
+  <line x1="180" y1="120" x2="240" y2="70"  stroke="#8A837A" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="350" y1="120" x2="350" y2="158" stroke="#8A837A" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="460" y1="200" x2="520" y2="100" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr)"/>
+  <line x1="460" y1="220" x2="520" y2="200" stroke="#788C5D" stroke-width="1.5" marker-end="url(#arr)"/>
+</svg>
+
+<h2>Ports</h2>
+<table>
+  <tr><th>Service</th><th>Container</th><th>Host</th><th>Notes</th></tr>
+  <tr><td>frontend (dev)</td><td class="num">5173</td><td class="num">47820</td><td>Vite + HMR; bound to 127.0.0.1 only</td></tr>
+  <tr><td>frontend (prod)</td><td class="num">80</td><td class="num">47820</td><td>nginx + SPA fallback (overlay)</td></tr>
+  <tr><td>backend</td><td class="num">8765</td><td class="num">47821</td><td>FastAPI + WebSocket</td></tr>
+</table>
+<p class="meta">Both ports are bound to <code>127.0.0.1</code>, not <code>0.0.0.0</code>, so nothing is reachable from your LAN.</p>
+
+<h2>First-time bootstrap</h2>
+
+<pre><code># 1. Create your local docker env file
+cp .env.docker.example .env.docker
+# Edit REPO_ROOTS (CONTAINER paths under /host/home/...)
+
+# 2. Build and start the stack
+make docker-up
+
+# 3. Seed the SQLite cache from your real Claude session history
+make docker-ingest
+
+# 4. Open the app
+open http://localhost:47820</code></pre>
+
+<div class="callout">
+  <strong>One-time only.</strong> After the first <code>docker-up</code>, both containers restart on Docker
+  Desktop boot via <code>restart: unless-stopped</code>. Use <code>make docker-down</code> to stop, <code>make docker-logs</code> to tail.
+</div>
+
+<h2>Volume strategy</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>~/.claude → /host/.claude<span class="pill">read-only</span></h3>
+    <p>Source of truth for live activity. The watcher tails
+    <code>projects/**/*.jsonl</code> as you use Claude Code. Read-only
+    so the container can't accidentally clobber your session history.</p>
+  </div>
+  <div class="card">
+    <h3>${HOME} → /host/home<span class="pill">read-only</span></h3>
+    <p>Bind-mount of your home directory. Lets the repo scanner walk
+    <code>&lt;repo&gt;/.claude/</code> folders and run <code>git symbolic-ref</code>
+    for branch detection. Narrow to a parent like <code>${HOME}/Documents</code>
+    if you prefer in <code>.env.docker</code>.</p>
+  </div>
+  <div class="card">
+    <h3>tracker-cache → /app/.cache<span class="pill">named volume</span></h3>
+    <p>Persistent SQLite at <code>/app/.cache/tracker.db</code> plus
+    JSONL byte offsets for the tail watcher. Survives <code>docker-down</code>;
+    nuked by <code>docker-prune</code>.</p>
+  </div>
+  <div class="card">
+    <h3>./src etc. → /app/...<span class="pill">read-only mount</span></h3>
+    <p>Frontend source files are bind-mounted into the dev container so
+    Vite HMR sees host edits instantly. <code>node_modules</code> stays in
+    the container layer for speed.</p>
+  </div>
+</div>
+
+<h2>Pinned versions</h2>
+<p class="meta">All pins target releases at least ~2 weeks old as of 2026-04-26 — stable but not crystallised. Bump <code>pyproject.toml</code> and re-run <code>uv lock</code> when you want fresh deps.</p>
+
+<table>
+  <tr><th>Backend</th><th>Pin</th><th>Frontend</th><th>Pin</th></tr>
+  <tr><td>fastapi</td><td class="num">0.115.6</td><td>react / react-dom</td><td class="num">19.2.5</td></tr>
+  <tr><td>uvicorn[standard]</td><td class="num">0.34.0</td><td>vite</td><td class="num">8.0.10</td></tr>
+  <tr><td>pydantic</td><td class="num">2.10.5</td><td>@vitejs/plugin-react</td><td class="num">6.0.1</td></tr>
+  <tr><td>pydantic-settings</td><td class="num">2.7.1</td><td>eslint</td><td class="num">10.2.1</td></tr>
+  <tr><td>sqlalchemy[asyncio]</td><td class="num">2.0.36</td><td>eslint-plugin-react-hooks</td><td class="num">7.1.1</td></tr>
+  <tr><td>aiosqlite</td><td class="num">0.20.0</td><td>eslint-plugin-react-refresh</td><td class="num">0.5.2</td></tr>
+  <tr><td>watchfiles</td><td class="num">1.0.4</td><td>@types/react</td><td class="num">19.2.14</td></tr>
+  <tr><td>httpx</td><td class="num">0.28.1</td><td>@types/react-dom</td><td class="num">19.2.3</td></tr>
+  <tr><td>typer</td><td class="num">0.15.1</td><td>globals</td><td class="num">17.5.0</td></tr>
+  <tr><td>pyyaml</td><td class="num">6.0.2</td><td>node (engine)</td><td class="num">22.x</td></tr>
+  <tr><td>python-frontmatter</td><td class="num">1.1.0</td><td>&mdash;</td><td>&mdash;</td></tr>
+  <tr><td>python (interpreter)</td><td class="num">3.13.1</td><td>&mdash;</td><td>&mdash;</td></tr>
+</table>
+
+<h2>Make targets</h2>
+<table>
+  <tr><th>Target</th><th>What it does</th></tr>
+  <tr><td><code>make docker-up</code></td><td>Build images, start backend + frontend (dev) detached. Refuses if <code>.env.docker</code> is missing.</td></tr>
+  <tr><td><code>make docker-down</code></td><td>Stop containers. Cache volume kept.</td></tr>
+  <tr><td><code>make docker-logs</code></td><td>Tail <code>-f</code> the last 200 lines of both services.</td></tr>
+  <tr><td><code>make docker-rebuild</code></td><td><code>--no-cache</code> rebuild + up. Use after toolchain changes.</td></tr>
+  <tr><td><code>make docker-ingest</code></td><td>Run <code>tracker ingest</code> inside the running backend.</td></tr>
+  <tr><td><code>make docker-test</code></td><td>One-shot pytest container; tears down after.</td></tr>
+  <tr><td><code>make docker-prod</code></td><td>Boot the nginx-served prod overlay.</td></tr>
+  <tr><td><code>make docker-prune</code></td><td><strong>Destructive.</strong> Removes named volume too.</td></tr>
+</table>
+
+<h2>Gotchas</h2>
+
+<div class="callout warn">
+  <strong>REPO_ROOTS uses container paths.</strong> Inside the container your repos live under
+  <code>/host/home/...</code>, not <code>/Users/you/...</code>. The example file shows the translation.
+  Forgetting this is the #1 way the dashboard ends up empty.
+</div>
+
+<div class="callout warn">
+  <strong>watchfiles + macOS bind mounts.</strong> macOS doesn't deliver
+  inotify across the Docker boundary reliably. The watcher polls as a
+  fallback — fine for our single-user case, but if live updates lag
+  more than ~2 s, switch to running bare metal (<code>make dev</code>) for that
+  session.
+</div>
+
+<div class="callout warn">
+  <strong>Non-root container, host-owned files.</strong> The backend runs as
+  <code>tracker</code> uid inside the container. Volumes are <code>:ro</code> so this
+  doesn't matter, but if you ever switch to <code>:rw</code> you'll hit perms.
+  Don't switch.
+</div>
+
+<h2>Bare-metal still works</h2>
+
+<p>Nothing about Docker breaks the bare-metal path. <code>make dev</code> still launches the venv'd backend on
+<code>:8765</code> and Vite on <code>:5173</code>. Same code, same env contract, just no containers.</p>
+
+<pre><code># bare metal
+make install          # uv sync + npm install
+make ingest
+make dev              # → http://localhost:5173
+
+# docker
+make docker-up
+make docker-ingest
+open http://localhost:47820</code></pre>
+
+<hr/>
+<p class="meta">Generated 2026-05-10 · self-contained, no externals · prints clean.</p>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,16 @@
+node_modules
+dist
+.vite
+backend
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+docs
+chats
+project
+*.md
+!index.html
+.DS_Store
+.eslintcache

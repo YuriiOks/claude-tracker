@@ -1,0 +1,77 @@
+# claude-tracker — local Docker stack.
+#
+# Uncommon ports (avoid collisions with other local projects):
+#   47820  → frontend (Vite dev server, browser entrypoint)
+#   47821  → backend  (FastAPI + WebSocket)
+#
+# The backend reads your real Claude session history from ~/.claude and walks
+# tracked repos under your home directory. Both are mounted READ-ONLY.
+# Configure paths in .env.docker (copy from .env.docker.example).
+
+name: claude-tracker
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: claude-tracker-backend:local
+    container_name: claude-tracker-backend
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      # Container-side overrides — do not edit these here, edit .env.docker.
+      CLAUDE_DIR: /host/.claude
+      DB_PATH: /app/.cache/tracker.db
+      HOST: 0.0.0.0
+      PORT: "8765"
+      FRONTEND_ORIGIN: http://localhost:47820
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "127.0.0.1:47821:8765"
+    volumes:
+      # Read-only mount of the host's Claude data directory
+      - ${CLAUDE_DIR_HOST:-${HOME}/.claude}:/host/.claude:ro
+      # Read-only mount of the parent directory containing your tracked repos
+      - ${REPO_PARENT_HOST:-${HOME}}:/host/home:ro
+      # Persistent SQLite cache
+      - tracker-cache:/app/.cache
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=2).status==200 else 1)"]
+      interval: 15s
+      timeout: 3s
+      retries: 4
+      start_period: 5s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: dev
+    image: claude-tracker-frontend:local
+    container_name: claude-tracker-frontend
+    restart: unless-stopped
+    environment:
+      # Vite proxy targets — overridden so /api and /ws hit the backend service
+      BACKEND_HTTP_TARGET: http://backend:8765
+      BACKEND_WS_TARGET: ws://backend:8765
+      # HMR client port — must match the published port so the browser can reach the WS
+      VITE_HMR_CLIENT_PORT: "47820"
+      CHOKIDAR_USEPOLLING: "true"
+    ports:
+      - "127.0.0.1:47820:5173"
+    volumes:
+      # Source mount for HMR; node_modules stays in the container layer
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+      - ./index.html:/app/index.html:ro
+      - ./vite.config.js:/app/vite.config.js:ro
+      - ./eslint.config.js:/app/eslint.config.js:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  tracker-cache:
+    name: claude-tracker-cache

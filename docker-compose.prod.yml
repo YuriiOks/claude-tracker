@@ -1,0 +1,18 @@
+# Overlay for the production frontend: nginx serves the built dist/ and proxies
+# /api + /ws to the backend service. Run with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# (or: make docker-prod)
+#
+# The backend service stays the same as in the base file.
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    image: claude-tracker-frontend:prod
+    environment: {}
+    ports:
+      - "127.0.0.1:47820:80"
+    volumes: []
