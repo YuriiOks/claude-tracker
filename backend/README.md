@@ -1,5 +1,7 @@
 # claude-tracker-backend
 
+
+
 Local FastAPI service that reads Claude Code's on-disk state (`~/.claude/projects/**/*.jsonl`, plugin caches, per-repo `.claude/` folders) and serves it through a JSON API + WebSocket whose schema mirrors `src/data.js` 1:1.
 
 See `MASTER_PLAN.md` at the repo root for the full plan.
@@ -39,6 +41,8 @@ pnpm dev                                         # :5173, /api and /ws proxied t
 | GET | `/api/diffs/recent` | latest Edit/Write paired with `git diff` |
 | GET | `/api/live/recent` | last N live events (cold start) |
 | WS | `/ws/live` | streamed live events from JSONL tail |
+| GET | `/api/integrations/{repo_id}` | Linear ticket from branch + GitHub PR (opt-in) |
+| GET | `/api/integrations/cost/{session_id}` | Langfuse session totals (opt-in) |
 
 ## Configuration
 
@@ -49,9 +53,17 @@ CLAUDE_DIR=~/.claude
 REPO_ROOTS=~/Desktop/jupus,~/Desktop/voice,~/Desktop/anita,~/Documents/Personal/claude-tracker
 DB_PATH=./.cache/tracker.db
 LOG_LEVEL=INFO
+
+# Optional integrations — adapters return None when unset.
+LINEAR_API_KEY=lin_api_xxx
+LANGFUSE_PUBLIC_KEY=pk-lf-xxx
+LANGFUSE_SECRET_KEY=sk-lf-xxx
+LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 `REPO_ROOTS` is a comma-separated list of repo paths. The scanner reads `<repo>/.claude/` and runs `git symbolic-ref --short HEAD` for the branch.
+
+GitHub PR data uses the local `gh` CLI — no extra env vars needed beyond `gh auth login`.
 
 ## Layout
 
