@@ -1,29 +1,27 @@
+import { useMemo } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import { useAgents } from '../api';
+import { AGENT_INVOCATIONS } from '../data';
 
 const AgentDetail = ({ name, kind, repos, onBack }) => {
   const { data: AGENT_META } = useAgents();
+  const defaultCallsToday = useMemo(() => Math.floor(Math.random() * 18) + 2, [name]);
   const meta = (AGENT_META && AGENT_META[name]) || {
     role: kind === 'skill'
       ? 'Skill — encapsulated workflow knowledge that Claude loads when relevant files are touched.'
       : 'Specialist agent — defined in .claude/agents/' + name + '.md.',
     repo: 'global',
     tools: ['Read', 'Edit', 'Bash', 'Grep'],
-    callsToday: Math.floor(Math.random() * 18) + 2,
+    callsToday: defaultCallsToday,
     avgTokens: 2400,
     delegates: [],
   };
   const repo = repos.find(r => r.name === meta.repo) || repos[0];
   const isAgent = kind === 'agent';
 
-  const invocations = [
-    { t: '2m', task: 'Audit Bedrock stream parser for empty content blocks', tokens: 4200, status: 'completed', repo: meta.repo },
-    { t: '14m', task: 'Generate TypeScript types from OpenAPI spec', tokens: 1800, status: 'completed', repo: meta.repo },
-    { t: '38m', task: 'Run ACM-026 test suite end-to-end', tokens: 6300, status: 'running', repo: meta.repo },
-    { t: '1h', task: 'Investigate stuck SSE in production', tokens: 8100, status: 'failed', repo: meta.repo },
-    { t: '2h', task: 'Add seed migration for new model descriptions', tokens: 2200, status: 'completed', repo: meta.repo },
-  ];
+  // F12: invocations sample sourced from data.js (was inline)
+  const invocations = AGENT_INVOCATIONS.map(inv => ({ ...inv, repo: meta.repo }));
 
   return (
     <>

@@ -368,7 +368,69 @@ export const FILE_SIZES = {
   },
 };
 
+
+// Identity surfaced in the sidebar footer. Backend can later expose /api/user
+// reading whoami / git config user.email / Claude account info.
+export const USER = {
+  name: 'Yurii Oksamytnyi',
+  email: 'yurii.oksamytnyi@gmail.com',
+  initials: 'YO',
+};
+
+
+// F8: Plugin / MCP descriptions surfaced in PluginsPanel. Backend can later
+// expose /api/plugins/registry with the same shape.
+export const PLUGIN_REGISTRY = {
+  linear: { desc: 'Linear MCP — fetch tickets, projects, comments', accent: 'p' },
+  slack: { desc: 'Slack — post updates and read threads', accent: 'g' },
+  sentry: { desc: 'Sentry — pull errors and stack traces', accent: 'ro' },
+  figma: { desc: 'Figma — extract design context', accent: 'p' },
+  greptile: { desc: 'Greptile — codebase semantic search', accent: 't' },
+  'pr-review-toolkit': { desc: 'PR Review Toolkit — automated review', accent: 'c' },
+};
+
+export const MCP_REGISTRY = {
+  filesystem: { desc: 'Local filesystem read/write/search' },
+  'sequential-thinking': { desc: 'Multi-step reasoning helper' },
+  linear: { desc: 'Linear API server' },
+  'linear-server': { desc: 'Linear API (alternate)' },
+  github: { desc: 'GitHub API access' },
+  playwright: { desc: 'Browser automation' },
+  figma: { desc: 'Figma design context' },
+  'code-review-graph': { desc: 'Code review graph + impact analysis' },
+};
+
+// F11: Claude API pricing — USD per 1M tokens (rough average; refine per model later).
+export const MODEL_PRICING_USD_PER_M = {
+  default: 8,
+  'claude-sonnet-4': 3,
+  'claude-opus-4': 15,
+};
+
+
+// F12: Sample agent invocation feed shown on AgentDetail. Backend can later
+// surface real per-agent execution log via /api/agents/:name/invocations.
+export const AGENT_INVOCATIONS = [
+  { t: '2m',  task: 'Audit Bedrock stream parser for empty content blocks', tokens: 4200, status: 'completed' },
+  { t: '14m', task: 'Generate TypeScript types from OpenAPI spec',          tokens: 1800, status: 'completed' },
+  { t: '38m', task: 'Run ACM-026 test suite end-to-end',                    tokens: 6300, status: 'running'   },
+  { t: '1h',  task: 'Investigate stuck SSE in production',                  tokens: 8100, status: 'failed'    },
+  { t: '2h',  task: 'Add seed migration for new model descriptions',        tokens: 2200, status: 'completed' },
+];
+
+
+// F13: Recent diff feed shown on DiffPage. Backend can later expose
+// /api/diffs/recent-list or similar.
+export const RECENT_DIFFS = [
+  { t: '2m',  file: 'app/ai/services/chat/bedrock/stream_parser.py',     repo: 'jupus',  a: '+12 −2', agent: 'ai-developer' },
+  { t: '8m',  file: 'spa-frontend/src/types/generated/types.gen.ts',     repo: 'jupus',  a: '+47 −3', agent: 'frontend-engineer' },
+  { t: '14m', file: 'src/embeddings/processor.py',                       repo: 'anita',  a: '+8 −5',  agent: 'rag-architect' },
+  { t: '22m', file: 'app/tests/conftest.py',                             repo: 'jupus',  a: '+3 −1',  agent: 'jupus-test-engineer' },
+  { t: '38m', file: 'app/ai/migrations/0058_seed_model_descriptions.py', repo: 'jupus',  a: '+24 −0', agent: 'backend-engineer' },
+  { t: '1h',  file: 'retell/handlers/polish_agent.py',                   repo: 'voice',  a: '+18 −4', agent: 'voice-engineer' },
+];
+
 export const MOCK_DATA = {
   REPOS, GLOBAL, AGENT_META, LIVE_EVENTS_SEED, LIVE_EVENTS_FUTURE, SESSIONS,
-  PERMISSIONS_DETAIL, DIFF_SAMPLE, FILE_SIZES,
+  PERMISSIONS_DETAIL, DIFF_SAMPLE, FILE_SIZES, USER, PLUGIN_REGISTRY, MCP_REGISTRY, MODEL_PRICING_USD_PER_M, AGENT_INVOCATIONS, RECENT_DIFFS,
 };

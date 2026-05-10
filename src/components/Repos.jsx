@@ -2,42 +2,12 @@ import Icon from '../icons';
 import { Status } from './Common';
 import { useActiveAgents } from '../api';
 
-const LIVE_BADGE_STYLE = `
-@keyframes rb-pulse-fast {
-  0%, 100% { transform: scale(1);   opacity: 1;   }
-  50%      { transform: scale(1.7); opacity: .45; }
-}
-.rb-live {
-  display: inline-flex; align-items: center; gap: .35rem;
-  padding: .15rem .45rem; border-radius: 999px;
-  background: rgba(0, 255, 136, .12);
-  color: #00ff88;
-  font-size: .58rem; font-family: ui-monospace, monospace;
-  letter-spacing: .04em; text-transform: uppercase;
-}
-.rb-live .rb-dot {
-  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
-  animation: rb-pulse-fast .7s ease-in-out infinite;
-}
-.rb-now {
-  margin-top: .55rem;
-  font-size: .66rem;
-  color: var(--muted);
-  display: flex; align-items: center; gap: .35rem;
-  border-top: 1px dashed rgba(0,255,136,.18);
-  padding-top: .55rem;
-}
-.rb-now b { color: #00ff88; font-weight: 600; }
-.rb-now i { color: var(--txt-bright, #c8d0db); font-style: normal; }
-`;
-
 export const RepoCard = ({ repo, onOpen, liveAgent }) => (
   <div className="cd clickable" style={{ '--accent': repo.accent }} onClick={() => onOpen(repo.id)}>
-    <style>{LIVE_BADGE_STYLE}</style>
     <div className="cd-bar" style={{ background: `linear-gradient(90deg, ${repo.accent}, transparent)` }}></div>
     <div className="row between mb-2">
       <div className="row gap-sm">
-        <span className="sb-repo-dot" style={{ '--accent': repo.isActive ? '#00ff88' : repo.accent }}></span>
+        <span className="sb-repo-dot" style={{ '--accent': repo.isActive ? 'var(--live)' : repo.accent }}></span>
         <h3 className="tb">{repo.name}</h3>
       </div>
       {repo.isActive
@@ -99,7 +69,7 @@ export const RepoCard = ({ repo, onOpen, liveAgent }) => (
 
 const RepoListRow = ({ repo, onOpen }) => (
   <div className="list-row clickable" style={{ gridTemplateColumns: '14px 1.4fr 1fr .7fr .7fr .7fr 70px' }} onClick={() => onOpen(repo.id)}>
-    <span className={'sb-repo-dot' + (repo.isActive ? ' live' : '')} style={{ '--accent': repo.isActive ? '#00ff88' : repo.accent }}></span>
+    <span className={'sb-repo-dot' + (repo.isActive ? ' live' : '')} style={{ '--accent': repo.isActive ? 'var(--live)' : repo.accent }}></span>
     <div>
       <div className="tb" style={{ fontWeight: 600 }}>{repo.name}</div>
       <div style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{repo.path}</div>
@@ -150,7 +120,7 @@ export const ReposPage = ({ repos, onOpen, layout }) => {
               {repos.filter(c.filter).map(r => (
                 <div key={r.id} className="cd clickable" style={{ padding: '.65rem' }} onClick={() => onOpen(r.id)}>
                   <div className="row gap-sm mb-2">
-                    <span className={'sb-repo-dot' + (r.isActive ? ' live' : '')} style={{ '--accent': r.isActive ? '#00ff88' : r.accent }}></span>
+                    <span className={'sb-repo-dot' + (r.isActive ? ' live' : '')} style={{ '--accent': r.isActive ? 'var(--live)' : r.accent }}></span>
                     <span className="tb" style={{ fontWeight: 600, fontSize: '.78rem' }}>{r.name}</span>
                   </div>
                   <div style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{r.stats.sessionsToday} sessions · ${r.stats.costWeek.toFixed(2)}</div>

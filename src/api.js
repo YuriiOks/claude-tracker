@@ -38,7 +38,7 @@ function useFetch(path, fallback) {
       .catch(e => {
         if (!cancelled) {
           // Fall back to mock so the UI is never empty.
-          // eslint-disable-next-line no-console
+           
           console.warn('[api] falling back to mock for', path, e?.message);
           setData(fallback);
           setError(e);
@@ -90,6 +90,16 @@ export function useCost(days = 7) {
 
 export function useDiff() {
   return useFetch('/api/diffs/recent', MOCK.DIFF_SAMPLE);
+}
+
+// F13: Recent-diff feed shown on DiffPage. Mock fallback until backend lands.
+export function useRecentDiffs() {
+  return useFetch('/api/diffs/list', MOCK.RECENT_DIFFS);
+}
+
+// Sidebar identity. Falls back to mock USER until /api/user is wired up.
+export function useUser() {
+  return useFetch('/api/user', MOCK.USER);
 }
 
 /**

@@ -1,6 +1,7 @@
 import Icon from '../icons';
 import { Metric, PageHead } from './Common';
-import { useDiff, useAgents } from '../api';
+import { useDiff, useAgents, useRecentDiffs } from '../api';
+import { MODEL_PRICING_USD_PER_M } from '../data';
 
 export const HeatmapPage = ({ repos }) => {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -88,10 +89,16 @@ export const CostPage = ({ repos }) => {
     <>
       <PageHead title="Cost & tokens" sub="Estimated spend across your tracked repositories. Calculated from token counts × model pricing." />
       <div className="grid grid-cols-4 mb-4">
-        <Metric label="Total this week" value={`$${totalCost.toFixed(2)}`} delta="-$5.18 vs last wk" accent="green" />
+        {/* F10: dropped the fake "vs last wk" / "under budget" deltas — no source.
+            Avg/session is sessions-weighted across repos; Projected month = weekly × 4.3. */}
+        <Metric label="Total this week" value={`$${totalCost.toFixed(2)}`} accent="green" />
         <Metric label="Tokens" value={(totalTokens / 1e6).toFixed(2)} unit="M" accent="gold" />
-        <Metric label="Avg / session" value="$0.71" accent="cyan" />
-        <Metric label="Projected month" value="$172" delta="under budget" accent="purple" />
+        <Metric
+          label="Avg / session"
+          value={`$${(totalCost / Math.max(1, repos.reduce((a, r) => a + r.stats.sessionsWeek, 0))).toFixed(2)}`}
+          accent="cyan"
+        />
+        <Metric label="Projected month" value={`$${(totalCost * 4.3).toFixed(0)}`} accent="purple" />
       </div>
 
       <div className="card-frame">
@@ -141,7 +148,8 @@ export const CostPage = ({ repos }) => {
               <span style={{ color: 'var(--muted)' }}>{m.repo}</span>
               <span className="tc">{m.callsToday}</span>
               <span className="tg">{((m.callsToday * m.avgTokens) / 1000).toFixed(0)}k</span>
-              <span className="tgr">${((m.callsToday * m.avgTokens / 1e6) * 8).toFixed(2)}</span>
+              {/* F11: pricing from MODEL_PRICING_USD_PER_M (was hardcoded * 8) */}
+              <span className="tgr">${((m.callsToday * m.avgTokens / 1e6) * MODEL_PRICING_USD_PER_M.default).toFixed(2)}</span>
             </div>
           ))}
         </div>
@@ -152,21 +160,25 @@ export const CostPage = ({ repos }) => {
 
 export const DiffPage = () => {
   const { data: D } = useDiff();
+  const { data: recentDiffs } = useRecentDiffs();
   if (!D) return <div className="empty">No recent diff captured yet.</div>;
+  // F14: compute add/del counts from the actual hunks (was hardcoded "+12 −2")
+  const adds = (D.hunks || []).reduce((a, h) => a + h.lines.filter(l => l.type === 'add').length, 0);
+  const dels = (D.hunks || []).reduce((a, h) => a + h.lines.filter(l => l.type === 'del').length, 0);
   return (
     <>
       <PageHead title="Recent diffs" sub="When Claude edits files, the diff is captured here. Click any session to inspect what changed, who edited, and why." />
       <div className="row gap-sm mb-3">
         <span className="bg bg-c"><Icon name="bot" size={10} />{D.agent}</span>
         <span className="bg bg-m">session {D.session}</span>
-        <span className="bg bg-gr">+12</span>
-        <span className="bg bg-ro">−2</span>
+        <span className="bg bg-gr">+{adds}</span>
+        <span className="bg bg-ro">−{dels}</span>
       </div>
       <div className="diff">
         <div className="diff-header">
           <Icon name="file" size={12} />
           <span className="mono">{D.file}</span>
-          <span style={{ marginLeft: 'auto', fontSize: '.62rem', color: 'var(--muted)' }}>3 minutes ago</span>
+          {/* F14: removed hardcoded "3 minutes ago" — backend doesn't yet expose a timestamp */}
         </div>
         {D.hunks.map((h, i) => (
           <div key={i} className="diff-hunk">
@@ -190,14 +202,8 @@ export const DiffPage = () => {
           <div className="list-head" style={{ gridTemplateColumns: '70px 1fr 100px 80px 80px' }}>
             <span>Time</span><span>File</span><span>Repo</span><span>Lines</span><span>Agent</span>
           </div>
-          {[
-            { t: '2m', file: 'app/ai/services/chat/bedrock/stream_parser.py', repo: 'jupus', a: '+12 −2', agent: 'ai-developer' },
-            { t: '8m', file: 'spa-frontend/src/types/generated/types.gen.ts', repo: 'jupus', a: '+47 −3', agent: 'frontend-engineer' },
-            { t: '14m', file: 'src/embeddings/processor.py', repo: 'anita', a: '+8 −5', agent: 'rag-architect' },
-            { t: '22m', file: 'app/tests/conftest.py', repo: 'jupus', a: '+3 −1', agent: 'jupus-test-engineer' },
-            { t: '38m', file: 'app/ai/migrations/0058_seed_model_descriptions.py', repo: 'jupus', a: '+24 −0', agent: 'backend-engineer' },
-            { t: '1h', file: 'retell/handlers/polish_agent.py', repo: 'voice', a: '+18 −4', agent: 'voice-engineer' },
-          ].map((d, i) => (
+          {/* F13: was an inline 6-element array — now sourced from data.js via useRecentDiffs */}
+          {(recentDiffs || []).map((d, i) => (
             <div key={i} className="list-row clickable" style={{ gridTemplateColumns: '70px 1fr 100px 80px 80px' }}>
               <span className="mono" style={{ fontSize: '.66rem', color: 'var(--muted)' }}>{d.t} ago</span>
               <span className="mono" style={{ fontSize: '.7rem' }}>{d.file}</span>

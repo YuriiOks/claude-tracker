@@ -1,92 +1,6 @@
 import { useActiveAgents } from '../api';
 import Icon from '../icons';
 
-const STYLES = `
-@keyframes lp-pulse-fast {
-  0%, 100% { transform: scale(1);   opacity: 1;    box-shadow: 0 0 0 0   currentColor; }
-  50%      { transform: scale(1.6); opacity: .55;  box-shadow: 0 0 0 6px transparent; }
-}
-@keyframes lp-pulse-slow {
-  0%, 100% { transform: scale(1);   opacity: .9;   box-shadow: 0 0 0 0   currentColor; }
-  50%      { transform: scale(1.3); opacity: .55;  box-shadow: 0 0 0 4px transparent; }
-}
-@keyframes lp-shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position:  200% 0; }
-}
-
-.la-grid { display: flex; flex-direction: column; gap: .5rem; }
-
-.la-row {
-  display: grid;
-  grid-template-columns: 18px 110px 160px 1fr 78px;
-  align-items: center;
-  gap: .8rem;
-  padding: .55rem .8rem;
-  border: 1px solid var(--bord, #2a2f3a);
-  border-radius: 6px;
-  background: var(--surface, rgba(255,255,255,.02));
-  font-family: ui-monospace, "Fira Code", monospace;
-  font-size: .76rem;
-  position: relative;
-  overflow: hidden;
-}
-.la-row.is-fresh::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.04) 50%, transparent 100%);
-  background-size: 200% 100%;
-  animation: lp-shimmer 2.4s linear infinite;
-  pointer-events: none;
-}
-.la-row.is-stale { opacity: .55; }
-
-.la-dot {
-  width: 8px; height: 8px; border-radius: 50%;
-  background: currentColor;
-  display: inline-block;
-}
-.la-dot.live-fast { animation: lp-pulse-fast 0.65s ease-in-out infinite; }
-.la-dot.live-slow { animation: lp-pulse-slow 1.6s  ease-in-out infinite; }
-
-.la-repo  { font-weight: 600; color: var(--txt-bright, #e6edf3); }
-.la-agent { color: var(--accent, #6cd0ff); font-weight: 600; }
-.la-tool  { color: var(--muted, #8a93a3); }
-.la-tool b { color: var(--txt, #c8d0db); font-weight: 500; }
-.la-target {
-  color: var(--muted, #8a93a3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: .7rem;
-}
-.la-elapsed {
-  text-align: right;
-  color: var(--muted, #8a93a3);
-  font-size: .68rem;
-}
-
-.la-empty {
-  padding: 1.2rem;
-  text-align: center;
-  color: var(--muted, #8a93a3);
-  font-size: .82rem;
-  border: 1px dashed var(--bord, #2a2f3a);
-  border-radius: 6px;
-}
-
-.la-header {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: .5rem;
-}
-.la-count {
-  font-family: ui-monospace, monospace; font-size: .68rem;
-  padding: 2px 8px; border-radius: 999px;
-  background: rgba(108, 208, 255, .12);
-  color: var(--accent, #6cd0ff);
-}
-`;
-
 const ACCENT_BY_REPO = {};
 function dotColor(repo, accent) {
   if (accent) return accent;
@@ -123,7 +37,6 @@ export default function LiveAgents({ repos = [] }) {
 
   return (
     <div>
-      <style>{STYLES}</style>
       <div className="la-header">
         <h2 className="section-title"><Icon name="zap" />Currently active</h2>
         <span className="la-count">{agents.length} session{agents.length === 1 ? '' : 's'}</span>

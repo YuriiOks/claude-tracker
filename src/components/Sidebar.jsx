@@ -1,28 +1,15 @@
 import Icon from '../icons';
+import { useUser } from '../api';
+import { ROUTES } from '../routes';
 
 const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) => {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: 'activity' },
-    { id: 'repos', label: 'Repositories', icon: 'folder', badge: repos.length },
-    { id: 'live', label: 'Live Sessions', icon: 'terminal', badge: allLive, accent: 'live' },
-    { id: 'sessions', label: 'Session Log', icon: 'clock' },
-    { id: 'agents', label: 'Agents & Skills', icon: 'bot' },
-    { id: 'graph', label: 'Delegation Graph', icon: 'git' },
-    { id: 'heatmap', label: 'Activity Heatmap', icon: 'cpu' },
-    { id: 'cost', label: 'Cost & Tokens', icon: 'dollar' },
-    { id: 'permissions', label: 'Permissions Audit', icon: 'shield' },
-    { id: 'plugins', label: 'Plugins & MCP', icon: 'plug' },
-    { id: 'diff', label: 'Recent Diffs', icon: 'diff' },
-  ];
-
-  const user = {
-    name: 'Yurii Oksamytnyi',
-    email: 'yurii@yuriodev.co.uk',
-    initials: 'YO',
-    plan: 'Pro',
-    cliVersion: '2.4.1',
-    lastSync: '12s ago',
-  };
+  const { data: user } = useUser();
+  // F16: nav items sourced from src/routes.js; badge keys resolved here
+  const badgeMap = { repoCount: repos.length, liveCount: allLive };
+  const navItems = ROUTES.map(r => ({
+    ...r,
+    badge: r.badgeKey ? badgeMap[r.badgeKey] : undefined,
+  }));
 
   return (
     <aside className={'sidebar' + (collapsed ? ' collapsed' : '')}>
@@ -56,7 +43,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
               <Icon name={item.icon} />
               {!collapsed && <span>{item.label}</span>}
               {!collapsed && item.badge ? (
-                <span className="badge" style={item.accent === 'live' ? { background: 'rgba(0,255,136,.15)', color: '#00ff88' } : {}}>
+                <span className="badge" style={item.accent === 'live' ? { background: 'var(--live-bg-strong)', color: 'var(--live)' } : {}}>
                   {item.badge}
                 </span>
               ) : null}
@@ -74,7 +61,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
               title={collapsed ? r.name : ''}
             >
               <span className={'sb-repo-dot' + (r.isActive ? ' live' : '')}
-                style={{ '--accent': r.isActive ? '#00ff88' : r.accent }}></span>
+                style={{ '--accent': r.isActive ? 'var(--live)' : r.accent }}></span>
               {!collapsed && <span>{r.name}</span>}
             </button>
           ))}
@@ -97,33 +84,23 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
         <div className="sb-user-row">
           <div className="sb-avatar">
             <span>{user.initials}</span>
-            <span className="sb-avatar-dot" title="Synced"></span>
           </div>
           {!collapsed && (
             <div className="sb-user-meta">
-              <div className="sb-user-name">
-                {user.name}
-                <span className="sb-plan">{user.plan}</span>
-              </div>
+              <div className="sb-user-name">{user.name}</div>
               <div className="sb-user-email">{user.email}</div>
             </div>
           )}
           {!collapsed && (
-            <button className="sb-user-menu" title="Account menu">
+            <button
+              className="sb-user-menu"
+              title="Open settings"
+              onClick={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
+            >
               <Icon name="settings" size={12} />
             </button>
           )}
         </div>
-        {!collapsed && (
-          <div className="sb-cli">
-            <span className="sb-cli-prompt">$</span>
-            <span className="sb-cli-cmd">claude-code</span>
-            <span className="sb-cli-ver">v{user.cliVersion}</span>
-            <span className="sb-cli-sync" title={`Last sync: ${user.lastSync}`}>
-              <span className="sb-sync-dot"></span>{user.lastSync}
-            </span>
-          </div>
-        )}
       </div>
     </aside>
   );

@@ -4,6 +4,7 @@ import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
 import { usePermissions } from '../api';
+import { PLUGIN_REGISTRY, MCP_REGISTRY } from '../data';
 
 export const SessionsPage = ({ sessions, repos }) => {
   const [filter, setFilter] = useState('all');
@@ -52,13 +53,19 @@ export const SessionsPage = ({ sessions, repos }) => {
   );
 };
 
-export const LivePage = ({ liveEvents, repos }) => (
+export const LivePage = ({ liveEvents, repos }) => {
+  // F9: compute live metrics from the actual event stream instead of fake constants.
+  // Events carry `t` as a delta in seconds from now (negative = past).
+  const last60 = liveEvents.filter(e => e.t >= -60);
+  const eventsPerMin = last60.length;
+  const toolsPerMin = last60.filter(e => e.kind === 'tool' || e.kind === 'command').length;
+  return (
   <>
     <PageHead title="Live activity feed" sub="Real-time stream of every tool call, agent invocation, skill load and permission check across all tracked repos. Updates as Claude works." actions={<span className="live-pill"><span className="dot"></span>streaming</span>} />
     <div className="grid grid-cols-4 mb-4">
       <Metric label="Active repos" value={repos.filter(r => r.isActive).length} accent="green" />
-      <Metric label="Tools/min" value="14.3" accent="cyan" />
-      <Metric label="Tokens/min" value="42k" accent="gold" />
+      <Metric label="Tools / min" value={toolsPerMin} accent="cyan" />
+      <Metric label="Events / min" value={eventsPerMin} accent="gold" />
       <Metric label="Events buffered" value={liveEvents.length} accent="purple" />
     </div>
 
@@ -74,7 +81,8 @@ export const LivePage = ({ liveEvents, repos }) => (
       <LiveTerminal events={liveEvents} height={520} hideHeader={true} />
     </div>
   </>
-);
+  );
+};
 
 export const AgentsPage = ({ repos, onOpen }) => {
   const all = [];
@@ -95,8 +103,8 @@ export const AgentsPage = ({ repos, onOpen }) => {
           <span className="frame-meta">{filtered.length} of {all.length} entries</span>
         </div>
         <div className="grid grid-auto" style={{ padding: '.85rem' }}>
-          {filtered.map((x, i) => (
-            <div key={i} className="cd clickable" onClick={() => onOpen && onOpen(x.name, x.kind)}>
+          {filtered.map((x) => (
+            <div key={x.kind + '-' + x.name} className="cd clickable" onClick={() => onOpen && onOpen(x.name, x.kind)}>
               <div className="row between mb-2">
                 <div className="row gap-sm">
                   <Icon name={x.kind === 'agent' ? 'bot' : 'sparkles'} size={14} />
@@ -153,24 +161,9 @@ export const PermissionsPanel = ({ scope = 'all repos' }) => {
 };
 
 export const PluginsPanel = ({ repo }) => {
-  const pluginInfo = {
-    linear: { desc: 'Linear MCP — fetch tickets, projects, comments', accent: 'p' },
-    slack: { desc: 'Slack — post updates and read threads', accent: 'g' },
-    sentry: { desc: 'Sentry — pull errors and stack traces', accent: 'ro' },
-    figma: { desc: 'Figma — extract design context', accent: 'p' },
-    greptile: { desc: 'Greptile — codebase semantic search', accent: 't' },
-    'pr-review-toolkit': { desc: 'PR Review Toolkit — automated review', accent: 'c' },
-  };
-  const mcpInfo = {
-    filesystem: { desc: 'Local filesystem read/write/search' },
-    'sequential-thinking': { desc: 'Multi-step reasoning helper' },
-    linear: { desc: 'Linear API server' },
-    'linear-server': { desc: 'Linear API (alternate)' },
-    github: { desc: 'GitHub API access' },
-    playwright: { desc: 'Browser automation' },
-    figma: { desc: 'Figma design context' },
-    'code-review-graph': { desc: 'Code review graph + impact analysis' },
-  };
+  // F8: descriptions sourced from data.js registries (was hardcoded inline)
+  const pluginInfo = PLUGIN_REGISTRY;
+  const mcpInfo = MCP_REGISTRY;
   return (
     <>
       <div className="card-frame">

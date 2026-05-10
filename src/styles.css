@@ -20,6 +20,7 @@
   --glow-c-strong:0 0 16px rgba(6,182,212,.4);
   --inv:#070b14;
   --add:#10b981; --add-bg:rgba(16,185,129,.08); --del:#f472b6; --del-bg:rgba(244,114,182,.08);
+  --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
 }
 
 /* ====== LIGHT THEME — yuriodev orange/amber ======
@@ -47,6 +48,7 @@
   --glow-c-strong:0 2px 8px rgba(217,119,6,.32);
   --inv:#fff;
   --add:#059669; --add-bg:rgba(5,150,105,.08); --del:#db2777; --del-bg:rgba(219,39,119,.08);
+  --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
 }
 
 /* In light mode flip semantic accents — section titles use gold,
@@ -64,7 +66,20 @@
   --pad:clamp(.8rem,1.6vw,1.4rem);
   --gap:1rem;
   --ease:cubic-bezier(.16,1,.3,1);
-  --sb-w:240px;
+
+  /* Layout tokens — read by both CSS and JS (App.jsx setProperty + index.html neural-bg) */
+  --sb-w-expanded:240px;
+  --sb-w-collapsed:60px;
+  --sb-w:var(--sb-w-expanded);
+  --topbar-h:52px;
+
+  /* Accent-tone palette — used by the Tweaks panel "Accent tone (dark)" picker.
+     JS reads var(--tone-*) instead of duplicating hex literals. */
+  --tone-cyan:#06b6d4;
+  --tone-teal:#06b6d4;
+  --tone-violet:#a78bfa;
+  --tone-rose:#f472b6;
+  --tone-amber:#fbbf24;
 }
 
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -443,11 +458,10 @@ body{
   display:flex; align-items:center; justify-content:center;
   font-size:.66rem; font-weight:700; letter-spacing:.04em;
   color:#fff;
-  background:linear-gradient(140deg, #8b5cf6 0%, #ec4899 60%, #f59e0b 100%);
+  background:linear-gradient(140deg, var(--cyan), color-mix(in srgb, var(--cyan) 70%, var(--purple)));
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.35),
-    inset 0 -1px 0 rgba(0,0,0,.2),
-    0 2px 6px rgba(139,92,246,.25);
+    inset 0 1px 0 rgba(255,255,255,.25),
+    0 2px 6px color-mix(in srgb, var(--cyan) 28%, transparent);
 }
 [data-theme="light"] .sb-avatar{
   box-shadow:
@@ -1992,8 +2006,10 @@ body{ color:var(--neu-text); }
     radial-gradient(55vw 55vw at 100% 0%, var(--gm-stop2) 0%, transparent 50%),
     radial-gradient(60vw 60vw at 110% 100%, var(--gm-stop3) 0%, transparent 55%),
     radial-gradient(55vw 55vw at -10% 110%, var(--gm-stop4) 0%, transparent 55%),
-    radial-gradient(40vw 40vw at 50% 60%, var(--gm-stop5) 0%, transparent 55%),
-    #2a1340 !important;
+    /* Centre stop: shrunk, pushed off-centre, faded so it doesn't read as a
+       saturated pink/red disc behind the dashboard. */
+    radial-gradient(28vw 26vw at 38% 78%, color-mix(in srgb, var(--gm-stop5) 55%, transparent) 0%, transparent 40%),
+    var(--bg) !important;
   background-attachment:fixed !important;
 }
 [data-theme="dark"] body,
@@ -2004,7 +2020,7 @@ body{ color:var(--neu-text); }
     radial-gradient(60vw 60vw at 110% 100%, var(--gm-stop1) 0%, transparent 55%),
     radial-gradient(55vw 55vw at -10% 110%, var(--gm-stop4) 0%, transparent 55%),
     radial-gradient(40vw 40vw at 50% 60%, var(--gm-stop5) 0%, transparent 60%),
-    #050818 !important;
+    var(--bg) !important;
   background-attachment:fixed !important;
 }
 
@@ -2179,7 +2195,7 @@ body{ color:var(--gm-text) !important; }
     color-mix(in srgb, var(--gm-accent) 30%, var(--gm-pane)),
     color-mix(in srgb, var(--gm-accent-2) 25%, var(--gm-pane))) !important;
   border-color:color-mix(in srgb, var(--gm-accent) 50%, var(--gm-edge)) !important;
-  color:#fff !important;
+  color:var(--gm-text-bright) !important;
 }
 
 /* ---- Terminal: glass well, theme-aware ---- */
@@ -2242,13 +2258,13 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 }
 .sb-avatar{
   background:linear-gradient(135deg,
-    color-mix(in srgb, var(--gm-accent) 70%, var(--gm-pane)),
-    color-mix(in srgb, var(--gm-accent-2) 60%, var(--gm-pane))) !important;
-  border:1px solid color-mix(in srgb, var(--gm-accent) 45%, var(--gm-edge)) !important;
-  color:#fff !important;
+    color-mix(in srgb, var(--cyan) 88%, transparent),
+    color-mix(in srgb, var(--purple) 70%, transparent)) !important;
+  border:1px solid color-mix(in srgb, var(--cyan) 35%, var(--gm-edge)) !important;
+  color:var(--inv) !important;
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.4),
-    0 4px 14px -6px color-mix(in srgb, var(--gm-accent) 60%, transparent) !important;
+    inset 0 1px 0 rgba(255,255,255,.30),
+    0 2px 8px -3px color-mix(in srgb, var(--cyan) 40%, transparent) !important;
 }
 .sb-avatar-dot{
   border:2px solid var(--gm-pane-strong) !important;
@@ -2296,5 +2312,118 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 /* ---- Restore hidden surfaces from neumorphism layer ---- */
 #neuralBg, #staticGrid, #staticScan{ display:revert !important; }
 [data-theme="light"] #neuralBg, [data-theme="dark"] #neuralBg{ opacity:.45 !important; }
+
+/* ============== REPO LIVE BADGE ============== */
+@keyframes rb-pulse-fast {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%      { transform: scale(1.7); opacity: .45; }
+}
+.rb-live {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .15rem .45rem; border-radius: 999px;
+  background: var(--live-bg);
+  color: var(--live);
+  font-size: .58rem; font-family: ui-monospace, monospace;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.rb-live .rb-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  animation: rb-pulse-fast .7s ease-in-out infinite;
+}
+.rb-now {
+  margin-top: .55rem;
+  font-size: .66rem;
+  color: var(--muted);
+  display: flex; align-items: center; gap: .35rem;
+  border-top: 1px dashed var(--live-border);
+  padding-top: .55rem;
+}
+.rb-now b { color: var(--live); font-weight: 600; }
+.rb-now i { color: var(--txt-bright, #c8d0db); font-style: normal; }
+
+/* ============== LIVE AGENTS PANEL ============== */
+@keyframes lp-pulse-fast {
+  0%, 100% { transform: scale(1);   opacity: 1;    box-shadow: 0 0 0 0   currentColor; }
+  50%      { transform: scale(1.6); opacity: .55;  box-shadow: 0 0 0 6px transparent; }
+}
+@keyframes lp-pulse-slow {
+  0%, 100% { transform: scale(1);   opacity: .9;   box-shadow: 0 0 0 0   currentColor; }
+  50%      { transform: scale(1.3); opacity: .55;  box-shadow: 0 0 0 4px transparent; }
+}
+@keyframes lp-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+.la-grid { display: flex; flex-direction: column; gap: .5rem; }
+
+.la-row {
+  display: grid;
+  grid-template-columns: 18px 110px 160px 1fr 78px;
+  align-items: center;
+  gap: .8rem;
+  padding: .55rem .8rem;
+  border: 1px solid var(--brd);
+  border-radius: 6px;
+  background: var(--surface, rgba(255,255,255,.02));
+  font-family: ui-monospace, "Fira Code", monospace;
+  font-size: .76rem;
+  position: relative;
+  overflow: hidden;
+}
+.la-row.is-fresh::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.04) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: lp-shimmer 2.4s linear infinite;
+  pointer-events: none;
+}
+.la-row.is-stale { opacity: .55; }
+
+.la-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+.la-dot.live-fast { animation: lp-pulse-fast 0.65s ease-in-out infinite; }
+.la-dot.live-slow { animation: lp-pulse-slow 1.6s  ease-in-out infinite; }
+
+.la-repo  { font-weight: 600; color: var(--txt-bright, #e6edf3); }
+.la-agent { color: var(--cyan); font-weight: 600; }
+.la-tool  { color: var(--muted, #8a93a3); }
+.la-tool b { color: var(--txt, #c8d0db); font-weight: 500; }
+.la-target {
+  color: var(--muted, #8a93a3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: .7rem;
+}
+.la-elapsed {
+  text-align: right;
+  color: var(--muted, #8a93a3);
+  font-size: .68rem;
+}
+
+.la-empty {
+  padding: 1.2rem;
+  text-align: center;
+  color: var(--muted, #8a93a3);
+  font-size: .82rem;
+  border: 1px dashed var(--brd);
+  border-radius: 6px;
+}
+
+.la-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: .5rem;
+}
+.la-count {
+  font-family: ui-monospace, monospace; font-size: .68rem;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--dim);
+  color: var(--cyan);
+}
 
 

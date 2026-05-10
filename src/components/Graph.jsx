@@ -25,11 +25,13 @@ const Graph = ({ repos, onOpen }) => {
     const sizeFor = (kind, name, fallbackBytes) => {
       const bytes = SIZES[kind]?.[name] ?? fallbackBytes;
       const k = Math.sqrt(Math.max(0.2, bytes / 1000));
+      // File-size-based ranges: [min, max, sqrt-multiplier]
+      // Kept small so the central repo node (r=34) reads as the focus.
       const ranges = {
-        agent:   [13, 28, 6.5],
-        skill:   [10, 26, 6.0],
-        command: [7,  16, 5.0],
-        rule:    [7,  18, 5.0],
+        agent:   [4, 11, 3.0],
+        skill:   [3.5, 10, 2.8],
+        command: [3, 7, 2.0],
+        rule:    [3, 8, 2.2],
       };
       const [lo, hi, mult] = ranges[kind] || [10, 18, 5];
       return { r: Math.max(lo, Math.min(hi, lo + k * mult)), bytes };

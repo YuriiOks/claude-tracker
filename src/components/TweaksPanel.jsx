@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+export { useTweaks } from './useTweaks';
 
 const TWEAKS_STYLE = `
   .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
@@ -36,16 +37,6 @@ const TWEAKS_STYLE = `
   .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
   .twk-toggle[data-on="1"] i{transform:translateX(14px)}
 `;
-
-export function useTweaks(defaults) {
-  const [values, setValues] = useState(defaults);
-  const setTweak = useCallback((keyOrEdits, val) => {
-    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
-      ? keyOrEdits : { [keyOrEdits]: val };
-    setValues((prev) => ({ ...prev, ...edits }));
-  }, []);
-  return [values, setTweak];
-}
 
 export function TweaksPanel({ title = 'Tweaks', children }) {
   const [open, setOpen] = useState(false);

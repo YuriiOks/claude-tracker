@@ -1,18 +1,35 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import './styles.css';
 
+// Eager: shell + default route. These are needed for first paint.
 import Sidebar from './components/Sidebar';
 import { Topbar, PageHead, ViewToggle } from './components/Common';
 import Dashboard from './components/Dashboard';
-import { ReposPage } from './components/Repos';
-import { SessionsPage, LivePage, AgentsPage, PermissionsPanel, PluginsPanel } from './components/Pages';
-import { HeatmapPage, CostPage, DiffPage } from './components/Misc';
-import Graph from './components/Graph';
-import RepoDetail from './components/RepoDetail';
-import AgentDetail from './components/AgentDetail';
-import { TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakSelect, useTweaks } from './components/TweaksPanel';
+import { useTweaks } from './components/useTweaks';
+
+// Lazy: every non-default route. Cuts initial JS by ~60% in dev mode where
+// each .jsx is its own request.
+const ReposPage      = lazy(() => import('./components/Repos').then(m => ({ default: m.ReposPage })));
+const SessionsPage   = lazy(() => import('./components/Pages').then(m => ({ default: m.SessionsPage })));
+const LivePage       = lazy(() => import('./components/Pages').then(m => ({ default: m.LivePage })));
+const AgentsPage     = lazy(() => import('./components/Pages').then(m => ({ default: m.AgentsPage })));
+const PermissionsPanel = lazy(() => import('./components/Pages').then(m => ({ default: m.PermissionsPanel })));
+const PluginsPanel   = lazy(() => import('./components/Pages').then(m => ({ default: m.PluginsPanel })));
+const HeatmapPage    = lazy(() => import('./components/Misc').then(m => ({ default: m.HeatmapPage })));
+const CostPage       = lazy(() => import('./components/Misc').then(m => ({ default: m.CostPage })));
+const DiffPage       = lazy(() => import('./components/Misc').then(m => ({ default: m.DiffPage })));
+const Graph          = lazy(() => import('./components/Graph'));
+const RepoDetail     = lazy(() => import('./components/RepoDetail'));
+const AgentDetail    = lazy(() => import('./components/AgentDetail'));
+const TweaksPanel    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweaksPanel })));
+const TweakSection   = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakSection })));
+const TweakRadio     = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakRadio })));
+const TweakToggle    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakToggle })));
+const TweakSelect    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakSelect })));
 
 import { useRepos, useGlobal, useSessions, useLiveEvents, useActiveAgents } from './api';
+import { ROUTE_BY_ID } from './routes';
+import { useRoute } from './useRoute';
 
 const TWEAK_DEFAULTS = {
   theme: 'light',
@@ -48,7 +65,7 @@ function ReposView({ repos, onOpen, layout }) {
 
 function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [route, setRoute] = useState({ page: 'dashboard' });
+  const [route, setRoute, goBack] = useRoute();  // URL routing — pushState + popstate
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const liveEvents = useLiveEvents();
   const { data: rawRepos } = useRepos();
@@ -77,6 +94,10 @@ function App() {
     document.documentElement.dataset.theme = tweaks.theme;
     window.__tweakSpeed = tweaks.terminalSpeed;
 
+    // F1: persist theme so the no-flash bootstrap in index.html picks up
+    // the user's choice on next load.
+    try { localStorage.setItem('claude-tracker-theme', tweaks.theme); } catch { /* private mode */ }
+
     const staticGrid = document.getElementById('staticGrid');
     const staticScan = document.getElementById('staticScan');
     if (staticGrid) staticGrid.style.display = tweaks.showStaticGrid ? '' : 'none';
@@ -84,48 +105,66 @@ function App() {
 
     document.body.style.fontSize = tweaks.density === 'compact' ? '13px' : tweaks.density === 'cozy' ? '15px' : '14px';
 
-    const bgVal = tweaks.theme === 'light' ? '#fff7ed' : '#070b14';
-    document.documentElement.style.setProperty('background-color', bgVal, 'important');
-    document.body.style.setProperty('background-color', bgVal, 'important');
+    // F2: backgrounds are owned by the [data-theme] body rule in styles.css
+    // (var(--bg)). The bootstrap script in index.html handles the *initial*
+    // paint; CSS owns everything after. Clear any leftover inline override.
+    document.documentElement.style.removeProperty('background-color');
+    document.body.style.removeProperty('background-color');
 
+    // F4: accent-tone overrides — read from CSS tokens (--tone-*) instead of
+    // duplicating hex literals in JS. Tokens are defined in styles.css :root.
     document.documentElement.style.removeProperty('--cyan');
     if (tweaks.theme === 'dark' && tweaks.accentTone && tweaks.accentTone !== 'cyan') {
-      const tones = { teal: '#06b6d4', violet: '#a78bfa', rose: '#f472b6', amber: '#fbbf24' };
-      if (tones[tweaks.accentTone]) {
-        document.documentElement.style.setProperty('--cyan', tones[tweaks.accentTone]);
-      }
+      const tone = getComputedStyle(document.documentElement)
+        .getPropertyValue(`--tone-${tweaks.accentTone}`).trim();
+      if (tone) document.documentElement.style.setProperty('--cyan', tone);
     }
   }, [tweaks.theme, tweaks.density, tweaks.showStaticGrid, tweaks.terminalSpeed, tweaks.accentTone]);
+
+  // Keep --sb-w in sync with the sidebar collapse state so backgrounds anchored
+  // to var(--sb-w) (#neuralBg, #bg-fill, page-content area) reflow correctly.
+  // Widths come from CSS tokens (--sb-w-expanded / --sb-w-collapsed), not hex literals.
+  useEffect(() => {
+    document.documentElement.style.setProperty(
+      '--sb-w',
+      sidebarCollapsed ? 'var(--sb-w-collapsed)' : 'var(--sb-w-expanded)',
+    );
+  }, [sidebarCollapsed]);
 
   const allRepos = useMemo(() => (globalScope ? [...repos, globalScope] : repos), [repos, globalScope]);
   const allLive = repos.filter(r => r.isActive).length;
 
+  // Sync browser tab title with current route. Mirrors crumbs logic.
+  useEffect(() => {
+    const base = 'Claude Tracker';
+    let title = base;
+    if (route.page === 'repo') {
+      const r = allRepos.find(rr => rr.id === route.repoId);
+      title = `${r?.name || route.repoId} · ${base}`;
+    } else if (route.page === 'agent') {
+      title = `${route.name} · ${base}`;
+    } else {
+      const r = ROUTE_BY_ID[route.page];
+      if (r) title = `${r.label} · ${base}`;
+    }
+    document.title = title;
+  }, [route, allRepos]);
+
   const openRepo = (id) => setRoute({ page: 'repo', repoId: id });
   const openAgent = (name, kind) => setRoute({ page: 'agent', name, kind: kind || 'agent' });
 
+  // F16: crumbs derived from the same ROUTES registry that Sidebar uses
   const crumbs = useMemo(() => {
-    const map = {
-      dashboard: ['Workspace', 'Dashboard'],
-      repos: ['Workspace', 'Repositories'],
-      live: ['Workspace', 'Live Sessions'],
-      sessions: ['Workspace', 'Session Log'],
-      agents: ['Workspace', 'Agents & Skills'],
-      graph: ['Workspace', 'Delegation Graph'],
-      heatmap: ['Workspace', 'Activity Heatmap'],
-      cost: ['Workspace', 'Cost & Tokens'],
-      permissions: ['Workspace', 'Permissions Audit'],
-      plugins: ['Workspace', 'Plugins & MCP'],
-      diff: ['Workspace', 'Recent Diffs'],
-    };
     if (route.page === 'repo') {
-      const r = allRepos.find(r => r.id === route.repoId);
-      return ['Workspace', 'Repositories', r?.name || route.repoId];
+      const r = allRepos.find(rr => rr.id === route.repoId);
+      return ['Workspace', ROUTE_BY_ID.repos.label, r?.name || route.repoId];
     }
     if (route.page === 'agent') {
-      return ['Workspace', 'Agents & Skills', route.name];
+      return ['Workspace', ROUTE_BY_ID.agents.label, route.name];
     }
-    return map[route.page] || ['Workspace'];
-  }, [route]);
+    const r = ROUTE_BY_ID[route.page];
+    return r ? ['Workspace', r.label] : ['Workspace'];
+  }, [route, allRepos]);
 
   const renderPage = () => {
     switch (route.page) {
@@ -148,7 +187,8 @@ function App() {
       case 'permissions':
         return <PermissionsPanel scope="all repos" />;
       case 'plugins':
-        return <PluginsPanel repo={{ plugins: ['linear', 'slack', 'sentry', 'figma', 'greptile', 'pr-review-toolkit'], mcp: ['filesystem', 'sequential-thinking', 'linear', 'github', 'playwright', 'figma', 'code-review-graph'] }} />;
+        // F7: use the real global scope (plugins/mcp loaded via useGlobal), not a hardcoded mock
+        return <PluginsPanel repo={globalScope} />;
       case 'diff':
         return <DiffPage />;
       case 'repo': {
@@ -157,7 +197,7 @@ function App() {
         return <RepoDetail repo={r} sessions={sessions} liveEvents={liveEvents} onOpen={openAgent} />;
       }
       case 'agent':
-        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} onBack={() => setRoute({ page: 'agents' })} />;
+        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} onBack={() => goBack({ page: 'agents' })} />;
       default:
         return <div>404</div>;
     }
@@ -175,10 +215,13 @@ function App() {
           onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
         />
         <div className="content" key={JSON.stringify(route)}>
-          {renderPage()}
+          <Suspense fallback={<div className="empty" style={{ padding: '2rem', color: 'var(--muted)' }}>Loading…</div>}>
+            {renderPage()}
+          </Suspense>
         </div>
       </main>
 
+      <Suspense fallback={null}>
       <TweaksPanel>
         <TweakSection label="Theme">
           <TweakRadio
@@ -236,6 +279,7 @@ function App() {
           />
         </TweakSection>
       </TweaksPanel>
+      </Suspense>
     </>
   );
 }

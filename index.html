@@ -1,10 +1,26 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Claude Code Tracker</title>
+
+  <!-- No-flash theme bootstrap. Must run BEFORE the neural-bg script and CSS
+       so the document paints in the correct theme on first frame.
+       Mirrors src/App.jsx's TWEAK_DEFAULTS.theme (default: 'light'). -->
+  <script>
+    (function () {
+      var STORAGE_KEY = 'claude-tracker-theme';
+      var stored = null;
+      try { stored = localStorage.getItem(STORAGE_KEY); } catch (e) { /* private mode */ }
+      var theme = stored || 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+      // Match the --bg token defined in styles.css for each theme so the
+      // initial paint doesn't flash white before CSS loads.
+      document.documentElement.style.backgroundColor = theme === 'light' ? '#fff7ed' : '#070b14';
+    })();
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -22,17 +38,31 @@
       const canvas = document.getElementById('neuralBg');
       const ctx = canvas.getContext('2d');
       const mouse = { x: undefined, y: undefined };
-      const interactionRadius = 140;
-      const repulsionStrength = 0.65;
-      const dampingFactor = 0.985;
+      // Neural-bg physics tuning. Edit here to adjust the look. (F19)
+      const NBG = {
+        numNodes: 64,
+        interactionRadius: 140,
+        repulsionStrength: 0.65,
+        dampingFactor: 0.985,
+        maxEdgesPerNode: 4,
+        maxEdgeDistance: 180,
+        edgeColorThreshold: 90,
+      };
+      // Defensive fallback colors used only if --token isn't computed yet
+      // (e.g. before CSS loads). Keep in sync with [data-theme="dark"] in styles.css. (F6)
+      const FALLBACK = { cyan: '#06b6d4', gold: '#FFC107', purple: '#a78bfa' };
+      const interactionRadius = NBG.interactionRadius;
+      const repulsionStrength = NBG.repulsionStrength;
+      const dampingFactor = NBG.dampingFactor;
       let nodes = [];
-      const numNodes = 64;
+      const numNodes = NBG.numNodes;
       let raf;
 
       function bounds(){
         const cs = getComputedStyle(document.documentElement);
         const sbw = parseFloat(cs.getPropertyValue('--sb-w')) || 0;
-        const topbar = 52;
+        // F5: read topbar height from CSS token instead of hardcoding 52
+        const topbar = parseFloat(cs.getPropertyValue('--topbar-h')) || 52;
         return { w: Math.max(1, window.innerWidth - sbw), h: Math.max(1, window.innerHeight - topbar), left: sbw, top: topbar };
       }
       function resize() {
@@ -78,9 +108,9 @@
         ctx.fillRect(0, 0, w, h);
 
         const cs = getComputedStyle(document.body);
-        const cyan = cs.getPropertyValue('--cyan').trim() || '#06b6d4';
-        const gold = cs.getPropertyValue('--gold').trim() || '#FFC107';
-        const purple = cs.getPropertyValue('--purple').trim() || '#a78bfa';
+        const cyan = cs.getPropertyValue('--cyan').trim() || FALLBACK.cyan;
+        const gold = cs.getPropertyValue('--gold').trim() || FALLBACK.gold;
+        const purple = cs.getPropertyValue('--purple').trim() || FALLBACK.purple;
         const colors = { cyan, gold, purple };
 
         nodes.forEach(n => {
@@ -115,16 +145,17 @@
           ctx.shadowBlur = 0;
         });
 
-        const maxPer = 4;
+        const maxPer = NBG.maxEdgesPerNode;
+        const maxD = NBG.maxEdgeDistance;
         for (let i = 0; i < nodes.length; i++) {
           let count = 0;
           for (let j = i + 1; j < nodes.length; j++) {
             if (count >= maxPer) break;
             const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
             const d = Math.sqrt(dx * dx + dy * dy);
-            if (d < 180) {
-              const opacity = (isDark ? 0.32 : 0.22) * (180 - d) / 180;
-              const c = d < 90 ? gold : cyan;
+            if (d < maxD) {
+              const opacity = (isDark ? 0.32 : 0.22) * (maxD - d) / maxD;
+              const c = d < NBG.edgeColorThreshold ? gold : cyan;
               ctx.beginPath();
               ctx.moveTo(nodes[i].x, nodes[i].y);
               ctx.lineTo(nodes[j].x, nodes[j].y);
