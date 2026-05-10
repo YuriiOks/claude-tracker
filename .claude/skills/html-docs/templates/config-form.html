@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Config form</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- config-form-specific --- */
+.config-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--s-5);
+  margin: var(--s-5) 0;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .config-layout { grid-template-columns: 1fr; }
+}
+
+.config-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  overflow: hidden;
+}
+.config-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.config-card__title { font: 17px var(--font-display); margin: 0; }
+.config-card__counts { font: 13px var(--font-mono); color: var(--muted); }
+
+.config-section { padding: var(--s-3) var(--s-5) var(--s-2); }
+.config-section h4 {
+  font: 11px var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: var(--s-2) 0 var(--s-2);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--s-1);
+}
+
+.flag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  margin-bottom: var(--s-2);
+  background: white;
+  font: 13px var(--font-mono);
+}
+.flag-row.changed {
+  border-color: var(--clay);
+  background: rgba(217, 119, 87, 0.06);
+}
+.flag-row__name { color: var(--text); }
+.flag-row__hint {
+  display: block;
+  font: 12px var(--font-body);
+  color: var(--clay);
+  margin-top: 2px;
+}
+
+/* toggle */
+.toggle {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  background: var(--border);
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: background 150ms ease;
+  flex: 0 0 auto;
+}
+.toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 20px; height: 20px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 150ms ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle[aria-pressed="true"] { background: var(--olive); }
+.toggle[aria-pressed="true"]::after { transform: translateX(20px); }
+.toggle.changed[aria-pressed="true"] { background: var(--clay); }
+.toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.copy-btn {
+  width: 100%;
+  margin-top: var(--s-3);
+  background: var(--slate);
+  color: white;
+  padding: var(--s-3);
+  border: none;
+  border-radius: 0;
+  cursor: pointer;
+  font: 13px/1 var(--font-body);
+  font-weight: 500;
+}
+.copy-btn:hover { filter: brightness(1.15); }
+
+/* diff panel */
+.diff-card {
+  background: var(--slate);
+  color: #E3DACC;
+  border-radius: var(--radius-3);
+  overflow: hidden;
+  font: 13px/1.5 var(--font-mono);
+}
+.diff-card__head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--s-2) var(--s-4);
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.diff-card__head .window__dots span { background: rgba(255,255,255,0.2); }
+.diff-card__head .window__title { color: rgba(227, 218, 204, 0.6); }
+.diff-card__body { padding: var(--s-4); white-space: pre; }
+
+.diff-line { display: block; }
+.diff-line--add  { color: #C9A874; }
+.diff-line--del  { color: #B14D45; }
+.diff-line--ctx  { color: rgba(227, 218, 204, 0.6); }
+.diff-line--head { color: rgba(227, 218, 204, 0.5); }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Config · {{NAME}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE — e.g., "Toggle flags. Click 'Copy diff' to export only the keys you touched."}}</p>
+</header>
+
+<div class="config-layout">
+  <!-- LEFT: form -->
+  <div class="config-card">
+    <header class="config-card__head">
+      <h2 class="config-card__title">{{FILENAME — e.g., flags.yaml}}</h2>
+      <span class="config-card__counts" id="counts">18 flags · 0 changed</span>
+    </header>
+
+    <div class="config-section">
+      <h4>Streaming</h4>
+      <div class="flag-row">
+        <code class="flag-row__name">streaming.v2</code>
+        <button class="toggle" aria-pressed="true" data-flag="streaming.v2" data-original="true"></button>
+      </div>
+      <div class="flag-row">
+        <code class="flag-row__name">streaming.backpressure</code>
+        <button class="toggle" aria-pressed="true" data-flag="streaming.backpressure" data-original="true"></button>
+      </div>
+      <div class="flag-row">
+        <code class="flag-row__name">
+          streaming.partial_json
+          <span class="flag-row__hint">requires streaming.delta_events — currently off</span>
+        </code>
+        <button class="toggle" aria-pressed="false" data-flag="streaming.partial_json" data-original="false"></button>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h4>Billing</h4>
+      <div class="flag-row">
+        <code class="flag-row__name">billing.usage_alerts</code>
+        <button class="toggle" aria-pressed="true" data-flag="billing.usage_alerts" data-original="true"></button>
+      </div>
+      <div class="flag-row">
+        <code class="flag-row__name">billing.proration_v3</code>
+        <button class="toggle" aria-pressed="false" data-flag="billing.proration_v3" data-original="false"></button>
+      </div>
+    </div>
+
+    <button class="copy-btn" id="copy-btn">Copy diff · 0 changed keys</button>
+  </div>
+
+  <!-- RIGHT: diff -->
+  <div class="diff-card">
+    <header class="diff-card__head">
+      <span class="window__dots"><span></span><span></span><span></span></span>
+      <span class="window__title">clipboard</span>
+    </header>
+    <pre class="diff-card__body" id="diff-body"></pre>
+  </div>
+</div>
+
+<small class="muted">Config becomes a form with guardrails — export only the keys you touched.</small>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · {{SOURCE}}</small>
+</footer>
+
+<script>
+const toggles = document.querySelectorAll('.toggle');
+const counts = document.getElementById('counts');
+const copyBtn = document.getElementById('copy-btn');
+const diffBody = document.getElementById('diff-body');
+const total = toggles.length;
+const NAME = '{{NAME}}';
+
+function makeLine(text, cls) {
+  const span = document.createElement('span');
+  span.className = 'diff-line' + (cls ? ' diff-line--' + cls : '');
+  span.textContent = text;
+  return span;
+}
+
+function render() {
+  const changed = [];
+  toggles.forEach(t => {
+    const isOn = t.getAttribute('aria-pressed') === 'true';
+    const wasOn = t.dataset.original === 'true';
+    if (isOn !== wasOn) {
+      t.classList.add('changed');
+      t.parentElement.classList.add('changed');
+      changed.push({ flag: t.dataset.flag, from: wasOn, to: isOn });
+    } else {
+      t.classList.remove('changed');
+      t.parentElement.classList.remove('changed');
+    }
+  });
+  counts.textContent = total + ' flags · ' + changed.length + ' changed';
+  copyBtn.textContent = 'Copy diff · ' + changed.length + ' changed key' + (changed.length === 1 ? '' : 's');
+
+  while (diffBody.firstChild) diffBody.removeChild(diffBody.firstChild);
+  diffBody.appendChild(makeLine('# ' + NAME + '.diff', 'head'));
+
+  if (changed.length === 0) {
+    diffBody.appendChild(makeLine('', null));
+    diffBody.appendChild(makeLine('(toggle some flags above)', 'ctx'));
+    return;
+  }
+
+  const groups = {};
+  for (const c of changed) {
+    const sec = c.flag.split('.')[0];
+    (groups[sec] ||= []).push(c);
+  }
+  for (const sec of Object.keys(groups)) {
+    diffBody.appendChild(makeLine('', null));
+    diffBody.appendChild(makeLine(sec + ':', null));
+    for (const c of groups[sec]) {
+      const key = c.flag.split('.').slice(1).join('.');
+      diffBody.appendChild(makeLine('- ' + key + ': ' + c.from, 'del'));
+      diffBody.appendChild(makeLine('+ ' + key + ': ' + c.to, 'add'));
+    }
+  }
+}
+
+toggles.forEach(t => {
+  t.addEventListener('click', () => {
+    const next = t.getAttribute('aria-pressed') === 'true' ? 'false' : 'true';
+    t.setAttribute('aria-pressed', next);
+    render();
+  });
+});
+
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(diffBody.innerText).then(() => {
+    const orig = copyBtn.textContent;
+    copyBtn.textContent = '✓ Copied';
+    setTimeout(() => { copyBtn.textContent = orig; }, 1200);
+  });
+});
+
+render();
+</script>
+
+</body>
+</html>

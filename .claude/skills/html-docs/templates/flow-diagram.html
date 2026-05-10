@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- flow-diagram-specific --- */
+.flow {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-3);
+  overflow-x: auto;
+  margin: var(--s-5) 0;
+}
+.flow__node {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-2) var(--s-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  font: 13px var(--font-mono);
+  white-space: nowrap;
+  min-width: 88px;
+}
+.flow__node--start { background: white; }
+.flow__node--end   { background: var(--slate); color: #E3DACC; }
+.flow__node--alert { border-color: var(--bad); color: var(--bad); }
+.flow__arrow {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
+  margin: var(--s-5) 0;
+}
+@media (max-width: 720px) {
+  .split { grid-template-columns: 1fr; }
+}
+
+.snippet { position: relative; }
+.snippet__annotation {
+  position: absolute;
+  bottom: var(--s-3);
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 1px solid var(--clay);
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: var(--radius-1);
+  font: 12px var(--font-mono);
+  white-space: nowrap;
+}
+
+.gotchas li {
+  list-style: none;
+  position: relative;
+  padding: var(--s-2) var(--s-3) var(--s-2) var(--s-5);
+  background: var(--surface);
+  border-radius: var(--radius-1);
+  margin-bottom: var(--s-2);
+}
+.gotchas li::before {
+  content: "";
+  position: absolute;
+  left: var(--s-2);
+  top: var(--s-2);
+  bottom: var(--s-2);
+  width: 3px;
+  background: var(--clay);
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">{{EYEBROW — e.g., "Synthesized from codebase · Slack · git log · web"}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE}}</p>
+</header>
+
+<h2>{{FLOW HEADING}}</h2>
+<div class="flow" role="img" aria-label="{{FLOW DESCRIPTION FOR SCREEN READERS}}">
+  <span class="flow__node flow__node--start">request</span>
+  <span class="flow__arrow" aria-hidden="true">→</span>
+  <span class="flow__node">bucket</span>
+  <span class="flow__arrow" aria-hidden="true">→</span>
+  <span class="flow__node">decision</span>
+  <span class="flow__arrow" aria-hidden="true">→</span>
+  <span class="flow__node flow__node--end">429 / pass</span>
+</div>
+
+<div class="split">
+  <div>
+    <h3>{{CODE TITLE — e.g., "limiter.ts"}}</h3>
+    <div class="snippet">
+<pre><code><span class="tok-k">function</span> <span class="tok-fn">checkLimit</span>(req) {
+  <span class="tok-k">const</span> bucket = <span class="tok-fn">keyFor</span>(req);
+  <span class="tok-k">const</span> count = redis.<span class="tok-fn">incr</span>(bucket);
+  <span class="tok-k">if</span> (count &gt; LIMIT) <span class="tok-k">return</span> <span class="tok-s">'429'</span>;
+  <span class="tok-k">return</span> <span class="tok-s">'pass'</span>;
+}</code></pre>
+      <span class="snippet__annotation">window resets per-key</span>
+    </div>
+  </div>
+  <div>
+    <h3>How it works</h3>
+    <p>The first request for a given bucket key seeds a counter in Redis with a TTL window. Each subsequent request increments the counter; when it crosses the limit, the gateway returns 429 with a <code>Retry-After</code> hint.</p>
+    <p>The bucket key is composed of <code>{api_version}:{user_id}:{route}</code> — note the API version prefix.</p>
+  </div>
+</div>
+
+<h2>Gotchas</h2>
+<ul class="gotchas">
+  <li>Bucket key includes the API version — rotating it resets every counter.</li>
+  <li>Retry-After is best-effort; clients should still back off exponentially.</li>
+  <li>Burst allowance only applies on cold start, not after a 429.</li>
+</ul>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · synthesized from {{SOURCE}}</small>
+</footer>
+
+</body>
+</html>

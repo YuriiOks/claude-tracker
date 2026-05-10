@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "agent": "doc-author",
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run preview:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm run dev:*)",
+      "Bash(pnpm run build:*)",
+      "Bash(pnpm run lint:*)",
+      "Bash(pnpm exec eslint:*)",
+      "Bash(pnpm exec prettier:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prettier:*)",
+      "Bash(open docs/*)",
+      "Bash(open /Users/yurii_jupus/Documents/Personal/claude-tracker/docs/*)"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(git push --force:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -f:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(git branch -D:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "id": "session-start:branch-banner",
+        "description": "Print branch + recent doc count at session start",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'cd \"${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}\" 2>/dev/null && BRANCH=$(git branch --show-current 2>/dev/null) && DOCS=$(ls docs/*.html 2>/dev/null | wc -l | tr -d \" \") && echo \"📊 claude-tracker | branch: $BRANCH | $DOCS HTML doc(s) in docs/\"'"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "id": "post-compact:reminders",
+        "description": "Refresh project invariants after compaction",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '🔁 claude-tracker invariants: 1) HTML-first for substantive docs (skill: html-docs) 2) Vanilla CSS only — tokens in src/styles.css 3) data.js shape is the contract 4) No TypeScript yet 5) System fonts only in generated HTML (no CDN)'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "id": "post:edit-write:eslint",
+        "description": "Run eslint --fix on JS/JSX edits",
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

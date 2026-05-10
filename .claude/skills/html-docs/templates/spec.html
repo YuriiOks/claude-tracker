@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Spec</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- spec-specific --- */
+.tabs {
+  display: flex;
+  gap: var(--s-1);
+  margin-bottom: var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  padding: var(--s-2) var(--s-3);
+  font: 14px var(--font-body);
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius-2) var(--radius-2) 0 0;
+  cursor: pointer;
+  position: relative;
+  bottom: -1px;
+}
+.tab[aria-selected="true"] {
+  color: var(--accent);
+  background: white;
+  border-color: var(--border);
+  border-bottom-color: white;
+  font-weight: 500;
+}
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.panel { display: none; }
+.panel[data-active] { display: block; animation: fade-in 200ms ease; }
+@keyframes fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.kpi {
+  display: inline-flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-4) var(--s-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+}
+.kpi__label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi__value { font: 28px/1.1 var(--font-display); color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">Spec · v1 · {{DATE}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE}}</p>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Spec sections">
+  <button class="tab" role="tab" aria-selected="true" aria-controls="overview" id="tab-overview">Overview</button>
+  <button class="tab" role="tab" aria-selected="false" aria-controls="api"      id="tab-api">API</button>
+  <button class="tab" role="tab" aria-selected="false" aria-controls="rollout"  id="tab-rollout">Rollout</button>
+  <button class="tab" role="tab" aria-selected="false" aria-controls="risks"    id="tab-risks">Risks</button>
+</nav>
+
+<main>
+  <section class="panel" id="overview" role="tabpanel" aria-labelledby="tab-overview" data-active>
+    <h2>Goals</h2>
+    <ul>
+      <li>Goal 1 — what success looks like</li>
+      <li>Goal 2 — measurable target</li>
+      <li>Goal 3 — non-goal explicitly out of scope</li>
+    </ul>
+
+    <div class="grid-2" style="margin-top: var(--s-5)">
+      <div class="kpi">
+        <span class="kpi__label">{{KPI 1 label}}</span>
+        <span class="kpi__value">{{value}}</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi__label">{{KPI 2 label}}</span>
+        <span class="kpi__value">{{value}}</span>
+      </div>
+    </div>
+
+    <h2>Open questions</h2>
+    <ul>
+      <li>Question 1</li>
+      <li>Question 2</li>
+    </ul>
+  </section>
+
+  <section class="panel" id="api" role="tabpanel" aria-labelledby="tab-api">
+    <h2>Surface</h2>
+    <p>Endpoint, payloads, error codes.</p>
+<pre><code><span class="tok-k">POST</span> /api/v1/{{path}}
+<span class="tok-c">// request</span>
+{
+  "<span class="tok-t">field</span>": <span class="tok-s">"value"</span>
+}
+
+<span class="tok-c">// 200</span>
+{
+  "<span class="tok-t">id</span>": <span class="tok-s">"abc123"</span>,
+  "<span class="tok-t">created_at</span>": <span class="tok-s">"{{DATE}}"</span>
+}</code></pre>
+  </section>
+
+  <section class="panel" id="rollout" role="tabpanel" aria-labelledby="tab-rollout">
+    <h2>Phases</h2>
+    <ol>
+      <li>Phase 0 — feature flag off, schema deploys</li>
+      <li>Phase 1 — internal only (org=1)</li>
+      <li>Phase 2 — 10% canary</li>
+      <li>Phase 3 — full rollout</li>
+    </ol>
+  </section>
+
+  <section class="panel" id="risks" role="tabpanel" aria-labelledby="tab-risks">
+    <h2>Risks &amp; mitigations</h2>
+    <table>
+      <thead><tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td>Risk 1</td><td><span class="badge badge--warn">Medium</span></td><td>Mitigation</td></tr>
+        <tr><td>Risk 2</td><td><span class="badge badge--bad">High</span></td><td>Mitigation</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · regenerate from {{SOURCE}}</small>
+</footer>
+
+<script>
+// Tab switching
+document.querySelectorAll('[role="tab"]').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const target = tab.getAttribute('aria-controls');
+    document.querySelectorAll('[role="tab"]').forEach(t => t.setAttribute('aria-selected', 'false'));
+    tab.setAttribute('aria-selected', 'true');
+    document.querySelectorAll('.panel').forEach(p => p.removeAttribute('data-active'));
+    document.getElementById(target).setAttribute('data-active', '');
+  });
+});
+</script>
+
+</body>
+</html>

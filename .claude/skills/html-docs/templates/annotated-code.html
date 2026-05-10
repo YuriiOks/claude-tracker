@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Annotated code</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- annotated-code-specific --- */
+.code-window {
+  background: var(--slate);
+  color: #E3DACC;
+  border-radius: var(--radius-3);
+  overflow: hidden;
+  margin: var(--s-5) 0;
+  box-shadow: var(--shadow-2);
+}
+.code-window__bar {
+  display: flex; align-items: center; gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: rgba(255,255,255,0.04);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.code-window__title {
+  font: 13px var(--font-mono);
+  color: rgba(227, 218, 204, 0.6);
+  margin-left: var(--s-2);
+}
+.code-window__path {
+  margin-left: auto;
+  font: 12px var(--font-mono);
+  color: rgba(227, 218, 204, 0.5);
+}
+
+.code-table {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  font: 13px/1.55 var(--font-mono);
+}
+.code-line__num {
+  text-align: right;
+  padding: 0 var(--s-3) 0 var(--s-3);
+  color: rgba(227, 218, 204, 0.35);
+  user-select: none;
+  background: rgba(0,0,0,0.18);
+}
+.code-line__src {
+  padding: 0 var(--s-3);
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.code-line--add { background: rgba(92, 140, 90, 0.18); }
+.code-line--add .code-line__num { background: rgba(92, 140, 90, 0.30); color: #A8C99B; }
+.code-line--del { background: rgba(177, 77, 69, 0.20); }
+.code-line--del .code-line__num { background: rgba(177, 77, 69, 0.30); color: #D9938E; }
+.code-line--note { background: rgba(217, 119, 87, 0.12); }
+.code-line--note .code-line__num { background: rgba(217, 119, 87, 0.22); color: #D9A37D; }
+
+.annotations {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: var(--s-4);
+  align-items: start;
+  margin: var(--s-5) 0;
+}
+@media (max-width: 860px) {
+  .annotations { grid-template-columns: 1fr; }
+}
+
+.note-card {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2);
+  padding: var(--s-3) var(--s-4);
+  font-size: 13px;
+}
+.note-card--blocking { border-color: var(--bad); border-width: 2px; }
+.note-card--blocking .note-card__label { color: var(--bad); }
+.note-card--nit      { border-color: var(--border); }
+.note-card--nice     { border-color: var(--ok); }
+.note-card--nice .note-card__label { color: var(--ok); }
+.note-card__label {
+  display: inline-block;
+  font: 11px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  margin-bottom: var(--s-1);
+}
+.note-card__body { color: var(--text); }
+
+.note-anchor {
+  font: 11px var(--font-mono);
+  color: var(--muted);
+  margin-top: var(--s-2);
+}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">{{EYEBROW — e.g., "PR #482 · refactor session store"}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE}}</p>
+</header>
+
+<div class="annotations">
+  <div class="code-window">
+    <div class="code-window__bar">
+      <span class="window__dots"><span></span><span></span><span></span></span>
+      <span class="code-window__title">{{FILENAME — e.g., lib/session.ts}}</span>
+      <span class="code-window__path">−7 +18</span>
+    </div>
+    <div class="code-table">
+      <div class="code-line__num">12</div><div class="code-line__src">  store.set(key, value)</div>
+      <div class="code-line__num">13</div><div class="code-line__src">}</div>
+
+      <div class="code-line__num code-line--del">14</div><div class="code-line__src code-line--del">  if (state.session) clearTimeout(state.timer)</div>
+      <div class="code-line__num code-line--add">15</div><div class="code-line__src code-line--add">  if (state.session) state.timer.unref()</div>
+      <div class="code-line__num code-line--add">16</div><div class="code-line__src code-line--add">  state.timer = setTimeout(refresh, 30_000)</div>
+
+      <div class="code-line__num">17</div><div class="code-line__src"></div>
+      <div class="code-line__num">18</div><div class="code-line__src">function refresh() {</div>
+
+      <div class="code-line__num code-line--del">19</div><div class="code-line__src code-line--del">  await store.flush()</div>
+      <div class="code-line__num code-line--add">20</div><div class="code-line__src code-line--add">  await store.flushIfDirty()</div>
+
+      <div class="code-line__num">21</div><div class="code-line__src">}</div>
+      <div class="code-line__num">22</div><div class="code-line__src"></div>
+      <div class="code-line__num">23</div><div class="code-line__src">function close() {</div>
+      <div class="code-line__num code-line--add">24</div><div class="code-line__src code-line--add">  state.timer?.close()</div>
+      <div class="code-line__num">25</div><div class="code-line__src">}</div>
+    </div>
+  </div>
+
+  <div class="col" style="gap: var(--s-3)">
+    <div class="note-card note-card--blocking">
+      <span class="note-card__label">⚠ blocking</span>
+      <div class="note-card__body">{{Note 1 — why this is blocking. Reference behavior or invariant.}}</div>
+      <div class="note-anchor">L14–L16</div>
+    </div>
+    <div class="note-card note-card--nit">
+      <span class="note-card__label">nit</span>
+      <div class="note-card__body">{{Note 2 — small style or naming preference.}}</div>
+      <div class="note-anchor">L19–L20</div>
+    </div>
+    <div class="note-card note-card--nice">
+      <span class="note-card__label">✓ nice</span>
+      <div class="note-card__body">{{Note 3 — improvement worth calling out.}}</div>
+      <div class="note-anchor">L24</div>
+    </div>
+  </div>
+</div>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · {{SOURCE — gh pr view {{PR}}}}</small>
+</footer>
+
+</body>
+</html>

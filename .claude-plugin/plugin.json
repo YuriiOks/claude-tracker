@@ -1,0 +1,9 @@
+{
+  "name": "claude-tracker",
+  "version": "0.1.0",
+  "description": "Personal dashboard for tracking Claude Code activity across repos. Includes html-docs skill that defaults documentation outputs to standalone HTML (Thariq's HTML-over-Markdown pattern).",
+  "author": { "name": "Yurii Oksamytnyi", "email": "yurii.oksamytnyi@gmail.com" },
+  "commands": ["./.claude/commands/"],
+  "skills": ["./.claude/skills/"],
+  "mcpServers": {}
+}

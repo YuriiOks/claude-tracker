@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Design tokens</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- design-tokens-specific --- */
+.tokens-window {
+  background: var(--surface);
+  border-radius: var(--radius-3);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  margin: var(--s-5) 0;
+}
+.tokens-window__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-2) var(--s-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font: 13px var(--font-mono);
+  color: var(--muted);
+}
+.tokens-window__body {
+  background: white;
+  padding: var(--s-6);
+}
+
+.token-group { margin-bottom: var(--s-7); }
+.token-group:last-child { margin-bottom: 0; }
+.token-group__label {
+  font: 11px var(--font-body);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin-bottom: var(--s-3);
+}
+
+.swatches {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--s-3);
+}
+.swatch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+.swatch__chip {
+  height: 100px;
+  border-radius: var(--radius-2);
+  border: 1px solid var(--border);
+}
+.swatch__name { font: 13px var(--font-mono); color: var(--text); }
+.swatch__hex  { font: 12px var(--font-mono); color: var(--muted); }
+
+.type-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: var(--s-3) 0;
+  gap: var(--s-5);
+}
+.type-row:last-child { border-bottom: none; }
+.type-row__sample { color: var(--text); }
+.type-row__var    { font: 13px var(--font-mono); color: var(--muted); }
+
+.btn-row {
+  display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap;
+  margin-top: var(--s-3);
+}
+
+.space-scale {
+  display: flex; gap: var(--s-3); align-items: flex-end;
+  margin-top: var(--s-3);
+}
+.space-token {
+  display: flex; flex-direction: column; align-items: center; gap: var(--s-1);
+  font: 12px var(--font-mono); color: var(--muted);
+}
+.space-token__bar {
+  background: var(--clay);
+  width: 24px;
+  border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">{{EYEBROW — e.g., "design tokens · claude-tracker/web"}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE}}</p>
+</header>
+
+<div class="tokens-window">
+  <div class="tokens-window__bar">
+    <span>{{NAMESPACE — e.g., birchline/web}}</span>
+    <span>v{{VERSION}}</span>
+  </div>
+  <div class="tokens-window__body">
+
+    <!-- COLOR -->
+    <div class="token-group">
+      <div class="token-group__label">Color</div>
+      <div class="swatches">
+        <div class="swatch"><div class="swatch__chip" style="background:#D97757"></div><span class="swatch__name">clay</span><span class="swatch__hex">#D97757</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#788C5D"></div><span class="swatch__name">olive</span><span class="swatch__hex">#788C5D</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#6A8CAF"></div><span class="swatch__name">sky</span><span class="swatch__hex">#6A8CAF</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#E3DACC"></div><span class="swatch__name">oat</span><span class="swatch__hex">#E3DACC</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#141413"></div><span class="swatch__name">slate</span><span class="swatch__hex">#141413</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#8A837A"></div><span class="swatch__name">muted</span><span class="swatch__hex">#8A837A</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:#D4CFC7"></div><span class="swatch__name">border</span><span class="swatch__hex">#D4CFC7</span></div>
+        <div class="swatch"><div class="swatch__chip" style="background:white;border-color:var(--border)"></div><span class="swatch__name">white</span><span class="swatch__hex">#FFFFFF</span></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- TYPE -->
+      <div class="token-group">
+        <div class="token-group__label">Type</div>
+        <div class="type-row"><span class="type-row__sample" style="font:32px/1.1 var(--font-display)">Display 32 serif</span><span class="type-row__var">--text-display</span></div>
+        <div class="type-row"><span class="type-row__sample" style="font:20px/1.3 var(--font-display)">Heading 20 serif</span><span class="type-row__var">--text-heading</span></div>
+        <div class="type-row"><span class="type-row__sample" style="font:15px/1.55 var(--font-body)">Body 15 sans regular</span><span class="type-row__var">--text-body</span></div>
+        <div class="type-row"><span class="type-row__sample" style="font:13px/1.55 var(--font-mono)">Mono 13 ui-monospace</span><span class="type-row__var">--text-mono</span></div>
+      </div>
+
+      <!-- BUTTON -->
+      <div class="token-group">
+        <div class="token-group__label">Button</div>
+        <div class="btn-row">
+          <button class="btn">Primary</button>
+          <button class="btn btn-secondary">Secondary</button>
+          <button class="btn btn-ghost">Ghost</button>
+        </div>
+
+        <div class="token-group__label" style="margin-top: var(--s-5)">Space</div>
+        <div class="space-scale">
+          <div class="space-token"><div class="space-token__bar" style="height:4px"></div>4</div>
+          <div class="space-token"><div class="space-token__bar" style="height:8px"></div>8</div>
+          <div class="space-token"><div class="space-token__bar" style="height:12px"></div>12</div>
+          <div class="space-token"><div class="space-token__bar" style="height:16px"></div>16</div>
+          <div class="space-token"><div class="space-token__bar" style="height:24px"></div>24</div>
+          <div class="space-token"><div class="space-token__bar" style="height:32px"></div>32</div>
+          <div class="space-token"><div class="space-token__bar" style="height:48px"></div>48</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · single source of truth lives in {{TOKENS_FILE}}</small>
+</footer>
+
+</body>
+</html>

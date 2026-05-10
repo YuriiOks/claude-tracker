@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} — Gotchas</title>
+<style>
+/* PASTE _tokens.css HERE when generating */
+@import url("./_tokens.css");
+
+/* --- gotchas-specific --- */
+.gotcha-list { list-style: none; padding: 0; margin: var(--s-5) 0; }
+.gotcha {
+  position: relative;
+  background: var(--surface);
+  padding: var(--s-3) var(--s-4) var(--s-3) var(--s-5);
+  margin-bottom: var(--s-2);
+  border-radius: var(--radius-1);
+  font-size: 14px;
+}
+.gotcha::before {
+  content: "";
+  position: absolute;
+  left: var(--s-2); top: var(--s-2); bottom: var(--s-2);
+  width: 3px;
+  background: var(--clay);
+  border-radius: 2px;
+}
+.gotcha--bad::before  { background: var(--bad); }
+.gotcha--warn::before { background: var(--warn); }
+.gotcha--info::before { background: var(--sky); }
+.gotcha__title { font-weight: 600; }
+.gotcha__detail { display: block; color: var(--muted); margin-top: 2px; font-size: 13px; }
+
+.severity-legend {
+  display: flex; gap: var(--s-3); align-items: center; font-size: 13px;
+  color: var(--muted); margin-top: var(--s-3);
+}
+.severity-legend span { display: inline-flex; align-items: center; gap: var(--s-1); }
+.severity-legend i {
+  display: inline-block; width: 3px; height: 12px; border-radius: 2px;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <p class="eyebrow">{{EYEBROW — e.g., "{{TOPIC}} · gotchas"}}</p>
+  <h1>{{TITLE}}</h1>
+  <p class="muted">{{SUBTITLE — e.g., "Things that bit us. Read before touching {{COMPONENT}}."}}</p>
+</header>
+
+<ul class="gotcha-list">
+  <li class="gotcha gotcha--bad">
+    <span class="gotcha__title">{{Gotcha 1 headline}}</span>
+    <span class="gotcha__detail">{{One-sentence detail. Where it bit us, what to do instead.}}</span>
+  </li>
+  <li class="gotcha gotcha--warn">
+    <span class="gotcha__title">{{Gotcha 2 headline}}</span>
+    <span class="gotcha__detail">{{One-sentence detail.}}</span>
+  </li>
+  <li class="gotcha">
+    <span class="gotcha__title">{{Gotcha 3 headline}}</span>
+    <span class="gotcha__detail">{{One-sentence detail.}}</span>
+  </li>
+  <li class="gotcha gotcha--info">
+    <span class="gotcha__title">{{Gotcha 4 headline}}</span>
+    <span class="gotcha__detail">{{Informational nuance — not a bug but easy to miss.}}</span>
+  </li>
+</ul>
+
+<div class="severity-legend">
+  <span><i style="background: var(--bad)"></i> blocker</span>
+  <span><i style="background: var(--warn)"></i> warn</span>
+  <span><i style="background: var(--clay)"></i> nit</span>
+  <span><i style="background: var(--sky)"></i> info</span>
+</div>
+
+<hr>
+
+<footer>
+  <small>Generated {{DATE}} · synthesized from {{SOURCE — git log, post-mortems, Slack}}</small>
+</footer>
+
+</body>
+</html>
