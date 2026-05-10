@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LLM Caching — From KV Tensors to Bedrock Breakpoints</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   YURIODEV DESIGN SYSTEM — DUAL THEME (DARK / LIGHT)
+   ============================================================ */
+[data-theme="dark"]{
+  --bg:#0a0f1c;--bg2:rgba(10,15,28,.95);--card:rgba(15,23,42,.92);
+  --cyan:#00d4ff;--gold:#FFC107;--teal:#008080;--purple:#c084fc;
+  --green:#00ff88;--rose:#f472b6;--orange:#fb923c;--red:#ef4444;
+  --txt:#cbd5e1;--muted:#6b7280;--dim:rgba(0,212,255,.15);
+  --gc:rgba(0,212,255,.5);--gg:rgba(255,193,7,.5);--gt:rgba(0,128,128,.4);
+  --brd:rgba(0,212,255,.2);--brd2:rgba(0,212,255,.08);
+  --code-bg:rgba(0,0,0,.4);--hover:rgba(0,212,255,.04);
+  --scan:rgba(0,212,255,.012);--grid:rgba(0,212,255,.03);
+  --shadow:rgba(0,212,255,.06);--inv:#0a0f1c;
+}
+[data-theme="light"]{
+  --bg:#f8fafc;--bg2:#f1f5f9;--card:#ffffff;
+  --cyan:#0284c7;--gold:#b45309;--teal:#0f766e;--purple:#7c3aed;
+  --green:#059669;--rose:#db2777;--orange:#c2410c;--red:#dc2626;
+  --txt:#1e293b;--muted:#64748b;--dim:rgba(2,132,199,.08);
+  --gc:rgba(2,132,199,.25);--gg:rgba(180,83,9,.25);--gt:rgba(15,118,110,.2);
+  --brd:rgba(2,132,199,.2);--brd2:rgba(2,132,199,.06);
+  --code-bg:rgba(0,0,0,.04);--hover:rgba(2,132,199,.04);
+  --scan:transparent;--grid:rgba(2,132,199,.08);
+  --shadow:rgba(0,0,0,.06);--inv:#fff;
+  --nav-bg:rgba(237,242,255,.92);--nav-brd:rgba(124,58,237,.22);--nav-shadow:0 2px 14px rgba(2,132,199,.18);
+  --dot-off:rgba(2,132,199,.3);--dot-on:#7c3aed;--dot-glow:rgba(124,58,237,.45);--dot-hover:#0284c7;
+  --tip-fg:#1e293b;--tip-bg:rgba(245,243,255,.98);--tip-brd:rgba(124,58,237,.22);
+}
+:root{
+  --font:'Fira Code',monospace;
+  --ts:clamp(1.5rem,4.8vw,3.2rem);--h2:clamp(1.6rem,4.2vw,2.8rem);
+  --h3:clamp(.9rem,2vw,1.25rem);--bs:clamp(.82rem,1.5vw,1.08rem);
+  --ss:clamp(.65rem,1.05vw,.84rem);--ms:clamp(.58rem,.9vw,.72rem);
+  --pad:clamp(1rem,3.5vw,3.5rem);--gap:clamp(.4rem,1.3vw,1rem);
+  --ease:cubic-bezier(.16,1,.3,1);
+  --nav-bg:rgba(10,10,20,.92);--nav-brd:rgba(0,212,255,.15);--nav-shadow:0 4px 20px rgba(0,0,0,.3);
+  --dot-off:rgba(148,163,184,.45);--dot-on:#00d4ff;--dot-glow:rgba(0,212,255,.5);--dot-hover:#e2e8f0;
+  --tip-fg:#e2e8f0;--tip-bg:rgba(10,10,20,.95);--tip-brd:rgba(0,212,255,.2);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--txt);-webkit-font-smoothing:antialiased;transition:background .4s,color .4s}
+.deck{position:relative;width:100vw;height:100vh;height:100dvh;overflow:hidden}
+.S{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transition:transform .28s var(--ease),opacity .28s ease;opacity:0;transform:translateX(80px);pointer-events:none;will-change:transform,opacity;overflow:hidden}
+.S.active{opacity:1;transform:translateX(0);pointer-events:auto;z-index:2}
+.S.prev{opacity:0;transform:translateX(-80px);z-index:1}
+.SC{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:100vh;min-height:100dvh;overflow:hidden;padding:var(--pad);padding-bottom:calc(var(--pad) + 4vh);position:relative;z-index:2}
+#staticGrid{position:fixed;inset:0;z-index:3;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px}
+#staticScan{position:fixed;inset:0;z-index:3;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,var(--scan) 2px,var(--scan) 4px)}
+.wave-cv{position:fixed;bottom:0;left:0;width:100%;height:min(8vh,60px);z-index:50;pointer-events:none;opacity:.75;transition:opacity .8s ease}
+[data-theme="light"] .wave-cv{opacity:1}
+.wave-cv.hide{opacity:0}
+.hero{position:relative}
+.hero-canvas{position:absolute;inset:0;z-index:0;pointer-events:none}
+.hero .SC{position:relative;z-index:2}
+#heroParticles,#heroMatrix{position:absolute;inset:0;width:100%;height:100%}
+#heroMatrix{opacity:.06}
+[data-theme="light"] #heroMatrix{opacity:.035}
+.glitch{position:relative;display:inline-block}
+.glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;overflow:hidden;pointer-events:none}
+.glitch::before{color:var(--cyan);z-index:-1;animation:g1 4s infinite step-end;clip-path:inset(0 0 75% 0)}
+.glitch::after{color:var(--purple);z-index:-2;animation:g2 3.5s infinite step-end;clip-path:inset(75% 0 0 0)}
+[data-theme="light"] .glitch::before{color:var(--teal)}
+[data-theme="light"] .glitch::after{color:#7c3aed}
+@keyframes g1{0%,90%{transform:none}91%{transform:translate(-3px,1px) skewX(-1deg)}92%{transform:translate(3px,-1px) skewX(1deg)}93%{transform:translate(-1px,2px)}94%,100%{transform:none}}
+@keyframes g2{0%,86%{transform:none}87%{transform:translate(2px,1px) skewX(1deg)}88%{transform:translate(-3px,-1px) skewX(-2deg)}89%{transform:translate(1px,-2px)}90%,100%{transform:none}}
+.type-cursor::after{content:'\25AE';animation:tcBlink .8s step-end infinite;color:var(--gold);font-weight:300;margin-left:2px}
+@keyframes tcBlink{0%,100%{opacity:1}50%{opacity:0}}
+.bar{position:absolute;top:0;left:0;right:0;height:2px;z-index:10}
+.bar-c{background:linear-gradient(90deg,var(--cyan),var(--teal))}
+.bar-g{background:linear-gradient(90deg,var(--gold),var(--orange))}
+.bar-p{background:linear-gradient(90deg,var(--purple),var(--cyan))}
+.bar-t{background:linear-gradient(90deg,var(--teal),var(--green))}
+.bar-r{background:linear-gradient(90deg,var(--red),var(--orange))}
+.sn{position:fixed;top:clamp(.4rem,1.2vw,.9rem);right:clamp(.5rem,2vw,1.5rem);font-size:var(--ss);color:var(--muted);z-index:200;opacity:1;transform:none}
+.sn b{color:var(--cyan)}
+h1{font-size:var(--ts);font-weight:700;line-height:1.1;letter-spacing:-.03em;color:var(--cyan);text-shadow:0 0 25px var(--gc),0 0 8px var(--gc)}
+h2{font-size:var(--h2);font-weight:600;line-height:1.15;letter-spacing:-.02em;color:var(--gold);text-shadow:0 0 12px var(--gg)}
+h3{font-size:var(--h3);font-weight:600;line-height:1.3;color:var(--txt)}
+p,li{font-size:var(--bs);line-height:1.55}
+.mono{font-size:var(--ms)}
+.lbl{font-size:var(--ss);text-transform:uppercase;letter-spacing:.12em;font-weight:600;display:flex;align-items:center;gap:.4em}
+.lbl svg{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lc{color:var(--cyan)}.lg{color:var(--gold)}.lt{color:var(--teal)}.lp{color:var(--purple)}.lo{color:var(--orange)}.lr{color:var(--red)}
+.tc{color:var(--cyan)}.tg{color:var(--gold)}.tt{color:var(--teal)}.tp{color:var(--purple)}.to{color:var(--orange)}.tr{color:var(--red)}.tgr{color:var(--green)}.tro{color:var(--rose)}
+.rv{opacity:0;transform:translateY(16px);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.vis .rv{opacity:1;transform:translateY(0)}
+.d1{transition-delay:.025s}.d2{transition-delay:.06s}.d3{transition-delay:.1s}.d4{transition-delay:.15s}.d5{transition-delay:.21s}.d6{transition-delay:.27s}.d7{transition-delay:.33s}
+.cd{background:var(--card);border:1px solid var(--brd);border-radius:8px;padding:clamp(.5rem,1.2vw,1rem);backdrop-filter:blur(8px);box-shadow:0 4px 14px var(--shadow);transition:all .3s}
+.cd:hover{border-color:var(--cyan);box-shadow:0 6px 20px var(--shadow);transform:translateY(-1px)}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:var(--gap)}
+.ib{display:inline-flex;align-items:center;justify-content:center;width:clamp(1.5rem,2.8vw,2rem);height:clamp(1.5rem,2.8vw,2rem);border-radius:7px;flex-shrink:0;margin-bottom:clamp(.15rem,.4vw,.3rem)}
+.ib svg{width:55%;height:55%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib-c{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+.ib-g{background:rgba(255,193,7,.08);color:var(--gold);border:1px solid rgba(255,193,7,.18)}
+.ib-t{background:rgba(0,128,128,.08);color:var(--teal);border:1px solid rgba(0,128,128,.18)}
+.ib-p{background:rgba(192,132,252,.08);color:var(--purple);border:1px solid rgba(192,132,252,.18)}
+.ib-o{background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)}
+.ib-r{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+.ib-ro{background:rgba(244,114,182,.08);color:var(--rose);border:1px solid rgba(244,114,182,.18)}
+.ib-gr{background:rgba(0,255,136,.08);color:var(--green);border:1px solid rgba(0,255,136,.18)}
+[data-theme="light"] .ib-c{background:rgba(2,132,199,.08);border-color:rgba(2,132,199,.18)}
+[data-theme="light"] .ib-p{background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.18)}
+.tb{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--ss);border-radius:8px;overflow:hidden;border:1px solid var(--brd);background:var(--card);transition:all .3s}
+.tb th{background:var(--dim);color:var(--cyan);font-weight:500;text-transform:uppercase;letter-spacing:.05em;padding:clamp(.25rem,.6vw,.45rem) clamp(.35rem,.8vw,.6rem);text-align:left;border-bottom:1px solid var(--brd)}
+.tb td{padding:clamp(.2rem,.5vw,.4rem) clamp(.35rem,.8vw,.6rem);border-top:1px solid var(--brd2)}
+.tb .tac{text-align:center}
+.tb tbody tr:hover{background:var(--hover)}
+.tb .w{color:var(--green);font-weight:600}
+.tb .x{color:var(--muted)}
+.bg{display:inline-flex;align-items:center;gap:.25em;padding:.15em .5em;border-radius:4px;font-size:var(--ss);font-weight:500}
+.bg svg{width:.85em;height:.85em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bg-c{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+.bg-g{background:rgba(255,193,7,.08);color:var(--gold);border:1px solid rgba(255,193,7,.18)}
+.bg-t{background:rgba(0,128,128,.08);color:var(--teal);border:1px solid rgba(0,128,128,.18)}
+.bg-p{background:rgba(192,132,252,.08);color:var(--purple);border:1px solid rgba(192,132,252,.18)}
+.bg-o{background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)}
+.bg-gr{background:rgba(0,255,136,.08);color:var(--green);border:1px solid rgba(0,255,136,.18)}
+.bg-r{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+.steps{display:flex;flex-direction:column;gap:clamp(.3rem,.7vh,.5rem)}
+.step{display:flex;align-items:flex-start;gap:clamp(.35rem,.9vw,.6rem)}
+.snum{flex-shrink:0;width:clamp(1.3rem,2.4vw,1.7rem);height:clamp(1.3rem,2.4vw,1.7rem);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:var(--ss);font-weight:700;color:var(--inv)}
+.snum-c{background:var(--cyan);box-shadow:0 0 8px var(--gc)}
+.snum-g{background:var(--gold);box-shadow:0 0 8px var(--gg)}
+.snum-t{background:var(--teal);box-shadow:0 0 8px var(--gt)}
+.snum-p{background:var(--purple);box-shadow:0 0 8px rgba(192,132,252,.3)}
+.snum-o{background:var(--orange);box-shadow:0 0 8px rgba(251,146,60,.3)}
+.snum-r{background:var(--red);box-shadow:0 0 8px rgba(239,68,68,.3)}
+.snum-gr{background:var(--green);box-shadow:0 0 8px rgba(0,255,136,.3)}
+.abox{background:var(--card);border:1.5px solid var(--brd);border-radius:8px;padding:clamp(.25rem,.6vw,.45rem) clamp(.4rem,1vw,.7rem);text-align:center;min-width:clamp(50px,9vw,100px);backdrop-filter:blur(8px);font-size:var(--ss);transition:all .3s}
+.abox:hover{transform:translateY(-2px);box-shadow:0 6px 18px var(--shadow)}
+.ab-c{border-color:var(--cyan);color:var(--cyan)}.ab-g{border-color:var(--gold);color:var(--gold)}.ab-p{border-color:var(--purple);color:var(--purple)}
+.ab-t{border-color:var(--teal);color:var(--teal)}.ab-o{border-color:var(--orange);color:var(--orange)}.ab-r{border-color:var(--red);color:var(--red)}
+.aarr{font-size:var(--ss);color:var(--muted);display:flex;align-items:center}
+.code{background:var(--code-bg);border:1px solid var(--brd2);border-radius:7px;padding:clamp(.4rem,1vw,.8rem);font-size:var(--ms);line-height:1.6;overflow:auto;transition:all .3s;white-space:pre}
+.kw{color:var(--purple)}.fn{color:var(--cyan)}.str{color:var(--green)}.cmt{color:var(--muted);font-style:italic}.vr{color:var(--orange)}.tp2{color:var(--gold)}
+.darr{color:var(--muted);display:flex;justify-content:center}
+.darr svg{width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mr{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr));gap:var(--gap)}
+.mx{text-align:center;padding:clamp(.4rem,1vw,.85rem);background:var(--card);border-radius:8px;border:1px solid var(--brd2)}
+.mv{font-size:clamp(1.1rem,3vw,1.8rem);font-weight:700;line-height:1;margin-bottom:.1em;letter-spacing:-.02em}
+.ml{font-size:var(--ss);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.tc2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
+.tc3{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--gap)}
+.mx9{max-width:min(92vw,880px);margin:0 auto}.mx10{max-width:min(94vw,980px);margin:0 auto}.mx11{max-width:min(96vw,1100px);margin:0 auto}
+.fl{display:flex;flex-direction:column}.gm{gap:var(--gap)}.gs{gap:clamp(.12rem,.3vw,.22rem)}
+.ctr{text-align:center}
+.nfo{border-left:2px solid;padding:clamp(.35rem,.8vw,.6rem);border-radius:0 7px 7px 0;font-size:var(--ss);transition:all .3s}
+.nfo-c{border-color:var(--cyan);background:rgba(0,212,255,.03);color:var(--cyan)}
+.nfo-t{border-color:var(--teal);background:rgba(0,128,128,.03);color:var(--teal)}
+.nfo-p{border-color:var(--purple);background:rgba(192,132,252,.03);color:var(--purple)}
+.nfo-g{border-color:var(--gold);background:rgba(255,193,7,.03);color:var(--gold)}
+.nfo-r{border-color:var(--red);background:rgba(239,68,68,.03);color:var(--red)}
+.nfo-gr{border-color:var(--green);background:rgba(0,255,136,.03);color:var(--green)}
+.ts .SC{align-items:center;text-align:center;gap:clamp(.55rem,1.5vh,1.1rem);justify-content:center}
+.ts h1{font-size:clamp(2.2rem,7vw,6rem);letter-spacing:-.04em}
+.ts .ttag{font-size:clamp(.9rem,1.8vw,1.35rem);max-width:720px}
+.ts .lbl{font-size:clamp(.55rem,1vw,.8rem)}
+.ts .tmeta{gap:clamp(.3rem,.8vw,.6rem)}
+.ts .tmeta .bg{font-size:clamp(.55rem,.9vw,.72rem);padding:.3em .7em}
+.ttag{font-size:var(--bs);max-width:520px;line-height:1.55}
+.tmeta{display:flex;gap:clamp(.25rem,.7vw,.5rem);flex-wrap:wrap;justify-content:center}
+.nav{position:fixed;right:clamp(.4rem,1vw,.7rem);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;z-index:100;padding:8px 5px;border-radius:12px;backdrop-filter:blur(12px);box-shadow:var(--nav-shadow)}
+.dt{position:relative;width:6px;height:6px;border-radius:50%;background:var(--dot-off);border:none;cursor:pointer;transition:all .3s;padding:0}
+.dt.on{background:var(--dot-on);box-shadow:0 0 8px var(--dot-glow);transform:scale(1.5)}
+.dt:hover:not(.on){background:var(--dot-hover);transform:scale(1.3)}
+.theme-btn{position:fixed;top:clamp(.4rem,1.2vw,.9rem);left:clamp(.5rem,1.5vw,1.2rem);z-index:200;background:var(--card);border:1px solid var(--brd);border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--font);font-size:var(--ss);color:var(--cyan);transition:all .3s;backdrop-filter:blur(8px)}
+.theme-btn:hover{border-color:var(--cyan);box-shadow:0 0 12px var(--gc)}
+.theme-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.theme-btn .sun{display:none}
+[data-theme="light"] .theme-btn .sun{display:block}
+[data-theme="light"] .theme-btn .moon{display:none}
+.hint{position:fixed;bottom:clamp(1.6rem,3vw,2.4rem);left:50%;transform:translateX(-50%);font-size:clamp(.42rem,.6vw,.5rem);color:var(--muted);z-index:100;display:flex;gap:.3rem;align-items:center;opacity:.35}
+.ky{display:inline-flex;padding:.06em .3em;border:1px solid var(--muted);border-radius:3px;background:rgba(128,128,128,.05);font-size:.9em}
+.terminal{position:relative;background:linear-gradient(180deg,rgba(7,12,24,.96),rgba(10,15,28,.98));border:1.5px solid var(--brd);border-radius:12px;overflow:hidden;font-size:var(--ms);width:100%;max-width:min(92vw,860px);margin:0 auto;box-shadow:0 0 24px rgba(0,212,255,.08),0 8px 26px var(--shadow);backdrop-filter:blur(10px)}
+.terminal::before{content:'';position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,rgba(0,212,255,.04),transparent 22%,transparent 78%,rgba(192,132,252,.05));opacity:.8}
+.terminal-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;background:linear-gradient(90deg,rgba(0,212,255,.1),rgba(192,132,252,.08));border-bottom:1px solid var(--brd2)}
+.terminal-dots{display:flex;gap:6px}
+.terminal-dots span{width:10px;height:10px;border-radius:50%}
+.terminal-dots .dot-r{background:#ff5f57;box-shadow:0 0 4px rgba(255,95,87,.4)}.terminal-dots .dot-y{background:#febc2e;box-shadow:0 0 4px rgba(254,188,46,.4)}.terminal-dots .dot-g{background:#28c840;box-shadow:0 0 4px rgba(40,200,64,.4)}
+.terminal-title{color:var(--txt);font-size:var(--ms);font-family:var(--font);letter-spacing:.02em}
+.terminal-body{padding:clamp(.65rem,1.2vw,.95rem);line-height:1.58;overflow-y:auto;overflow-x:hidden;max-height:clamp(200px,42vh,420px);min-height:clamp(190px,30vh,270px);white-space:pre-wrap;word-break:normal;tab-size:4;font-variant-ligatures:none;background:linear-gradient(180deg,rgba(255,255,255,.01),transparent);scrollbar-width:thin;scrollbar-color:var(--brd) transparent}
+.terminal-body::-webkit-scrollbar{width:6px}
+.terminal-body::-webkit-scrollbar-track{background:transparent}
+.terminal-body::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.terminal-body::-webkit-scrollbar-thumb:hover{background:var(--cyan)}
+.terminal-body .cmd{color:var(--cyan)}
+.terminal-body .cmd::before{content:'$ ';color:var(--green)}
+.terminal-body .out{color:var(--txt)}
+.terminal-body .out-g{color:var(--green)}
+.terminal-body .out-c{color:var(--cyan)}
+.terminal-body .out-y{color:var(--gold)}
+.terminal-body .out-r{color:var(--red)}
+.hl-kw{color:var(--purple)}
+.hl-fn{color:var(--cyan)}
+.hl-str{color:var(--green)}
+.hl-cmt{color:var(--muted);font-style:italic}
+.hl-type{color:var(--gold)}
+.terminal-line{opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s;white-space:pre;min-height:1.58em}
+.terminal-line.show{opacity:1;transform:translateY(0)}
+[data-theme="light"] .terminal{background:linear-gradient(180deg,#ffffff,#f8fbff);border-color:var(--brd);box-shadow:0 4px 18px var(--shadow)}
+[data-theme="light"] .terminal::before{background:linear-gradient(180deg,rgba(2,132,199,.03),transparent 22%,transparent 78%,rgba(124,58,237,.05))}
+[data-theme="light"] .terminal-bar{background:linear-gradient(90deg,rgba(2,132,199,.08),rgba(124,58,237,.08));border-bottom-color:var(--brd2)}
+.vsp{height:clamp(.4rem,.8vw,.6rem)}
+/* ====== 4-CHECKPOINT VISUAL ====== */
+.cps{display:flex;flex-direction:column;gap:clamp(.2rem,.5vw,.4rem);position:relative;max-width:min(94vw,820px);margin:0 auto}
+.cpl{position:relative;display:grid;grid-template-columns:clamp(2rem,4vw,3rem) 1fr clamp(4rem,9vw,7rem);align-items:center;gap:clamp(.3rem,.8vw,.6rem);padding:clamp(.4rem,1vw,.7rem) clamp(.5rem,1.2vw,.9rem);background:var(--card);border:1.5px solid var(--brd);border-radius:8px;backdrop-filter:blur(8px);transition:all .3s}
+.cpl:hover{transform:translateX(2px);box-shadow:0 4px 14px var(--shadow)}
+.cpl.bp1{border-left-width:3px;border-left-color:var(--cyan)}
+.cpl.bp2{border-left-width:3px;border-left-color:var(--gold)}
+.cpl.bp3{border-left-width:3px;border-left-color:var(--purple)}
+.cpl.bp4{border-left-width:3px;border-left-color:var(--orange)}
+.cpl.cur{border-left-width:3px;border-left-color:var(--red);border-style:dashed}
+.cpnum{font-size:clamp(1rem,2.4vw,1.5rem);font-weight:800;line-height:1;text-align:center;letter-spacing:-.05em}
+.cpnum.n1{color:var(--cyan)}.cpnum.n2{color:var(--gold)}.cpnum.n3{color:var(--purple)}.cpnum.n4{color:var(--orange)}
+.cpttl{font-size:var(--ss);font-weight:600;display:flex;align-items:center;gap:.4rem;justify-content:flex-end}
+.cphint{font-size:var(--ms);color:var(--muted);margin-top:.15rem}
+.cpdiv{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:var(--ms);padding:.05rem 0;letter-spacing:.3em}
+.cpcur{border-style:dashed;background:rgba(239,68,68,.04);color:var(--red)}
+@media(max-width:600px){.tc2,.tc3{grid-template-columns:1fr}.tmeta{flex-wrap:wrap;justify-content:center;gap:.3rem}:root{--ts:clamp(1.4rem,7vw,2.2rem);--h2:clamp(1.1rem,5vw,1.6rem);--bs:clamp(.72rem,3vw,.9rem)}.ts h1{font-size:clamp(1.8rem,9vw,3rem)}.ts .ttag{font-size:clamp(.8rem,3.5vw,1rem)}.cpl{grid-template-columns:2rem 1fr}.cpttl{display:none}}
+@media(min-width:601px) and (max-width:900px){.ts h1{font-size:clamp(2rem,6vw,3.5rem)}:root{--h2:clamp(1.2rem,3.5vw,2rem);--bs:clamp(.75rem,1.4vw,.95rem)}}
+@media(max-height:700px){:root{--pad:clamp(.5rem,2vw,1.2rem);--h2:clamp(.95rem,2.8vw,1.5rem);--bs:clamp(.68rem,1.2vw,.85rem)}.ts h1{font-size:clamp(1.6rem,5vw,3rem)}}
+@media(max-height:600px){:root{--pad:clamp(.3rem,1.5vw,.7rem);--bs:clamp(.6rem,1vw,.78rem)}.hint{display:none}.ts h1{font-size:clamp(1.3rem,4vw,2.2rem)}.nav{padding:4px 3px;gap:3px}.dt{width:4px;height:4px}}
+@media(max-width:500px){.nav{padding:4px 3px;gap:3px}.dt{width:4px;height:4px}}
+@media(max-height:500px){:root{--pad:clamp(.2rem,1.2vw,.5rem);--h2:clamp(.7rem,1.8vw,.9rem)}.ts h1{font-size:clamp(1.1rem,3.5vw,1.8rem)}}
+/* ====== FRAGMENT REVEAL (click-to-advance progressive disclosure) ====== */
+.frag{opacity:0!important;transform:translateY(10px)!important;transition:opacity .4s var(--ease),transform .4s var(--ease)!important}
+.frag.shown{opacity:1!important;transform:translateY(0)!important}
+/* ====== INTERACTIVE DEMO ====== */
+.demo-grid{display:grid;grid-template-columns:1fr 1.15fr;gap:var(--gap);align-items:start}
+.demo-form{display:flex;flex-direction:column;gap:.5rem}
+.demo-input{width:100%;background:var(--card);color:var(--txt);border:1px solid var(--brd);border-radius:8px;padding:.55rem .7rem;font-family:var(--font);font-size:var(--ss);outline:none;transition:all .3s}
+.demo-input:focus{border-color:var(--cyan);box-shadow:0 0 8px var(--gc)}
+.demo-input::placeholder{color:var(--muted)}
+.demo-btn{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;padding:.55rem .8rem;border-radius:8px;border:1px solid var(--brd);background:linear-gradient(90deg,rgba(0,212,255,.14),rgba(192,132,252,.12));color:var(--cyan);font-family:var(--font);font-size:var(--ss);font-weight:600;cursor:pointer;transition:all .25s}
+.demo-btn:hover{transform:translateY(-1px);border-color:var(--cyan);box-shadow:0 0 14px var(--gc)}
+.demo-btn:active{transform:scale(.97)}
+.demo-btn svg{width:1em;height:1em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.demo-btn.warm{border-color:var(--gold);color:var(--gold);background:linear-gradient(90deg,rgba(255,193,7,.14),rgba(251,146,60,.12))}
+.demo-log{background:linear-gradient(180deg,rgba(7,12,24,.96),rgba(10,15,28,.98));border:1.5px solid var(--brd);border-radius:12px;min-height:280px;max-height:340px;padding:.7rem .85rem;font-size:var(--ms);line-height:1.55;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--brd) transparent;font-family:var(--font);white-space:pre-wrap}
+.demo-log::-webkit-scrollbar{width:6px}
+.demo-log::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.demo-log .ok{color:var(--green)}
+.demo-log .info{color:var(--cyan)}
+.demo-log .warn{color:var(--gold)}
+.demo-log .err{color:var(--red)}
+.demo-log .dim{color:var(--muted)}
+.req-block{padding:.45rem .55rem;margin-bottom:.4rem;border-left:2.5px solid;border-radius:0 6px 6px 0}
+.req-block.hit{border-color:var(--green);background:rgba(0,255,136,.04)}
+.req-block.miss{border-color:var(--gold);background:rgba(255,193,7,.04)}
+.req-header{font-weight:700;margin-bottom:.25rem;font-size:var(--ss);letter-spacing:.04em}
+.req-block.hit .req-header{color:var(--green)}
+.req-block.miss .req-header{color:var(--gold)}
+[data-theme="light"] .demo-log{background:linear-gradient(180deg,#ffffff,#f8fbff)}
+@keyframes btnSpin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.2s!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div id="staticGrid"></div><div id="staticScan"></div>
+
+<button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">
+  <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+  <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+</button>
+
+<canvas class="wave-cv" id="globalWave"></canvas>
+
+<div class="deck">
+
+<!-- ============== S1: HERO ============== -->
+<section class="S active ts hero" id="s1">
+<div class="hero-canvas">
+  <canvas id="heroParticles"></canvas>
+  <canvas id="heroMatrix"></canvas>
+</div>
+<div class="bar bar-c"></div>
+<div class="SC">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> JUPUS AI &middot; RESEARCH BRIEFING</div>
+  <h1 class="rv d2"><span class="glitch" data-text="LLM Caching">LLM Caching</span><br><span class="type-cursor" style="color:var(--gold);text-shadow:0 0 18px var(--gg)">From KV Tensors to Bedrock Breakpoints</span></h1>
+  <p class="ttag rv d3">How to cut LLM costs by <strong class="tgr">90%</strong> and TTFT by <strong class="tgr">85%</strong> &mdash; the three layers, the four checkpoints, and how we shipped them at Jupus</p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-c"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> Bedrock Claude</span>
+    <span class="bg bg-g"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ~30 min</span>
+    <span class="bg bg-p"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> Tactical &amp; Strategic</span>
+    <span class="bg bg-t"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> May 2026</span>
+  </div>
+  <p class="mono rv d5" style="color:var(--muted)">Jupus AI &middot; Yurii Oksamytnyi</p>
+</div>
+</section>
+
+<!-- ============== S2: THE PROBLEM ============== -->
+<section class="S" id="s2">
+<div class="bar bar-r"></div><div class="SC fl gm mx10">
+  <div class="lbl lr rv d1"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> THE PROBLEM</div>
+  <h2 class="rv d2">LLMs are <span class="tr">expensive</span> &amp; <span class="to">slow</span></h2>
+  <p class="rv d3" style="font-size:var(--bs);max-width:880px">Every token in your prompt is processed every time. A 50K-token system prompt sent 10 times to Opus 4.6 = 500K tokens billed. TTFT scales with prefill length. And in agent traffic, <strong>70&ndash;90% of every prompt is identical to the previous one</strong>.</p>
+  <div class="tc2 rv d4">
+    <div class="cd frag" data-frag="1" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">Without caching</h3>
+      <p style="font-size:var(--ss)">Every request reprocesses the full prefix. Tools, system prompt, RAG docs, conversation history &mdash; <strong>all recomputed</strong>. Latency dominates. The bill compounds.</p>
+      <div style="display:flex;gap:.3rem;margin-top:.4rem;flex-wrap:wrap">
+        <span class="bg bg-r" style="font-size:var(--ms)">TTFT 0.5&ndash;5s</span>
+        <span class="bg bg-r" style="font-size:var(--ms)">Full input price</span>
+        <span class="bg bg-r" style="font-size:var(--ms)">TPM eaten fast</span>
+      </div>
+    </div>
+    <div class="cd frag" data-frag="2" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">With caching</h3>
+      <p style="font-size:var(--ss)">Stable prefix is computed <strong>once</strong>, then reused. The model skips the prefill and starts generating almost immediately. Per-token cost drops 90%.</p>
+      <div style="display:flex;gap:.3rem;margin-top:.4rem;flex-wrap:wrap">
+        <span class="bg bg-gr" style="font-size:var(--ms)">TTFT &darr; 85%</span>
+        <span class="bg bg-gr" style="font-size:var(--ms)">0.10&times; input</span>
+        <span class="bg bg-gr" style="font-size:var(--ms)">TPM relief</span>
+      </div>
+    </div>
+  </div>
+  <div class="mr rv d5">
+    <div class="mx frag" data-frag="3"><div class="mv tc">90%</div><div class="ml">Cache read discount</div></div>
+    <div class="mx frag" data-frag="3"><div class="mv tg">85%</div><div class="ml">TTFT reduction</div></div>
+    <div class="mx frag" data-frag="3"><div class="mv tp">5&times;</div><div class="ml">Effective TPM (80% hit)</div></div>
+    <div class="mx frag" data-frag="3"><div class="mv to">4</div><div class="ml">Cache breakpoints</div></div>
+  </div>
+  <div class="nfo nfo-c rv d6"><strong>The economics are forgiving.</strong> On Bedrock Claude, a single cache read within the TTL window already pays for the cache write. By the second request, you&rsquo;re net positive.</div>
+  <div class="rv d7" style="display:flex;align-items:center;gap:.55rem;padding:.4rem .65rem;background:rgba(0,212,255,.04);border:1px solid var(--brd2);border-left:2px solid var(--cyan);border-radius:6px;font-size:var(--ms);margin-top:.3rem">
+    <span class="bg bg-c" style="font-size:var(--ms);font-weight:700;flex-shrink:0">TTFT</span>
+    <span><strong>Time To First Token</strong> &mdash; the wait from sending a request until the first character of the response streams back. Dominated by the pre-fill stage; the single metric prompt caching most directly improves.</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S3 NEW: TWO STAGES OF LLM INFERENCE ============== -->
+<section class="S" id="s3">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> ANATOMY OF A REQUEST</div>
+  <h2 class="rv d2">The two stages of <span class="tp">LLM inference</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:820px;color:var(--muted)">Every LLM request is two stages stitched together. Caching only helps the first one &mdash; but that&rsquo;s where almost all the latency lives.</p>
+  <div class="tc2 rv d4">
+    <div class="cd frag" data-frag="1" style="border-left:2px solid var(--orange)">
+      <div class="ib ib-o"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+      <h3 class="to" style="margin-bottom:.15rem">1. Pre-fill <span style="color:var(--muted);font-size:var(--ms)">(the &ldquo;survey&rdquo;)</span></h3>
+      <p style="font-size:var(--ss)">Process <strong>all input tokens at once</strong>. Every token attends to every other &mdash; one massive parallel forward pass through the model. Compute scales <strong>O(n&sup2;)</strong> with prompt length.</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><em>Metaphor: an explorer climbs a peak and maps every star in the night sky before taking a single step.</em></p>
+      <div style="margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap">
+        <span class="bg bg-r" style="font-size:var(--ms)">70&ndash;85% of total latency</span>
+        <span class="bg bg-o" style="font-size:var(--ms)">measured by TTFT</span>
+      </div>
+    </div>
+    <div class="cd frag" data-frag="2" style="border-left:2px solid var(--cyan)">
+      <div class="ib ib-c"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></div>
+      <h3 class="tc" style="margin-bottom:.15rem">2. Decode <span style="color:var(--muted);font-size:var(--ms)">(the &ldquo;journey&rdquo;)</span></h3>
+      <p style="font-size:var(--ss)">Generate <strong>one token at a time</strong>, autoregressively. Each new token attends to all previous tokens via the KV cache &mdash; <strong>O(n)</strong> per token instead of O(n&sup2;).</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><em>Metaphor: the explorer walks forward step by step, each step referencing the path behind them.</em></p>
+      <div style="margin-top:.4rem;display:flex;gap:.3rem;flex-wrap:wrap">
+        <span class="bg bg-c" style="font-size:var(--ms)">15&ndash;30% of latency</span>
+        <span class="bg bg-t" style="font-size:var(--ms)">measured by TPOT</span>
+      </div>
+    </div>
+  </div>
+  <div class="rv d5 frag" data-frag="3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th style="width:25%">Metric</th><th>What it measures</th><th>Typical range</th><th>Improved by</th></tr></thead><tbody>
+    <tr><td class="tc"><strong>TTFT</strong> <span style="color:var(--muted);font-size:var(--ms)">Time To First Token</span></td><td>Wait until the first character streams</td><td>500 ms &ndash; 5 s</td><td class="w">Prefix caching, prompt caching, smaller prompts</td></tr>
+    <tr><td class="tg"><strong>TPOT</strong> <span style="color:var(--muted);font-size:var(--ms)">Time Per Output Token</span></td><td>Streaming speed once generation starts</td><td>20&ndash;80 ms</td><td>Smaller / faster model, better hardware, KV-cache mgmt</td></tr>
+  </tbody></table></div>
+  <div class="nfo nfo-p rv d6 frag" data-frag="4"><strong>Key insight:</strong> when we say &ldquo;prompt caching saves 85% of latency,&rdquo; we mean it skips the pre-fill stage. <strong>Decode is unchanged.</strong> That&rsquo;s why caching helps long-prompt workloads dramatically and short-prompt ones marginally.</div>
+</div>
+</section>
+
+<!-- ============== S4: 3-LAYER MENTAL MODEL ============== -->
+<section class="S" id="s3">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> MENTAL MODEL</div>
+  <h2 class="rv d2">Three layers of <span class="tc">caching</span></h2>
+  <p class="rv d3" style="font-size:var(--bs);max-width:760px">LLM caching is <strong>not one thing</strong>. Different layers solve different bottlenecks &mdash; and they compose. A well-engineered system uses all three.</p>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th style="width:14%">Layer</th><th>Where it lives</th><th>What it caches</th><th>Speedup on hit</th><th>Cost on hit</th></tr></thead><tbody>
+    <tr><td class="tc"><strong>Architectural</strong></td><td>Inside the inference engine (vLLM, TRT-LLM, SGLang)</td><td>KV tensors of already-processed tokens</td><td class="w">2&ndash;6&times; throughput</td><td>memory only</td></tr>
+    <tr><td class="tg"><strong>Provider</strong></td><td>The model API (Anthropic, Bedrock, OpenAI, Gemini)</td><td>Prompt prefix (system, tools, docs, history)</td><td class="w">TTFT &darr; 50&ndash;85%</td><td>~0.1&times; input</td></tr>
+    <tr><td class="tp"><strong>Application</strong></td><td>Your service in front of the LLM</td><td>Full prompt&rarr;response pairs, embeddings, RAG chunks</td><td class="w">50&ndash;100&times; (skips model)</td><td>$0 in tokens</td></tr>
+  </tbody></table></div>
+  <div class="cg rv d5" style="grid-template-columns:repeat(3,1fr)">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc">L1 &mdash; Architectural</h3>
+      <p style="font-size:var(--ss)">Solves <strong>memory pressure</strong> inside the GPU. KV cache, PagedAttention, RadixAttention.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg">L2 &mdash; Provider</h3>
+      <p style="font-size:var(--ss)">Solves <strong>repeated-prefix economics</strong> across the API boundary. <em>This is where the 4 breakpoints live.</em></p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp">L3 &mdash; Application</h3>
+      <p style="font-size:var(--ss)">Solves <strong>repeated-question latency</strong> at the edge. Exact-match Redis, semantic caching.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d6"><strong>The headline:</strong> these layers <strong>compose, not substitute</strong>. The cost difference between using one and using all three is typically 5&ndash;10&times; at the bill level.</div>
+</div>
+</section>
+
+<!-- ============== S4: ARCHITECTURAL — KV CACHE ============== -->
+<section class="S" id="s4">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> LAYER 1 &middot; ARCHITECTURAL</div>
+  <h2 class="rv d2">The <span class="tc">KV cache</span> &mdash; what gets cached inside the GPU</h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:.2rem">The fundamental optimization</h3>
+      <p style="font-size:var(--ss)">Without caching, the <em>n</em>-th token costs <strong>O(n&sup2;)</strong> because K and V for all prior tokens are recomputed each step. The KV-cache stores K and V tensors after they&rsquo;re computed once, collapsing per-token cost to <strong>O(n)</strong>.</p>
+      <div class="code" style="font-size:var(--ms);margin-top:.4rem">KV_bytes = 2 &times; L &times; H_kv &times; d_head<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &times; seq_len &times; batch &times; dtype</div>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><strong>Llama-3-70B</strong> at FP16, 8K context: ~2.5 GB per sequence. At batch 32: ~80 GB &mdash; exceeds an H100 before model weights.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="margin-bottom:.2rem">Why KV reduction matters</h3>
+      <p style="font-size:var(--ss)">LLM decode is <strong>memory-bandwidth-bound</strong>. An A100&rsquo;s 2 TB/s HBM means loading 14 GB of weights per token takes ~7 ms; compute takes 0.1 ms. <strong>Every byte of KV competes with weights for that bandwidth.</strong></p>
+      <p style="font-size:var(--ss);margin-top:.3rem">Architectural progression has been brutal:</p>
+      <div style="display:flex;align-items:center;gap:.3rem;margin-top:.3rem;flex-wrap:wrap;font-size:var(--ms)">
+        <span class="abox ab-r" style="padding:.15rem .4rem;font-size:var(--ms)">MHA</span>
+        <span class="aarr">&rarr;</span>
+        <span class="abox ab-o" style="padding:.15rem .4rem;font-size:var(--ms)">MQA</span>
+        <span class="aarr">&rarr;</span>
+        <span class="abox ab-g" style="padding:.15rem .4rem;font-size:var(--ms)">GQA</span>
+        <span class="aarr">&rarr;</span>
+        <span class="abox ab-c" style="padding:.15rem .4rem;font-size:var(--ms)">MLA</span>
+      </div>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><strong>~30&times; KV reduction</strong> from 2017 to 2025. DeepSeek MLA: 4&ndash;14% of MHA size while <em>outperforming</em> on quality.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d4"><strong>This is what happens before any &ldquo;prompt cache&rdquo; ever fires.</strong> The KV cache is what makes generation O(n) instead of O(n&sup2;); prompt caching just exposes that across requests.</div>
+</div>
+</section>
+
+<!-- ============== S5: PAGED + RADIX ATTENTION ============== -->
+<section class="S" id="s5">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> ENGINE TRICKS</div>
+  <h2 class="rv d2"><span class="tp">PagedAttention</span> &amp; <span class="tt">RadixAttention</span></h2>
+  <p class="rv d3" style="font-size:var(--bs);max-width:780px">Two ideas that turned LLM serving from research code into production infrastructure.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <div class="ib ib-p"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg></div>
+      <h3 class="tp">PagedAttention <span style="font-size:var(--ms);color:var(--muted)">(vLLM, SOSP &rsquo;23)</span></h3>
+      <p style="font-size:var(--ss)">Pre-vLLM systems wasted <strong>60&ndash;80% of KV memory</strong> to fragmentation by reserving slabs sized to <code class="mono">max_seq_len</code>. PagedAttention treats KV like virtual memory: 16-token blocks allocated on demand, mapped via per-sequence block tables.</p>
+      <div style="display:flex;gap:.3rem;margin-top:.4rem;flex-wrap:wrap">
+        <span class="bg bg-p" style="font-size:var(--ms)">2&ndash;4&times; throughput</span>
+        <span class="bg bg-p" style="font-size:var(--ms)">de-facto standard</span>
+      </div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--teal)">
+      <div class="ib ib-t"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="6" cy="12" r="2"/><circle cx="18" cy="12" r="2"/><circle cx="9" cy="19" r="2"/><circle cx="15" cy="19" r="2"/><line x1="12" y1="7" x2="6" y2="10"/><line x1="12" y1="7" x2="18" y2="10"/><line x1="6" y1="14" x2="9" y2="17"/><line x1="18" y1="14" x2="15" y2="17"/></svg></div>
+      <h3 class="tt">RadixAttention <span style="font-size:var(--ms);color:var(--muted)">(SGLang, NeurIPS &rsquo;24)</span></h3>
+      <p style="font-size:var(--ss)">Indexes all live KV pages in a <strong>radix tree</strong> keyed on token IDs. Finds the longest matching prefix automatically and reuses its KV without recomputation. Cache-aware scheduling reorders requests to maximize hit rate.</p>
+      <div style="display:flex;gap:.3rem;margin-top:.4rem;flex-wrap:wrap">
+        <span class="bg bg-t" style="font-size:var(--ms)">5&ndash;6.4&times; throughput</span>
+        <span class="bg bg-t" style="font-size:var(--ms)">shared prefixes</span>
+      </div>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d5"><strong>This is what providers expose as &ldquo;prompt caching&rdquo;.</strong> Anthropic and AWS Bedrock&rsquo;s prompt cache is a <em>contract</em> over an already-existing engine capability. The API gives you control over what RadixAttention would otherwise do automatically.</div>
+</div>
+</section>
+
+<!-- ============== NEW: 4 CACHING TECHNIQUES TAXONOMY ============== -->
+<section class="S" id="s-techniques">
+<div class="bar bar-g"></div><div class="SC fl gm mx11">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg> THE TAXONOMY</div>
+  <h2 class="rv d2">Four caching techniques for <span class="tg">LLM apps</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:820px;color:var(--muted)">When people say &ldquo;LLM caching&rdquo; they could mean any of four very different things. Understanding which one solves your problem is half the battle.</p>
+  <div class="cg rv d4" style="grid-template-columns:repeat(2,1fr)">
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <div class="ib ib-p"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/></svg></div>
+      <h3 class="tp" style="margin-bottom:.15rem">1. Semantic caching <span style="color:var(--muted);font-size:var(--ms)">(application-level)</span></h3>
+      <p style="font-size:var(--ss)">Embed the user query, search a vector DB for similar past queries, return the cached answer if similarity is above threshold. <strong>Skips the LLM entirely.</strong></p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.25rem"><em>&ldquo;Save the whole star map for paths walked before.&rdquo;</em></p>
+      <div style="margin-top:.3rem"><span class="bg bg-p" style="font-size:var(--ms)">40&ndash;70% hit rate</span> <span class="bg bg-gr" style="font-size:var(--ms)">~$0 on hit</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <div class="ib ib-c"><svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="14" y2="18"/></svg></div>
+      <h3 class="tc" style="margin-bottom:.15rem">2. Prefix caching <span style="color:var(--muted);font-size:var(--ms)">(provider-level)</span></h3>
+      <p style="font-size:var(--ss)">Cache the <strong>KV state</strong> of a stable prompt prefix. The model still runs &mdash; but skips the pre-fill computation for the cached portion.</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.25rem"><em>&ldquo;Set up base camp where trails diverge.&rdquo;</em></p>
+      <div style="margin-top:.3rem"><span class="bg bg-c" style="font-size:var(--ms)">90% input cost off</span> <span class="bg bg-c" style="font-size:var(--ms)">85% TTFT &darr;</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <div class="ib ib-g"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></div>
+      <h3 class="tg" style="margin-bottom:.15rem">3. Latent instruction priming <span style="color:var(--muted);font-size:var(--ms)">(provider-level, named variant)</span></h3>
+      <p style="font-size:var(--ss)">Same mechanism as prefix caching, but applied specifically to <strong>system prompts and tool definitions</strong> &mdash; the &ldquo;rules and identity&rdquo; layer that doesn&rsquo;t change between turns.</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.25rem"><em>&ldquo;Muscle memory: the explorer doesn&rsquo;t re-learn how to pitch a tent.&rdquo;</em></p>
+      <div style="margin-top:.3rem"><span class="bg bg-g" style="font-size:var(--ms)">cachePoint after system block</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--rose)">
+      <div class="ib ib-ro"><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 002 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg></div>
+      <h3 class="tro" style="margin-bottom:.15rem">4. Context distillation <span style="color:var(--muted);font-size:var(--ms)">(model-level)</span></h3>
+      <p style="font-size:var(--ss)">Fine-tune the model so the context becomes part of the weights. The shorter prompt produces the same outputs the long one used to. <strong>Heaviest commitment, biggest payoff.</strong></p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.25rem"><em>&ldquo;The guidebook becomes the guide &mdash; knowledge moves inward.&rdquo;</em></p>
+      <div style="margin-top:.3rem"><span class="bg bg-r" style="font-size:var(--ms)">requires fine-tuning</span></div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5"><strong>What we use today at Jupus:</strong> #2 (prefix caching) and #3 (latent instruction priming) via Bedrock cachePoint. <strong>What we don&rsquo;t use yet:</strong> #1 (semantic caching) and #4 (distillation). <em>The next big win is probably semantic caching in front of the orchestrator.</em></div>
+</div>
+</section>
+
+<!-- ============== NEW: SEMANTIC CACHING DEEP DIVE ============== -->
+<section class="S" id="s-semantic">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><circle cx="5" cy="5" r="1.5"/><circle cx="19" cy="5" r="1.5"/><circle cx="5" cy="19" r="1.5"/><circle cx="19" cy="19" r="1.5"/></svg> SEMANTIC CACHING</div>
+  <h2 class="rv d2">When <span class="tp">meaning</span> matches</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:820px">Exact-match caching catches <em>&ldquo;What&rsquo;s the weather?&rdquo;</em> twice but misses <em>&ldquo;How&rsquo;s the weather?&rdquo;</em> Semantic caching catches both. The trick: match on <strong>vector embeddings</strong>, not strings.</p>
+  <div class="rv d4" style="display:flex;flex-direction:column;gap:.25rem;font-size:var(--ms)">
+    <div style="display:grid;grid-template-columns:1.4rem 1fr;gap:.5rem;align-items:center">
+      <div class="snum snum-c" style="width:1.4rem;height:1.4rem;font-size:.6rem">1</div>
+      <div><strong class="tc">Embed the query.</strong> User asks <em>&ldquo;Will the jacket keep me dry?&rdquo;</em> &rarr; vector <code class="mono">[0.123, -0.456, 0.789, &hellip;]</code> via sentence-transformers (all-MiniLM-L6-v2 is the workhorse: 384 dims, ~22 ms local).</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.4rem 1fr;gap:.5rem;align-items:center">
+      <div class="snum snum-p" style="width:1.4rem;height:1.4rem;font-size:.6rem">2</div>
+      <div><strong class="tp">ANN search</strong> in a vector DB (Valkey + valkey-search, Redis, OpenSearch). Find the nearest cached vector by cosine similarity.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.4rem 1fr;gap:.5rem;align-items:center">
+      <div class="snum snum-t" style="width:1.4rem;height:1.4rem;font-size:.6rem">3</div>
+      <div><strong class="tt">Threshold check.</strong> If similarity &ge; <strong>0.85&ndash;0.95</strong>, return the cached response. <em>Skip the LLM entirely.</em></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1.4rem 1fr;gap:.5rem;align-items:center">
+      <div class="snum snum-g" style="width:1.4rem;height:1.4rem;font-size:.6rem">4</div>
+      <div><strong class="tg">On miss</strong>, hit the LLM normally and asynchronously cache the new (query, embedding, response) tuple.</div>
+    </div>
+  </div>
+  <div class="tc2 rv d5">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="font-size:var(--ss)">When it shines</h3>
+      <ul style="font-size:var(--ms);padding-left:1.1rem;line-height:1.5;margin-top:.2rem">
+        <li>Customer support: <em>&ldquo;reset password&rdquo; / &ldquo;forgot password&rdquo; / &ldquo;can&rsquo;t log in&rdquo;</em></li>
+        <li>FAQ &amp; documentation Q&amp;A</li>
+        <li>Generic shopping assistants <em>(&ldquo;recommend running shoes&rdquo;)</em></li>
+        <li>Hit rates of <strong>40&ndash;70%</strong> are realistic on real chat traffic</li>
+      </ul>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="font-size:var(--ss)">When it bites</h3>
+      <ul style="font-size:var(--ms);padding-left:1.1rem;line-height:1.5;margin-top:.2rem">
+        <li>Personalized responses (<em>&ldquo;track my order&rdquo;</em>)</li>
+        <li>Real-time data (stock prices, weather)</li>
+        <li>Legal / medical / financial &mdash; false-positive risk</li>
+        <li><strong class="tr">Banking case study: 99% FP rate at threshold 0.7</strong></li>
+      </ul>
+    </div>
+  </div>
+  <div class="nfo nfo-r rv d6"><strong>The mitigation pattern:</strong> threshold &ge;0.95, extract <strong>state filters</strong> (color, size, price range, user intent) and AND them with the vector search. <em>&ldquo;Recommend black shoes&rdquo;</em> stays separate from <em>&ldquo;recommend white shoes&rdquo;</em> even though their vectors are nearly identical.</div>
+</div>
+</section>
+
+<!-- ============== NEW: SEMANTIC CACHING IN PRACTICE ============== -->
+<section class="S" id="s-semantic-practice">
+<div class="bar bar-t"></div><div class="SC fl gm mx10">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> SEMANTIC CACHING &middot; IN PRACTICE</div>
+  <h2 class="rv d2">Making it <span class="tt">production-grade</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:820px;color:var(--muted)">Vector similarity alone produces hallucinations at the cache layer &mdash; <em>"black shoes"</em> and <em>"white shoes"</em> embed nearly identically. Production systems pair similarity with <strong>structured state filters</strong>, tenant isolation, and TTL hygiene.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:.2rem">The state-extraction trick</h3>
+      <p style="font-size:var(--ss)">Before embedding, parse the query and extract <strong>structured filters</strong>. Use them as a WHERE clause alongside vector similarity. This is what the AWS Databases-for-AI team called the difference between a demo cache and a production one.</p>
+      <div class="code" style="font-size:var(--ms);margin-top:.3rem"><span class="cmt"># user: "recommend white shoes under $80"</span>
+state = {
+  <span class="str">"color"</span>: <span class="str">"white"</span>,
+  <span class="str">"category"</span>: <span class="str">"shoes"</span>,
+  <span class="str">"price_max"</span>: <span class="vr">80</span>,
+  <span class="str">"intent"</span>: <span class="str">"recommendation"</span>
+}
+<span class="cmt"># match = vector ≥ 0.95 AND state matches</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:.2rem">Production stack</h3>
+      <ul style="font-size:var(--ss);padding-left:1.1rem;line-height:1.55;margin-top:.2rem">
+        <li><strong>Vector DB:</strong> Valkey + valkey-search (synchronous write indexing &mdash; entries usable immediately, &micro;s read latency)</li>
+        <li><strong>Embedding:</strong> all-MiniLM-L6-v2 (384 dims, ~22 ms local CPU inference)</li>
+        <li><strong>Storage:</strong> JSON over HASH (native vector arrays, filterable side-fields)</li>
+        <li><strong>Distance:</strong> cosine, with <code class="mono">normalize_embeddings=True</code></li>
+      </ul>
+    </div>
+  </div>
+  <div class="tc2 rv d5">
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="margin-bottom:.2rem">Don&rsquo;t cache these</h3>
+      <ul style="font-size:var(--ms);padding-left:1.1rem;line-height:1.55;margin-top:.2rem">
+        <li><em>&ldquo;Track my order&rdquo;</em> &mdash; user-specific</li>
+        <li><em>&ldquo;Stores around me&rdquo;</em> &mdash; location-personalised</li>
+        <li>Real-time data: stock prices, weather, scores</li>
+        <li>Tool-using queries that need fresh API/DB lookup</li>
+      </ul>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem">Build an <code class="mono">is_cacheable(query, state)</code> predicate. <em>PII or location filter present &rarr; bypass cache.</em></p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="margin-bottom:.2rem">TTL + jitter + tenancy</h3>
+      <ul style="font-size:var(--ms);padding-left:1.1rem;line-height:1.55;margin-top:.2rem">
+        <li><strong>TTL with jitter:</strong> base + random 0&ndash;10% to prevent thundering-herd on expiry</li>
+        <li><strong>Tenant isolation:</strong> separate keyspaces per org &mdash; prevents cross-org leaks (critical for legal AI)</li>
+        <li><strong>Multi-layer:</strong> in-memory LRU &rarr; Valkey distributed &rarr; semantic vector</li>
+        <li><strong>Proactive invalidation:</strong> bust cache on knowledge-base updates, not just on TTL</li>
+      </ul>
+    </div>
+  </div>
+  <div class="nfo nfo-t rv d6"><strong>Real-world ROI:</strong> 60% hit rate on a customer-support workload at 10K queries/day &rarr; <strong>$8,856/year saved</strong> on Claude Sonnet, with cached responses at <strong>~25 ms vs ~7 s API call</strong> (<strong>250&times; speedup</strong>). Numbers from a Percona Valkey case study.</div>
+</div>
+</section>
+
+<!-- ============== NEW: PREFIX CACHING DEEP DIVE ============== -->
+<section class="S" id="s-prefix">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="14" y2="18"/></svg> PREFIX CACHING</div>
+  <h2 class="rv d2">What&rsquo;s <span class="tc">actually</span> cached?</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:820px">Common misconception: <em>&ldquo;the prompt text is cached.&rdquo;</em> Reality: the <strong>KV state</strong> &mdash; the model&rsquo;s internal understanding of the prefix &mdash; is what&rsquo;s cached.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss);margin-bottom:.2rem">What gets stored</h3>
+      <p style="font-size:var(--ms)">For every cached token, the model stores its <strong>K and V tensors</strong> across all attention layers. That&rsquo;s the <em>output of the pre-fill stage</em> for that prefix &mdash; expensive to compute, cheap to reuse.</p>
+      <div class="code" style="font-size:var(--ms);margin-top:.3rem">prefix_kv = {<br>&nbsp;&nbsp;layer_0: (K_tensor, V_tensor),<br>&nbsp;&nbsp;layer_1: (K_tensor, V_tensor),<br>&nbsp;&nbsp;...<br>&nbsp;&nbsp;layer_N: (K_tensor, V_tensor),<br>}</div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="font-size:var(--ss);margin-bottom:.2rem">Why this matters</h3>
+      <ul style="font-size:var(--ms);padding-left:1.1rem;line-height:1.55;margin-top:.2rem">
+        <li><strong>One byte differs</strong> in the prefix &rarr; different tokenization &rarr; different KV &rarr; cache miss</li>
+        <li>The cache is <strong>strictly contiguous</strong>: tools &rarr; system &rarr; messages, in that order</li>
+        <li>A change at position N invalidates everything from N onward</li>
+        <li>Cache lives in <strong>GPU memory</strong> on the provider side &mdash; that&rsquo;s why TTLs exist (KV evicted to free up HBM)</li>
+      </ul>
+    </div>
+  </div>
+  <div class="rv d5" style="display:flex;align-items:center;gap:.4rem;justify-content:center;flex-wrap:wrap;font-size:var(--ms)">
+    <div class="abox ab-c" style="padding:.4rem .7rem"><strong class="tc">Tools</strong><br><span style="color:var(--muted);font-size:var(--ms)">stable</span></div>
+    <span class="aarr">&rarr;</span>
+    <div class="abox ab-g" style="padding:.4rem .7rem"><strong class="tg">System</strong><br><span style="color:var(--muted);font-size:var(--ms)">stable</span></div>
+    <span class="aarr">&rarr;</span>
+    <div class="abox ab-p" style="padding:.4rem .7rem;border-style:dashed"><strong class="tp">cachePoint</strong><br><span style="color:var(--muted);font-size:var(--ms)">checkpoint</span></div>
+    <span class="aarr">&rarr;</span>
+    <div class="abox ab-o" style="padding:.4rem .7rem"><strong class="to">Docs</strong><br><span style="color:var(--muted);font-size:var(--ms)">session</span></div>
+    <span class="aarr">&rarr;</span>
+    <div class="abox ab-r" style="padding:.4rem .7rem"><strong class="tr">Query</strong><br><span style="color:var(--muted);font-size:var(--ms)">volatile</span></div>
+  </div>
+  <div class="nfo nfo-c rv d6"><strong>The deal:</strong> you tell the provider where the &ldquo;stable&rdquo; portion ends with a cachePoint marker. They cache the KV up to that point. On the next request with the same prefix, they skip pre-fill for those tokens and resume computation from your marker forward. <em>That&rsquo;s the entire mechanism.</em></div>
+</div>
+</section>
+
+<!-- ============== S6: PROVIDER COMPARISON ============== -->
+<section class="S" id="s6">
+<div class="bar bar-g"></div><div class="SC fl gm mx11">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> LAYER 2 &middot; PROVIDER LANDSCAPE</div>
+  <h2 class="rv d2">The five major <span class="tg">providers</span></h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Provider</th><th>Control</th><th>TTL</th><th>Min tokens</th><th>Cache write</th><th>Cache read</th><th>Breakpoints</th></tr></thead><tbody>
+    <tr><td class="tc"><strong>Anthropic direct</strong></td><td class="w">Explicit + auto</td><td>5 min / <strong>1 h</strong> GA</td><td>1024&ndash;4096</td><td>1.25&times; / 2.0&times;</td><td class="w">0.10&times;</td><td class="w"><strong>4</strong></td></tr>
+    <tr><td class="tc"><strong>AWS Bedrock</strong></td><td class="w">Explicit only</td><td>5 min / <strong>1 h</strong> on 4.5</td><td>1024&ndash;4096</td><td>1.25&times; / 2.0&times;</td><td class="w">0.10&times;</td><td class="w"><strong>4</strong></td></tr>
+    <tr><td class="to"><strong>OpenAI</strong></td><td>Automatic</td><td>5&ndash;10 min, opt-in 24h</td><td>1024</td><td class="w">$0 (free)</td><td>0.10&times; (GPT-5)</td><td>1</td></tr>
+    <tr><td class="tp"><strong>Google Gemini</strong></td><td>Both (implicit GA)</td><td>~24h implicit, no cap explicit</td><td>1024&ndash;4096</td><td>$0 implicit, hourly $ explicit</td><td>0.10&times; (2.5+)</td><td>1</td></tr>
+    <tr><td class="tt"><strong>DeepSeek</strong></td><td>Automatic disk</td><td>Best-effort, persistent</td><td>64-token granularity</td><td class="w">$0 (free)</td><td class="w"><strong>$0.028/M</strong></td><td>1</td></tr>
+  </tbody></table></div>
+  <div class="cg rv d4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="font-size:var(--ss)">Anthropic / Bedrock</h3>
+      <p style="font-size:var(--ms)">Most fine-grained control. <strong>Up to 4 explicit breakpoints</strong> across tools, system, messages. Required for agents where layers change at different cadences.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">OpenAI</h3>
+      <p style="font-size:var(--ms)">Simplest, least transparent. Auto-hashes the first ~256 tokens. <code class="mono">prompt_cache_key</code> param to control replica routing.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="font-size:var(--ss)">Gemini</h3>
+      <p style="font-size:var(--ms)">Only provider charging <strong>hourly storage</strong> for explicit caching ($4.50/M-token-hour Pro). Implicit caching launched May 2025 as the default.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--teal)">
+      <h3 class="tt" style="font-size:var(--ss)">DeepSeek</h3>
+      <p style="font-size:var(--ms)">Cheapest cached reads in the industry. ~10&times; cheaper than next-cheapest. Disk-based, persistent across sessions.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-g rv d5"><strong>Convergence:</strong> the dominant cache-read multiplier across providers is now <strong>~0.10&times; base input</strong>. The market has settled on 90% off as the standard discount.</div>
+</div>
+</section>
+
+<!-- ============== S7: SECTION DIVIDER — BEDROCK DEEP DIVE ============== -->
+<section class="S ts" id="s7">
+<div class="bar bar-c"></div>
+<div class="SC">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> PART 2 &middot; THE PRIORITY</div>
+  <h1 class="rv d2" style="font-size:var(--ts)">Bedrock <span class="tg">Claude</span></h1>
+  <p class="ttag rv d3">The 4 cache breakpoints &mdash; what they are, where to put them, and how to verify they fired</p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-c">Converse API</span>
+    <span class="bg bg-g">cachePoint</span>
+    <span class="bg bg-p">4 layers</span>
+    <span class="bg bg-t">EU regions</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S8: BEDROCK MODEL SUPPORT MATRIX ============== -->
+<section class="S" id="s8">
+<div class="bar bar-c"></div><div class="SC fl gm mx11">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg> SUPPORT MATRIX</div>
+  <h2 class="rv d2">Bedrock Claude support &mdash; <span class="tc">May 2026</span></h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Model</th><th>Min tokens / breakpoint</th><th>5-min TTL</th><th>1-hour TTL</th><th>Status</th></tr></thead><tbody>
+    <tr><td class="tg"><strong>Claude Opus 4.7</strong></td><td>per model card</td><td class="w">&#10004;</td><td class="x">not yet documented</td><td>GA</td></tr>
+    <tr><td class="tg"><strong>Claude Opus 4.6</strong></td><td>per model card</td><td class="w">&#10004;</td><td class="x">5 min only</td><td>GA (Feb 2026)</td></tr>
+    <tr><td class="tg"><strong>Claude Opus 4.5</strong></td><td><strong>4,096</strong></td><td class="w">&#10004;</td><td class="w">&#10004;</td><td>GA</td></tr>
+    <tr><td>Claude Opus 4.1 / 4</td><td>1,024</td><td class="w">&#10004;</td><td class="x">&mdash;</td><td>GA</td></tr>
+    <tr><td class="tc"><strong>Claude Sonnet 4.6</strong></td><td>per model card</td><td class="w">&#10004;</td><td class="x">5 min only</td><td>GA (Feb 2026)</td></tr>
+    <tr><td class="tc"><strong>Claude Sonnet 4.5</strong></td><td>1,024</td><td class="w">&#10004;</td><td class="w">&#10004;</td><td>GA</td></tr>
+    <tr><td>Claude Sonnet 4 / 3.7</td><td>1,024</td><td class="w">&#10004;</td><td class="x">&mdash;</td><td>3.7 EOL Apr 2026</td></tr>
+    <tr><td class="tt"><strong>Claude Haiku 4.5</strong></td><td><strong>4,096</strong></td><td class="w">&#10004;</td><td class="w">&#10004;</td><td>GA</td></tr>
+    <tr><td>Claude 3.5 Haiku</td><td>2,048</td><td class="w">&#10004;</td><td class="x">&mdash;</td><td>GA</td></tr>
+  </tbody></table></div>
+  <div class="tc2 rv d4">
+    <div class="nfo nfo-r"><strong>Watch out:</strong> Opus 4.5 / Haiku 4.5 raised the per-breakpoint minimum to <strong>4,096 tokens</strong>. Smaller prefixes that cached fine on Sonnet 4 silently no-op on Opus 4.5 &mdash; verify with response usage fields.</div>
+    <div class="nfo nfo-c"><strong>The 4.6 / 4.7 gap:</strong> 1-hour TTL is currently a <strong>4.5-only feature on Bedrock</strong>. Opus 4.6/4.7 inherit prompt caching but the AWS docs do not yet list 1-hour TTL. Bedrock parity historically lags Anthropic-direct by 1&ndash;4 weeks.</div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S9: PRICING ============== -->
+<section class="S" id="s9">
+<div class="bar bar-g"></div><div class="SC fl gm mx11">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> PRICING</div>
+  <h2 class="rv d2">Bedrock pricing &mdash; <span class="tg">$/M tokens</span></h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Model</th><th>Base input</th><th>5-min write (1.25&times;)</th><th>1-h write (2.0&times;)</th><th class="tac">Cache read (0.1&times;)</th><th>Output</th></tr></thead><tbody>
+    <tr><td class="tg"><strong>Opus 4.7</strong> <span class="bg bg-gr" style="font-size:var(--ms)">PROD</span></td><td>$5.00</td><td>$6.25</td><td class="x">not yet documented</td><td class="tac w"><strong>$0.50</strong></td><td>$25.00</td></tr>
+    <tr><td class="tg"><strong>Opus 4.6</strong> <span class="bg bg-gr" style="font-size:var(--ms)">PROD</span></td><td>$5.00</td><td>$6.25</td><td class="x">5 min only</td><td class="tac w"><strong>$0.50</strong></td><td>$25.00</td></tr>
+    <tr><td class="tg">Opus 4.5</td><td>$5.00</td><td>$6.25</td><td>$10.00</td><td class="tac">$0.50</td><td>$25.00</td></tr>
+    <tr><td>Opus 4.1</td><td>$15.00</td><td>$18.75</td><td class="x">n/a</td><td class="tac">$1.50</td><td>$75.00</td></tr>
+    <tr><td class="tc"><strong>Sonnet 4.6</strong> <span class="bg bg-gr" style="font-size:var(--ms)">PROD</span></td><td>$3.00</td><td>$3.75</td><td class="x">5 min only</td><td class="tac w"><strong>$0.30</strong></td><td>$15.00</td></tr>
+    <tr><td class="tc">Sonnet 4.5 / 4</td><td>$3.00</td><td>$3.75</td><td>$6.00 <span style="color:var(--muted);font-size:var(--ms)">(4.5)</span></td><td class="tac">$0.30</td><td>$15.00</td></tr>
+    <tr><td class="tt">Haiku 4.5</td><td>$1.00</td><td>$1.25</td><td>$2.00</td><td class="tac">$0.10</td><td>$5.00</td></tr>
+    <tr><td>Haiku 3.5</td><td>$0.80</td><td>$1.00</td><td class="x">n/a</td><td class="tac">$0.08</td><td>$4.00</td></tr>
+  </tbody></table></div>
+  <div class="tc3 rv d4">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="font-size:var(--ss)">Parity with Anthropic-direct</h3>
+      <p style="font-size:var(--ms)">Per-token pricing matches Anthropic-direct in standard regions. <strong>No Bedrock wrapper markup.</strong></p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">Regional CRIS premium</h3>
+      <p style="font-size:var(--ms)"><code class="mono">eu.*</code>, <code class="mono">us.*</code> endpoints add <strong>+10%</strong> for newer models (4.5+ Sonnet, 4.5+ Haiku, 4.6+ Opus) vs <code class="mono">global.*</code>.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="font-size:var(--ss)">1M-context beta</h3>
+      <p style="font-size:var(--ms)">Sonnet 4.5/4.6 charges <strong>$6/M input above 200K</strong>. Cache multipliers stack on top.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-g rv d5"><strong>The math is forgiving.</strong> 5-min write penalty over uncached input is +25%. Cache read saves 90%. <strong>Break-even = 0.28 reads</strong> &mdash; meaning a single hit pays for the write three times over.</div>
+</div>
+</section>
+
+<!-- ============== S10: THE 4 CHECKPOINTS — VISUAL ============== -->
+<section class="S" id="s10">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> THE CENTERPIECE</div>
+  <h2 class="rv d2">The <span class="tg">4 cache</span> checkpoints</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Bedrock supports up to <strong>4 cachePoint markers per request</strong> for Claude. They distribute freely across <code class="mono">tools</code>, <code class="mono">system</code>, and <code class="mono">messages</code>. The cache is built in fixed order &mdash; <strong>tools &rarr; system &rarr; messages</strong> &mdash; and any byte change at or before a breakpoint invalidates that breakpoint and every later one.</p>
+  <div class="cps rv d4">
+    <div class="cpl bp1">
+      <div class="cpnum n1">1</div>
+      <div>
+        <strong class="tc">Tools</strong> <span style="color:var(--muted)">&middot; toolspec definitions</span>
+        <div class="cphint">Stable per request type &mdash; same toolspec across turns. Most stable layer.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-c">1h TTL</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp2">
+      <div class="cpnum n2">2</div>
+      <div>
+        <strong class="tg">System prompt</strong> <span style="color:var(--muted)">&middot; instructions, persona</span>
+        <div class="cphint">Stable per org/model. Long, expensive, almost never changes within a session.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-g">1h TTL</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp3">
+      <div class="cpnum n3">3</div>
+      <div>
+        <strong class="tp">Context / docs</strong> <span style="color:var(--muted)">&middot; case files, RAG chunks</span>
+        <div class="cphint">Changes per session, rarely within one. Session-scoped.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-p">5m TTL</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp4">
+      <div class="cpnum n4">4</div>
+      <div>
+        <strong class="to">History</strong> <span style="color:var(--muted)">&middot; turn N-2 boundary</span>
+        <div class="cphint">The <em>rolling</em> breakpoint. Advances as the chat grows.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-o">5m TTL</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl cur">
+      <div class="cpnum" style="color:var(--red)">N</div>
+      <div>
+        <strong class="tr">Current user turn</strong> <span style="color:var(--muted)">&middot; uncached, volatile</span>
+        <div class="cphint">Sits <em>after</em> BP4. Volatile by definition &mdash; correctly uncached.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-r">no cache</span></div>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d5"><strong>Why 4?</strong> It maps cleanly onto how content changes in a typical agent: tools rarely change, system rarely, docs per session, history per turn. <strong>Match each breakpoint to a change rate.</strong></div>
+</div>
+</section>
+
+<!-- ============== S11: STRATEGIC PLACEMENT ============== -->
+<section class="S" id="s11">
+<div class="bar bar-t"></div><div class="SC fl gm mx10">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 113 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> STRATEGIC PLACEMENT</div>
+  <h2 class="rv d2">Match each breakpoint to a <span class="tt">change rate</span></h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Layer</th><th>Change rate</th><th>Recommended TTL</th><th>Why</th></tr></thead><tbody>
+    <tr><td class="tc"><strong>Tools</strong></td><td>~never within session</td><td class="w">1h</td><td>Toolspec frozen at module load. Long TTL minimizes write penalty.</td></tr>
+    <tr><td class="tg"><strong>System</strong></td><td>per org / model swap</td><td class="w">1h</td><td>Stable instructions belong here. Don&rsquo;t inline timestamps.</td></tr>
+    <tr><td class="tp"><strong>Context / docs</strong></td><td>per session, sometimes per turn</td><td>5m</td><td>Case files, retrieved chunks. Session-scoped invalidation.</td></tr>
+    <tr><td class="to"><strong>History</strong></td><td>every turn (rolling)</td><td>5m</td><td>Place at turn N-2. Older turns get cached; latest stays volatile.</td></tr>
+  </tbody></table></div>
+  <div class="cg rv d4" style="grid-template-columns:repeat(2,1fr)">
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="font-size:var(--ss)">Ordering rule (hard)</h3>
+      <p style="font-size:var(--ms)"><strong>1-hour entries MUST precede 5-minute entries</strong> in the prefix. Mix them in the wrong order and Bedrock returns a <code class="mono">ValidationException</code>. The natural order (tools+system &rarr; docs &rarr; history) satisfies this.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="font-size:var(--ss)">Simplified Cache Management</h3>
+      <p style="font-size:var(--ms)">When you mark one breakpoint, Bedrock <strong>scans backward up to ~20 content-block boundaries</strong> to find the longest matching prefix already in cache. Often a single well-placed marker suffices.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-t rv d5"><strong>The aim:</strong> a content-block boundary on every change-rate transition. Get this right and you spend writes on the rarely-changing layers and reap reads on every turn.</div>
+</div>
+</section>
+
+<!-- ============== S12: CODE — BEDROCK CONVERSE ============== -->
+<section class="S" id="s12">
+<div class="bar bar-c"></div><div class="SC fl gm mx11">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> CODE</div>
+  <h2 class="rv d2">All 4 breakpoints in <span class="tc">Converse</span></h2>
+  <div class="code rv d3" style="font-size:var(--ms);max-height:50vh"><span class="kw">import</span> boto3
+brt = boto3.client(<span class="str">"bedrock-runtime"</span>, region_name=<span class="str">"eu-west-1"</span>)
+
+resp = brt.converse(
+    modelId=<span class="str">"eu.anthropic.claude-opus-4-6-v1:0"</span>,
+
+    <span class="cmt"># BP #2 - SYSTEM (1h supported on opus-4-6 per our prod setup)</span>
+    system=[
+        {<span class="str">"text"</span>: LARGE_SYSTEM_INSTRUCTIONS},
+        {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>, <span class="str">"ttl"</span>: <span class="str">"1h"</span>}}
+    ],
+
+    <span class="cmt"># BP #1 - TOOLS (1h, processed first)</span>
+    toolConfig={
+        <span class="str">"tools"</span>: [
+            {<span class="str">"toolSpec"</span>: {<span class="str">"name"</span>: <span class="str">"get_case"</span>, ...}},
+            {<span class="str">"toolSpec"</span>: {<span class="str">"name"</span>: <span class="str">"send_email"</span>, ...}},
+            {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>, <span class="str">"ttl"</span>: <span class="str">"1h"</span>}}
+        ]
+    },
+
+    messages=[
+        {<span class="str">"role"</span>: <span class="str">"user"</span>, <span class="str">"content"</span>: [
+            {<span class="str">"text"</span>: LARGE_CASE_DOCUMENT},
+            {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>}},  <span class="cmt"># BP #3 (5m default)</span>
+            *previous_turns,
+            {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>}},  <span class="cmt"># BP #4 (5m, rolling at N-2)</span>
+            {<span class="str">"text"</span>: <span class="str">"Welche Rechtsgebiete unterst&uuml;tzt der Assistent?"</span>}    <span class="cmt"># dynamic</span>
+        ]}
+    ],
+    inferenceConfig={<span class="str">"maxTokens"</span>: <span class="vr">1024</span>}
+)
+
+<span class="kw">print</span>(resp[<span class="str">"usage"</span>])
+<span class="cmt"># {'inputTokens': 142,</span>
+<span class="cmt">#  'cacheReadInputTokens': 48000,    &larr; billed 0.10x = $0.024</span>
+<span class="cmt">#  'cacheWriteInputTokens': 0,        &larr; cache hit, no write</span>
+<span class="cmt">#  'outputTokens': 312}</span></div>
+  <div class="nfo nfo-r rv d4"><strong>The most common integration bug:</strong> using <code class="mono">"type": "ephemeral"</code> on Converse. That&rsquo;s the legacy <code class="mono">InvokeModel</code> naming and it <strong>silently fails</strong>. On Converse, the only valid type is <code class="mono">"default"</code>.</div>
+</div>
+</section>
+
+<!-- ============== S13: COMMON MISTAKES ============== -->
+<section class="S" id="s13">
+<div class="bar bar-r"></div><div class="SC fl gm mx10">
+  <div class="lbl lr rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> PITFALLS</div>
+  <h2 class="rv d2">Why your cache <span class="tr">isn&rsquo;t firing</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Failure modes are <strong>silent</strong>. The request succeeds; only the response usage fields tell you it didn&rsquo;t cache. Watch for these:</p>
+  <div class="steps rv d4">
+    <div class="step"><div class="snum snum-r">1</div><div><h3 class="tr" style="font-size:var(--bs)">Volatile content placed before a breakpoint</h3><p style="font-size:var(--ss)">Timestamp, request ID, user name, <code class="mono">datetime.now()</code> in the system prompt. Every request becomes a fresh write at 1.25&times; input cost &mdash; <strong>strictly worse than no caching</strong>.</p></div></div>
+    <div class="step"><div class="snum snum-r">2</div><div><h3 class="tr" style="font-size:var(--bs)">Prefix not byte-identical</h3><p style="font-size:var(--ss)">Whitespace, BOM, smart quotes, JSON-key reordering all change the hash. Use <code class="mono">json.dumps(sort_keys=True)</code> on tool definitions and freeze toolspecs at module load.</p></div></div>
+    <div class="step"><div class="snum snum-r">3</div><div><h3 class="tr" style="font-size:var(--bs)">Tool reordering mid-array</h3><p style="font-size:var(--ss)">Inserting a new tool in the middle invalidates the cache for everyone using the old order. <strong>Always append, never insert.</strong></p></div></div>
+    <div class="step"><div class="snum snum-r">4</div><div><h3 class="tr" style="font-size:var(--bs)">Below the per-model token minimum</h3><p style="font-size:var(--ss)">4,096 tokens on Opus 4.5+/Haiku 4.5. Request succeeds; <code class="mono">cacheWriteInputTokens</code> returns 0 with <strong>no error</strong>.</p></div></div>
+    <div class="step"><div class="snum snum-r">5</div><div><h3 class="tr" style="font-size:var(--bs)">TTL mixed in wrong order</h3><p style="font-size:var(--ss)">5-minute entries placed before 1-hour entries. Bedrock returns <code class="mono">ValidationException</code>.</p></div></div>
+    <div class="step"><div class="snum snum-r">6</div><div><h3 class="tr" style="font-size:var(--bs)">Client library strips the TTL field</h3><p style="font-size:var(--ss)"><strong>LiteLLM</strong> (issue #20326) strips <code class="mono">ttl</code> for Bedrock. <strong>Claude Code</strong>&rsquo;s Bedrock integration (issue #32671) hardcodes 5-minute. Verify your library&rsquo;s actual behavior.</p></div></div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S14: VERIFY IT WORKS ============== -->
+<section class="S" id="s14">
+<div class="bar bar-gr"></div><div class="SC fl gm mx11">
+  <div class="lbl lt rv d1" style="color:var(--green)"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> VERIFICATION</div>
+  <h2 class="rv d2">Did it actually <span class="tgr">cache</span>?</h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>API</th><th>Field</th><th>Meaning</th></tr></thead><tbody>
+    <tr><td>Converse / ConverseStream</td><td><code class="mono">usage.cacheReadInputTokens</code></td><td>Tokens served from cache, billed <strong>0.1&times;</strong></td></tr>
+    <tr><td>Converse / ConverseStream</td><td><code class="mono">usage.cacheWriteInputTokens</code></td><td>Tokens written, billed 1.25&times; or 2.0&times;</td></tr>
+    <tr><td>Converse / ConverseStream</td><td><code class="mono">usage.inputTokens</code></td><td>Uncached input</td></tr>
+    <tr><td>InvokeModel (Claude body)</td><td><code class="mono">usage.cache_creation_input_tokens</code></td><td>Tokens written (snake_case)</td></tr>
+    <tr><td>InvokeModel (Claude body)</td><td><code class="mono">usage.cache_read_input_tokens</code></td><td>Tokens read (snake_case)</td></tr>
+    <tr><td>CloudWatch <code class="mono">AWS/Bedrock</code></td><td><code class="mono">CacheReadInputTokenCount</code></td><td>Aggregate per model</td></tr>
+    <tr><td>CloudWatch <code class="mono">AWS/Bedrock</code></td><td><code class="mono">TimeToFirstToken</code></td><td>TTFT spikes flag misses</td></tr>
+  </tbody></table></div>
+  <div class="rv d4">
+    <div class="code" style="font-size:var(--ms)">total_input = cache_read + cache_creation + uncached_input
+
+<span class="cmt"># Reconciles to billable input tokens</span></div>
+  </div>
+  <div class="nfo nfo-r rv d5"><strong>If both <code class="mono">cache_read</code> and <code class="mono">cache_creation</code> are zero on a request you marked &mdash; it didn&rsquo;t cache.</strong> Almost always: minimum-token threshold, volatile content, or wrong client library.</div>
+</div>
+</section>
+
+<!-- ============== S15: EU REGIONAL ============== -->
+<section class="S" id="s15">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> EU &middot; REGIONAL</div>
+  <h2 class="rv d2">Caches are <span class="tp">region-bound</span></h2>
+  <p class="rv d3" style="font-size:var(--bs);max-width:880px">Prompt caching is <strong>automatically enabled wherever the model is available</strong>, including all EU regions. The catch: each AWS region maintains its <strong>own cache</strong>.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:.2rem">Cross-region inference (CRIS)</h3>
+      <p style="font-size:var(--ss)">EU profile <code class="mono">eu.anthropic.claude-*</code> routes across <strong>eu-north-1, eu-west-3, eu-south-1, eu-south-2, eu-west-1, eu-central-1</strong>. Opus 4.5/4.6/4.7 are <strong>only available via CRIS in EU</strong>.</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem">When CRIS routes you to a different destination region than the previous request, you incur a fresh cache write at 1.25&times; or 2&times; input cost.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="margin-bottom:.2rem">The workaround</h3>
+      <p style="font-size:var(--ss)">For workloads needing stable hit rates: use a <strong>regional (in-region) endpoint</strong> instead of CRIS. Accept the <strong>+10% per-token premium</strong> on 4.5+ models in exchange for <strong>predictable hits in a single region</strong>.</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem">Monitor <code class="mono">CacheWriteInputTokenCount</code> in CloudWatch &mdash; sudden spikes typically indicate CRIS rerouting.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d5"><strong>AWS warns explicitly:</strong> &ldquo;at times of high demand, these optimizations may lead to increased cache writes.&rdquo; The cost-stability tradeoff is real and observable.</div>
+</div>
+</section>
+
+<!-- ============== S16: RATE LIMITS ============== -->
+<section class="S" id="s16">
+<div class="bar bar-r"></div><div class="SC fl gm mx10">
+  <div class="lbl lr rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> RATE LIMITS</div>
+  <h2 class="rv d2">Caching vs the <span class="tr">25 RPM ceiling</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:880px">The most under-appreciated lever for rate-limit-constrained workloads &mdash; and the most-misunderstood. AWS docs state plainly: <em>&ldquo;cache hits are not deducted against your rate limit.&rdquo;</em></p>
+  <div class="cg rv d4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr))">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <div class="ib ib-gr"><svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg></div>
+      <h3 class="tgr" style="font-size:var(--ss)">Cache reads &mdash; FREE on TPM</h3>
+      <p style="font-size:var(--ms)">Don&rsquo;t count against TPM. <strong>At 80% hit rate, you can effectively process ~5&times; the tokens of your nominal quota.</strong></p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <div class="ib ib-o"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+      <h3 class="to" style="font-size:var(--ss)">Cache writes &mdash; count on TPM</h3>
+      <p style="font-size:var(--ms)">DO count at full 1.25&times; or 2.0&times; rate &mdash; they&rsquo;re still being processed by the model.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <div class="ib ib-r"><svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+      <h3 class="tr" style="font-size:var(--ss)">RPM &mdash; unchanged</h3>
+      <p style="font-size:var(--ms)">Caching does <strong>NOT</strong> reduce RPM consumption. Every API call is one request regardless of cache state.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-r rv d5"><strong>For Jupus EU-region Opus 4.6 at 25 RPM:</strong> caching stretches what each of those 25 requests/minute can carry, and TTFT &darr; means each finishes faster &mdash; but the ceiling itself <strong>only moves with a Service Quotas increase, a switch to Opus 4.5, or Provisioned Throughput</strong>.</div>
+</div>
+</section>
+
+<!-- ============== S17: WORKED EXAMPLE ============== -->
+<section class="S" id="s17">
+<div class="bar bar-g"></div><div class="SC fl gm mx10">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> WORKED EXAMPLE</div>
+  <h2 class="rv d2">When does caching <span class="tg">pay off</span>?</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)"><strong>Setup:</strong> Claude <strong>Opus 4.6</strong> on Bedrock (our prod model), 50,000-token static prefix (system + tools + reference doc), 10 turns &times; 100-token user query, all turns within the 5-min TTL.</p>
+  <div class="rv d4" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Strategy</th><th>Turn 1</th><th>Turns 2&ndash;10</th><th>Total</th><th class="tac">Savings</th></tr></thead><tbody>
+    <tr><td class="tr"><strong>No caching</strong></td><td>$0.2569</td><td>9 &times; $0.2569 = $2.312</td><td><strong>$2.5690</strong></td><td class="tac">&mdash;</td></tr>
+    <tr><td class="tg"><strong>5-min TTL</strong> (Opus 4.6)</td><td>$0.3193 (write)</td><td>9 &times; $0.0318 (read) = $0.2858</td><td class="w"><strong>$0.6051</strong></td><td class="tac w"><strong>76.4%</strong></td></tr>
+    <tr><td class="tc"><strong>Same scenario, Sonnet 4.6</strong></td><td>$0.1916 (write)</td><td>9 &times; $0.0191 (read) = $0.1715</td><td class="w"><strong>$0.3631</strong></td><td class="tac w"><strong>76.4%</strong> (vs $1.541 uncached)</td></tr>
+  </tbody></table></div>
+  <div class="tc2 rv d5">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:.2rem">Opus 4.6 break-even (5-min TTL)</h3>
+      <p style="font-size:var(--ss)">Write penalty over uncached: <strong>+$0.0625</strong>.<br>Per-hit savings: <strong>$0.225</strong>.<br>Break-even: <strong>0.28 reads</strong> &mdash; pays off after a single hit within the TTL.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="margin-bottom:.2rem">Why pick Opus 4.6 over Sonnet 4.6?</h3>
+      <p style="font-size:var(--ss)">Sonnet 4.6 is <strong>5&times; cheaper at the bottom line</strong>. Opus pays off when reasoning depth matters &mdash; complex case analysis, citation chains, multi-step legal reasoning. Caching closes much (not all) of the gap.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-g rv d6"><strong>The decision rule:</strong> enable caching unconditionally if your prefix exceeds the model&rsquo;s minimum and is reused at least <strong>twice</strong> within the TTL. Use Opus where reasoning quality justifies the 5&times; premium. Cache aggressively to recover most of the cost.</div>
+</div>
+</section>
+
+<!-- ============== NEW: INTERACTIVE DEMO ============== -->
+<section class="S" id="s-demo" data-no-frag>
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> TRY IT YOURSELF</div>
+  <h2 class="rv d2">Live: <span class="tc">Opus 4.6</span> with cachePoint</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Type a question (or use the default), click <strong>Send Request</strong>. Watch the first hit (cache MISS) bear the write penalty &mdash; then hit it again to see the cache HIT economics. <em>(Patched simulation; numbers match real Bedrock pricing.)</em></p>
+  <div class="rv d4 demo-grid">
+    <div class="cd">
+      <div class="demo-form">
+        <label style="font-size:var(--ms);color:var(--muted)">Cached prefix (Opus 4.6, EU)</label>
+        <div style="display:flex;flex-direction:column;gap:.2rem;font-size:var(--ms);background:var(--code-bg);padding:.4rem .6rem;border-radius:6px;border:1px solid var(--brd2)">
+          <div><span class="tc">Tools</span> <span style="color:var(--muted)">&middot; toolspec definitions</span> <strong style="float:right">3,200 tok</strong></div>
+          <div><span class="tg">System</span> <span style="color:var(--muted)">&middot; legal AI instructions</span> <strong style="float:right">12,500 tok</strong></div>
+          <div style="border-top:1px solid var(--brd2);padding-top:.2rem;margin-top:.1rem;color:var(--cyan)"><strong>Cacheable prefix total:</strong> <strong style="float:right">15,700 tok</strong></div>
+        </div>
+        <label style="font-size:var(--ms);color:var(--muted);margin-top:.2rem">Your question (volatile suffix)</label>
+        <input id="demoQ" class="demo-input" placeholder="Welche Rechtsgebiete unterstützt unser KI-Assistent?" />
+        <button id="demoBtn" class="demo-btn" type="button">
+          <svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Send Request
+        </button>
+        <button id="demoReset" class="demo-btn warm" type="button">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+          Reset Cache
+        </button>
+      </div>
+    </div>
+    <div class="demo-log" id="demoLog"><span class="info">Ready.</span> Click <strong>Send Request</strong> &mdash; first call will be a cache MISS, subsequent calls within 5 min will HIT.</div>
+  </div>
+  <div class="rv d5 mr">
+    <div class="mx"><div class="mv tc" id="m1">0</div><div class="ml">Requests</div></div>
+    <div class="mx"><div class="mv tg" id="m2">$0.0000</div><div class="ml">Total spent</div></div>
+    <div class="mx"><div class="mv tgr" id="m3">$0.0000</div><div class="ml">Total saved</div></div>
+    <div class="mx"><div class="mv tp" id="m4">0%</div><div class="ml">Hit rate</div></div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S18: APPLICATION CACHING — THE CASCADE ============== -->
+<section class="S" id="s18">
+<div class="bar bar-p"></div><div class="SC fl gm mx10">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> LAYER 3 &middot; APPLICATION</div>
+  <h2 class="rv d2">The <span class="tp">cascade</span> &mdash; skip the model entirely</h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Application caches sit in front of the model. A hit eliminates the LLM call entirely &mdash; <strong>50&ndash;100&times; latency wins (1&ndash;50 ms vs 0.5&ndash;5 s) and ~$0 token cost</strong>.</p>
+  <div class="rv d4" style="display:flex;flex-direction:column;align-items:center;gap:clamp(.2rem,.5vw,.4rem)">
+    <div class="abox ab-c" style="min-width:280px"><strong class="tc">L0 &middot; In-memory LRU</strong><br><span style="font-size:var(--ms);color:var(--muted)">Sub-millisecond, ephemeral, per-process</span></div>
+    <span class="aarr"><svg viewBox="0 0 24 24" style="width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+    <div class="abox ab-t" style="min-width:280px"><strong class="tt">L1 &middot; Exact-match Redis</strong><br><span style="font-size:var(--ms);color:var(--muted)">SHA-256 of canonical prompt. 1&ndash;5% hit on raw chat traffic, much higher with prompt fingerprinting</span></div>
+    <span class="aarr"><svg viewBox="0 0 24 24" style="width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+    <div class="abox ab-p" style="min-width:280px"><strong class="tp">L2 &middot; Semantic vector cache</strong><br><span style="font-size:var(--ms);color:var(--muted)">Embed query, ANN search, threshold &ge;0.95. 20&ndash;60% hit on FAQ. <strong class="tr">Beware false positives.</strong></span></div>
+    <span class="aarr"><svg viewBox="0 0 24 24" style="width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+    <div class="abox ab-g" style="min-width:280px"><strong class="tg">L3 &middot; Provider prompt cache</strong><br><span style="font-size:var(--ms);color:var(--muted)">Anthropic / Bedrock cachePoint &mdash; 90% off, 85% TTFT &darr;</span></div>
+    <span class="aarr"><svg viewBox="0 0 24 24" style="width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></span>
+    <div class="abox ab-r" style="min-width:280px"><strong class="tr">L4 &middot; LLM call (last resort)</strong></div>
+  </div>
+  <div class="nfo nfo-r rv d5" style="margin-top:.6rem"><strong>Semantic caching warning:</strong> a 2025 banking case study found zero-shot bi-encoders at threshold 0.7 produced <strong>up to 99% false-positive rates</strong> &mdash; cached answers to similar-but-different questions, i.e. <strong>hallucinations at the cache layer</strong>. Mitigation: start at 0.95+, add cross-encoder reranker as second-stage verifier, namespace per tenant.</div>
+</div>
+</section>
+
+<!-- ============== S19: SECTION DIVIDER — JUPUS ============== -->
+<section class="S ts" id="s19">
+<div class="bar bar-g"></div>
+<div class="SC">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> PART 4 &middot; PROOF OF WORK</div>
+  <h1 class="rv d2" style="font-size:var(--ts)">How we <span class="tc">shipped</span> it</h1>
+  <p class="ttag rv d3">Three of four canonical layers live in production today &mdash; feature-flagged per-org with full telemetry</p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-c">Bedrock Converse</span>
+    <span class="bg bg-g">3 cachePoints active</span>
+    <span class="bg bg-p">PostHog gated</span>
+    <span class="bg bg-t">Langfuse traced</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S20: 3 OF 4 LAYERS LIVE ============== -->
+<section class="S" id="s20">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> SHIPPED &middot; IN PRODUCTION</div>
+  <h2 class="rv d2">Three of four layers <span class="tc">live</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Current placement: tools + system + last assistant turn. The 4th layer (case-context) is planned work &mdash; deferred from V1 to keep the foundation shippable on its own.</p>
+  <div class="cps rv d4">
+    <div class="cpl bp1">
+      <div class="cpnum n1">1</div>
+      <div>
+        <strong class="tc">toolConfig.tools</strong> <span class="bg bg-gr" style="font-size:var(--ms)">SHIPPED</span>
+        <div class="cphint">9 supported models get 1h TTL via <code class="mono">MODELS_SUPPORTING_1H_TTL</code> frozenset; others fall back to 5m.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-c">1h / 5m</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp2">
+      <div class="cpnum n2">2</div>
+      <div>
+        <strong class="tg">system</strong> <span class="bg bg-gr" style="font-size:var(--ms)">SHIPPED</span>
+        <div class="cphint">Same TTL strategy as tools. Stable per org/model.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-g">1h / 5m</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp3" style="opacity:.5;border-style:dashed">
+      <div class="cpnum n3">3</div>
+      <div>
+        <strong class="tp">case context (planned)</strong> <span class="bg bg-o" style="font-size:var(--ms)">PLANNED &middot; READY FOR DEV</span>
+        <div class="cphint">Currently fused into system prompt via Langfuse template. Will be split out as own block.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-p">5m</span></div>
+    </div>
+    <div class="cpdiv">&middot; &middot; &middot;</div>
+    <div class="cpl bp4">
+      <div class="cpnum n4">4</div>
+      <div>
+        <strong class="to">last assistant turn</strong> <span class="bg bg-gr" style="font-size:var(--ms)">SHIPPED</span>
+        <div class="cphint">Always 5m. Rolling &mdash; new on every turn.</div>
+      </div>
+      <div class="cpttl"><span class="bg bg-o">5m rolling</span></div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5"><strong>Today&rsquo;s hit rate: ~70%</strong> on stable case sessions. With the planned 4th-layer split, target is <strong>&ge;85%</strong>. Today the case-context churn invalidates everything below it.</div>
+</div>
+</section>
+
+<!-- ============== S21: CODE MAP ============== -->
+<section class="S" id="s21">
+<div class="bar bar-p"></div><div class="SC fl gm mx11">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> CODE MAP</div>
+  <h2 class="rv d2"><code class="mono">cache_points.py</code> &mdash; the <span class="tp">pure helper</span></h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:.2rem"><code class="mono">CachingStrategy</code> (Flag enum)</h3>
+      <div class="code" style="font-size:var(--ms)"><span class="kw">class</span> <span class="fn">CachingStrategy</span>(<span class="tp2">Flag</span>):
+    TOOLS_ONLY = <span class="fn">auto</span>()
+    SYSTEM = <span class="fn">auto</span>()
+    CONVERSATION_HISTORY = <span class="fn">auto</span>()
+    SYSTEM_AND_TOOLS = (
+        TOOLS_ONLY | SYSTEM
+    )
+    SYSTEM_AND_TOOLS_WITH_HISTORY = (
+        TOOLS_ONLY | SYSTEM
+        | CONVERSATION_HISTORY
+    )</div>
+      <p style="font-size:var(--ms);margin-top:.3rem;color:var(--muted)"><code class="mono">Flag</code> not <code class="mono">Enum</code> &mdash; orthogonal layers compose. Production default: <code class="mono">SYSTEM_AND_TOOLS_WITH_HISTORY</code>.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="margin-bottom:.2rem"><code class="mono">MODELS_SUPPORTING_1H_TTL</code></h3>
+      <div class="code" style="font-size:var(--ms)"><span class="cmt"># 9 verified models</span>
+<span class="kw">frozenset</span>({
+  <span class="str">"eu.anthropic.claude-sonnet-4-6"</span>,
+  <span class="str">"eu.anthropic.claude-sonnet-4-5-..."</span>,
+  <span class="str">"eu.anthropic.claude-opus-4-7"</span>,
+  <span class="str">"eu.anthropic.claude-opus-4-6-v1"</span>,
+  <span class="str">"eu.anthropic.claude-opus-4-5-..."</span>,
+  <span class="str">"eu.anthropic.claude-haiku-4-5-..."</span>,
+  <span class="str">"global.anthropic.claude-sonnet-4-6"</span>,
+  <span class="str">"global.anthropic.claude-opus-4-7"</span>,
+  <span class="str">"global.anthropic.claude-opus-4-6-v1"</span>,
+})</div>
+      <p style="font-size:var(--ms);margin-top:.3rem;color:var(--muted)"><strong>Conservative by design.</strong> Wrongly claiming 1h support &rarr; <code class="mono">ValidationException</code>. Adding a model requires verifying via AWS console.</p>
+    </div>
+  </div>
+  <div class="rv d4">
+    <div class="code" style="font-size:var(--ms)"><span class="cmt"># _cache_point() helper - omits ttl for 5m to maximize compatibility</span>
+<span class="kw">def</span> <span class="fn">_cache_point</span>(ttl: <span class="tp2">str</span>) -> <span class="tp2">dict</span>:
+    <span class="kw">if</span> ttl == <span class="str">"1h"</span>:
+        <span class="kw">return</span> {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>, <span class="str">"ttl"</span>: <span class="str">"1h"</span>}}
+    <span class="kw">return</span> {<span class="str">"cachePoint"</span>: {<span class="str">"type"</span>: <span class="str">"default"</span>}}  <span class="cmt"># 5m default, NOT "ephemeral"</span></div>
+  </div>
+  <div class="nfo nfo-p rv d5"><strong>139 lines, no I/O, no state.</strong> Entry point: <code class="mono">apply_cache_points(strategy, model_id, tools, system_blocks, messages)</code> returns fresh copies with markers inserted. Pure helper, fully unit-tested.</div>
+</div>
+</section>
+
+<!-- ============== S22: STRATEGY + FEATURE FLAG ============== -->
+<section class="S" id="s22">
+<div class="bar bar-g"></div><div class="SC fl gm mx10">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> FEATURE FLAG</div>
+  <h2 class="rv d2">Strategy resolution at <span class="tg">ai.py:168</span></h2>
+  <div class="code rv d3" style="font-size:var(--ms)"><span class="kw">def</span> <span class="fn">_resolve_bedrock_caching_strategy</span>(
+    org: <span class="tp2">Optional</span>[Organisation]
+) -> CachingStrategy | <span class="tp2">None</span>:
+    <span class="kw">if</span> org <span class="kw">is</span> <span class="tp2">None</span>:
+        <span class="kw">return</span> <span class="tp2">None</span>
+    <span class="kw">if</span> FeatureFlags.<span class="fn">is_enabled</span>(
+        FeatureFlags.BEDROCK_PROMPT_CACHE_ENABLED, org=org
+    ):
+        <span class="kw">return</span> CachingStrategy.SYSTEM_AND_TOOLS_WITH_HISTORY
+    <span class="kw">return</span> <span class="tp2">None</span>  <span class="cmt"># flag off &rarr; Converse request byte-identical to pre-caching</span></div>
+  <div class="cg rv d4" style="grid-template-columns:repeat(3,1fr)">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="font-size:var(--ss)">Flag</h3>
+      <p style="font-size:var(--ms)"><code class="mono">BEDROCK_PROMPT_CACHE_ENABLED</code><br>PostHog &middot; per-org &middot; default <strong>off</strong></p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="font-size:var(--ss)">Effect when off</h3>
+      <p style="font-size:var(--ms)"><strong>Byte-identical</strong> to pre-caching shape. Zero behavior change, instant rollback.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="font-size:var(--ss)">Injection points</h3>
+      <p style="font-size:var(--ms)"><code class="mono">tool_orchestrator.py:179</code> per-iteration<br><code class="mono">tool_orchestrator.py:315</code> stop-reason nudge</p>
+    </div>
+  </div>
+  <div class="nfo nfo-g rv d5"><strong>Why the flag pattern matters:</strong> we can roll forward by org cohort, monitor cache_read tokens climbing, and roll back instantly if anything regresses &mdash; without redeploying. Ideal for an opaque optimization that can silently fail.</div>
+</div>
+</section>
+
+<!-- ============== S23: TELEMETRY ============== -->
+<section class="S" id="s23">
+<div class="bar bar-t"></div><div class="SC fl gm mx11">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> TELEMETRY</div>
+  <h2 class="rv d2">Four layers of <span class="tt">observability</span></h2>
+  <div class="rv d3" style="overflow:auto;border-radius:8px"><table class="tb"><thead><tr><th>Layer</th><th>What&rsquo;s captured</th><th>Where</th></tr></thead><tbody>
+    <tr><td class="tc"><strong>Per-stream-pass</strong></td><td><code class="mono">cacheReadInputTokens</code>, <code class="mono">cacheWriteInputTokens</code>, <code class="mono">cacheDetails.ttl</code></td><td><code class="mono">stream_parser.py</code></td></tr>
+    <tr><td class="tg"><strong>Per multi-pass</strong></td><td><code class="mono">total_cache_read_input_tokens</code>, <code class="mono">last_cache_ttl</code></td><td><code class="mono">token_tracker.py</code></td></tr>
+    <tr><td class="tp"><strong>Per Langfuse span</strong></td><td><code class="mono">cache_read_input_tokens</code>, <code class="mono">cache_creation_input_tokens</code> <em>(Anthropic SDK key naming for auto-recognition)</em></td><td><code class="mono">tracing.py</code></td></tr>
+    <tr><td class="to"><strong>Per-message DB row</strong></td><td><code class="mono">cache_read_tokens</code>, <code class="mono">cache_write_tokens</code> on <code class="mono">AIChatSessionMessage</code></td><td><code class="mono">send_message_stream.py:1086+</code></td></tr>
+    <tr><td class="x"><strong>Aggregated dashboard</strong></td><td><span class="tr">&#10006; not built &mdash; planned follow-up</span></td><td>n/a</td></tr>
+  </tbody></table></div>
+  <div class="cg rv d4" style="grid-template-columns:repeat(2,1fr)">
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">Two-state semantics on audit fields</h3>
+      <p style="font-size:var(--ms)"><code class="mono">None</code> &rarr; OpenAI path (or pre-caching era)<br><code class="mono">0</code> &rarr; Bedrock, no hit/write<br><code class="mono">&gt; 0</code> &rarr; Bedrock, actually hit/wrote</p>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem">Dashboards filter on <code class="mono">cache_read_tokens &gt; 0</code>, <em>not</em> <code class="mono">IS NOT NULL</code>.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="font-size:var(--ss)">OpenAI path is uncached at our level</h3>
+      <p style="font-size:var(--ms)">OpenAI does <strong>automatic implicit caching</strong> server-side for prefixes &ge;1024 tokens. No code or markers needed, no per-org control.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-t rv d5"><strong>The Anthropic-SDK key naming on Langfuse is deliberate</strong> &mdash; <code class="mono">cache_read_input_tokens</code> and <code class="mono">cache_creation_input_tokens</code> are the field names Langfuse&rsquo;s built-in integration auto-recognizes. Saves the manual model config.</div>
+</div>
+</section>
+
+<!-- ============== S24: PENDING WORK ============== -->
+<section class="S" id="s24">
+<div class="bar bar-o"></div><div class="SC fl gm mx10">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> PLANNED FOLLOW-UPS</div>
+  <h2 class="rv d2">Two open work items, <span class="to">low priority</span></h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem">
+        <span class="bg bg-p" style="font-size:var(--ms)">Workstream 1</span>
+        <span class="bg" style="font-size:var(--ms);background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)">Ready for Dev</span>
+      </div>
+      <h3 class="tp" style="margin-bottom:.2rem">Add the 4th cachePoint</h3>
+      <p style="font-size:var(--ss)">Split case context out of the system prompt &mdash; today inlined via Langfuse template variables. Two design options:</p>
+      <ul style="font-size:var(--ms);padding-left:1.2rem;margin-top:.3rem;line-height:1.6">
+        <li><strong class="tgr">Option A (recommended):</strong> two <code class="mono">system=</code> blocks with cachePoint between</li>
+        <li><strong>Option B:</strong> case context as a &ldquo;prelude&rdquo; user message</li>
+      </ul>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><strong>Target KPI:</strong> hit rate &ge;85% on stable-case sessions (vs ~70% today).</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--rose)">
+      <div style="display:flex;align-items:center;gap:.4rem;margin-bottom:.3rem">
+        <span class="bg bg-r" style="font-size:var(--ms)">Workstream 2</span>
+        <span class="bg" style="font-size:var(--ms);background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)">Ready for Dev</span>
+      </div>
+      <h3 class="tro" style="margin-bottom:.2rem">Langfuse cache dashboard</h3>
+      <p style="font-size:var(--ss)">Two charts on existing per-span data:</p>
+      <ul style="font-size:var(--ms);padding-left:1.2rem;margin-top:.3rem;line-height:1.6">
+        <li><strong>Hit ratio</strong> per model per day &mdash; leading indicator, catches volatile-content regressions in &lt;24h</li>
+        <li><strong>Savings $</strong> per day &mdash; outcome metric for stakeholders</li>
+      </ul>
+      <p style="font-size:var(--ms);color:var(--muted);margin-top:.3rem"><strong>Source data already emitted</strong> by the production caching code.</p>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d4"><strong>Recommended order:</strong> dashboard first &mdash; build it now so we have baseline numbers to measure the 4th-layer improvement against. Without baseline, we can&rsquo;t tell if the 4th cachePoint moved the needle.</div>
+</div>
+</section>
+
+<!-- ============== S25: THE 9 GOTCHAS ============== -->
+<section class="S" id="s25">
+<div class="bar bar-r"></div><div class="SC fl gm mx10">
+  <div class="lbl lr rv d1"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> KNOWN RISKS</div>
+  <h2 class="rv d2">The <span class="tr">nine gotchas</span></h2>
+  <p class="rv d3" style="font-size:var(--ss);max-width:780px;color:var(--muted)">Documented in the <code class="mono">bedrock-aws.md</code> internal rule. Scan before any system-prompt change.</p>
+  <div class="cg rv d4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))">
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="font-size:var(--ss)">1. Byte-exact prefix required</h3>
+      <p style="font-size:var(--ms)">Any drift (timestamp, reordered tools, varying UUID) breaks the cache.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="font-size:var(--ss)">2. <code class="mono">"ephemeral"</code> silently fails</h3>
+      <p style="font-size:var(--ms)">Converse only accepts <code class="mono">"default"</code>. <code class="mono">"ephemeral"</code> is the legacy <code class="mono">InvokeModel</code> naming.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="font-size:var(--ss)">3. Hierarchy cascade</h3>
+      <p style="font-size:var(--ms)">Breakpoint at layer N invalidates N <strong>and every breakpoint below</strong>. Tool-def drift is the most expensive mistake.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">4. <code class="mono">json.dumps(sort_keys=True)</code></h3>
+      <p style="font-size:var(--ms)">Concrete pattern against Python dict ordering drift on tools. Freeze toolspecs at module load, serialize once.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">5. Never inject volatile values</h3>
+      <p style="font-size:var(--ms)">Timestamps, request IDs, user names &rarr; current user turn only, never the stable layer.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="font-size:var(--ss)">6. Sliding TTL</h3>
+      <p style="font-size:var(--ms)">Each cache hit resets the clock. 5m fine for active sessions, not for users returning &gt;5m later. Hence 1h on system+tools.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="font-size:var(--ss)">7. Sub-1024 token no-ops</h3>
+      <p style="font-size:var(--ms)">(Or 4096 on Opus 4.5+/Haiku 4.5.) Don&rsquo;t sprinkle markers on tiny messages.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="font-size:var(--ss)">8. Model-switching invalidates</h3>
+      <p style="font-size:var(--ms)">Critical for ACM-024 &mdash; users toggling models per chat pay full cache-write every switch. Consider per-session model lock.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--gold)">
+      <h3 class="tg" style="font-size:var(--ss)">9. Trace wrapper required</h3>
+      <p style="font-size:var(--ms)">All Bedrock Converse calls MUST be wrapped in <code class="mono">traced_bedrock_generation</code> &mdash; emits Langfuse span + flushes deltas on error path.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S26: DECISION TREE ============== -->
+<section class="S" id="s26">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg> DECISION TREE</div>
+  <h2 class="rv d2">When to use <span class="tc">what</span></h2>
+  <div class="steps rv d3">
+    <div class="step"><div class="snum snum-c">1</div><div><h3 class="tc" style="font-size:var(--bs)">Is the prefix stable and reused?</h3><p style="font-size:var(--ss)"><strong>Yes &rarr; provider prompt caching</strong> (Bedrock cachePoint). Place breakpoints at change-rate boundaries: tools (1h), system (1h), docs (5m), history (5m, rolling). Essentially free &mdash; one read covers the write penalty.</p></div></div>
+    <div class="step"><div class="snum snum-p">2</div><div><h3 class="tp" style="font-size:var(--bs)">Are full responses reused verbatim?</h3><p style="font-size:var(--ss)"><strong>Templated workflows / evaluation replays / batch backfills</strong> &rarr; exact-match Redis (skips the model entirely). Safe, zero false positives.</p></div></div>
+    <div class="step"><div class="snum snum-t">3</div><div><h3 class="tt" style="font-size:var(--bs)">Are queries paraphrased?</h3><p style="font-size:var(--ss)"><strong>FAQ / support workloads</strong> &rarr; semantic caching at threshold &ge;0.95 with cross-encoder verifier. <strong>Legal / medical / financial</strong> &mdash; stick to exact match. False positives at the cache layer are hallucinations.</p></div></div>
+    <div class="step"><div class="snum snum-g">4</div><div><h3 class="tg" style="font-size:var(--bs)">Self-hosting?</h3><p style="font-size:var(--ss)">vLLM with <code class="mono">--enable-prefix-caching</code> or SGLang RadixAttention &mdash; the engine handles cross-request prefix sharing automatically. Add LMCache when KV exceeds GPU memory.</p></div></div>
+  </div>
+  <div class="nfo nfo-c rv d4"><strong>For Jupus EU Opus 4.6 at 25 RPM specifically:</strong> file Service Quotas increase + enable caching to stretch each request + consider Opus 4.5 for 1h TTL + use regional endpoint for stable hits + log <code class="mono">cacheReadInputTokens</code> on every response.</div>
+</div>
+</section>
+
+<!-- ============== S27: TAKEAWAY + Q&A ============== -->
+<section class="S ts" id="s27">
+<div class="bar bar-g"></div>
+<div class="SC">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> TAKEAWAY &middot; Q&amp;A</div>
+  <h1 class="rv d2" style="font-size:var(--ts)">Compose, <span class="tg">don&rsquo;t</span><br>substitute</h1>
+  <p class="ttag rv d3">L1 architectural + L2 provider + L3 application = <strong>5&ndash;10&times;</strong> bill difference vs any one alone. The KV cache that started as a 2017 transformer optimization is now <strong>the central economic abstraction of LLM serving</strong>.</p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-c">Bedrock Converse</span>
+    <span class="bg bg-g">4 cachePoints</span>
+    <span class="bg bg-p">3 layers shipped</span>
+    <span class="bg bg-t">4th layer + dashboard pending</span>
+  </div>
+  <p class="mono rv d5" style="color:var(--muted)">Questions? &middot; Jupus AI &middot; @yurii</p>
+</div>
+</section>
+
+</div>
+
+<span class="sn" id="pageNum"><b>01</b>/33</span>
+<nav class="nav" aria-label="Slides"></nav>
+<div class="hint"><span class="ky">&larr;</span><span class="ky">&rarr;</span> or <span class="ky">Space</span></div>
+
+<script>
+const S=document.querySelectorAll('.S'),N=document.querySelector('.nav');
+const total=S.length;
+const tipMap=['Hero','The Problem','Two Stages','3-Layer Model','KV Cache','Engine Tricks','4 Techniques','Semantic Caching','Semantic in Practice','Prefix Caching','Provider Landscape','Bedrock Deep Dive','Model Support','Pricing','THE 4 CHECKPOINTS','Strategic Placement','Code Example','Common Mistakes','Verification','EU Regional','Rate Limits','Worked Example','Interactive Demo','App Cascade','Jupus Implementation','3 of 4 Layers Live','Code Map','Feature Flag','Telemetry','Pending Work','9 Gotchas','Decision Tree','Q&A'];
+S.forEach((_,i)=>{const d=document.createElement('button');d.className='dt'+(i===0?' on':'');d.dataset.s=i;d.dataset.tip=tipMap[i]||'Slide '+(i+1);N.appendChild(d)});
+const D=document.querySelectorAll('.dt');
+let ci=0,animating=false,stage=0,stageMax=0;
+
+function recomputeStageMax(slideEl){
+  let max=0;
+  slideEl.querySelectorAll('[data-frag]').forEach(f=>{
+    const n=parseInt(f.dataset.frag)||0;
+    if(n>max)max=n;
+  });
+  return max;
+}
+function applyStage(slideEl,s){
+  slideEl.querySelectorAll('[data-frag]').forEach(f=>{
+    const n=parseInt(f.dataset.frag)||0;
+    f.classList.toggle('shown',n<=s);
+  });
+}
+function autoApplyFragments(slideEl){
+  if(slideEl.classList.contains('ts'))return;
+  if(slideEl.hasAttribute('data-no-frag'))return;
+  if(slideEl.querySelector('[data-frag]'))return;
+  const collected=new Set();
+  const elements=[];
+  function add(el){if(el&&!collected.has(el)){collected.add(el);elements.push(el)}}
+  slideEl.querySelectorAll('.cd').forEach(add);
+  slideEl.querySelectorAll('.nfo').forEach(add);
+  slideEl.querySelectorAll('.step').forEach(add);
+  slideEl.querySelectorAll('table.tb').forEach(t=>{
+    const wrap=t.closest('.rv')||t.parentElement;
+    if(wrap&&wrap!==slideEl)add(wrap);
+  });
+  elements.sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);
+  elements.forEach((el,i)=>{
+    el.classList.add('frag');
+    el.dataset.frag=String(i+1);
+  });
+}
+
+function goTo(n,opts){
+  opts=opts||{};
+  if(n===ci||n<0||n>=total||animating)return;
+  animating=true;
+  const prev=S[ci],next=S[n];
+  const dir=n>ci?1:-1;
+  const fragMode=opts.fragMode||'reset';
+  next.style.transition='none';
+  next.style.transform=`translateX(${dir*80}px)`;
+  next.style.opacity='0';
+  next.offsetHeight;
+  next.style.transition='';
+  prev.classList.remove('active');
+  prev.classList.add('prev');
+  prev.style.transform=`translateX(${-dir*80}px)`;
+  prev.style.opacity='0';
+  next.classList.add('active');
+  next.style.transform='translateX(0)';
+  next.style.opacity='1';
+  D.forEach(d=>d.classList.remove('on'));
+  D[n].classList.add('on');
+  document.getElementById('pageNum').innerHTML='<b>'+String(n+1).padStart(2,'0')+'</b>/'+total;
+  setTimeout(()=>{
+    prev.classList.remove('prev');
+    prev.style.transform='';prev.style.opacity='';
+    prev.classList.remove('vis');
+    next.classList.add('vis');
+    ci=n;
+    stageMax=recomputeStageMax(next);
+    stage=(fragMode==='full')?stageMax:0;
+    applyStage(next,stage);
+    animating=false;
+  },300);
+}
+
+D.forEach(d=>d.addEventListener('click',()=>goTo(+d.dataset.s,{fragMode:'full'})));
+
+document.addEventListener('keydown',e=>{
+  if(e.target&&['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName))return;
+  if(['ArrowRight','ArrowDown',' '].includes(e.key)){
+    e.preventDefault();
+    if(stage<stageMax){stage++;applyStage(S[ci],stage)}
+    else{goTo(ci+1)}
+  }else if(['ArrowLeft','ArrowUp'].includes(e.key)){
+    e.preventDefault();
+    if(stage>0){stage--;applyStage(S[ci],stage)}
+    else{goTo(ci-1,{fragMode:'full'})}
+  }
+});
+
+let tx=0,ty=0;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
+    if(dx<0){
+      if(stage<stageMax){stage++;applyStage(S[ci],stage)}
+      else{goTo(ci+1)}
+    }else{
+      if(stage>0){stage--;applyStage(S[ci],stage)}
+      else{goTo(ci-1,{fragMode:'full'})}
+    }
+  }
+},{passive:true});
+
+const h=document.querySelector('.hint');function hh(){h.style.transition='opacity .5s';h.style.opacity='0';setTimeout(()=>h.style.display='none',500)}
+document.addEventListener('keydown',hh,{once:true});document.addEventListener('click',hh,{once:true});document.addEventListener('touchstart',hh,{once:true});
+S[0].classList.add('vis');
+S.forEach(autoApplyFragments);
+stageMax=recomputeStageMax(S[0]);
+applyStage(S[0],0);
+function toggleTheme(){const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('theme',t)}catch(e){}}
+try{const saved=localStorage.getItem('theme');if(saved)document.documentElement.dataset.theme=saved}catch(e){}
+
+/* HERO PARTICLES */
+;(function(){
+const cv=document.getElementById('heroParticles');if(!cv)return;
+const ctx=cv.getContext('2d');
+const mv=document.getElementById('heroMatrix');
+const mctx=mv?mv.getContext('2d'):null;
+let W,H,dpr,particles=[],t=0,raf;
+let mouseX=-999,mouseY=-999;
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect();
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=r.width;H=r.height;
+  cv.width=W*dpr;cv.height=H*dpr;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(mv){mv.width=W*dpr;mv.height=H*dpr;mv.style.width=W+'px';mv.style.height=H+'px';mctx.setTransform(dpr,0,0,dpr,0,0)}
+  initParticles();initMatrix();
+}
+const isDark=()=>document.documentElement.dataset.theme!=='light';
+const PN=80,CONN=140,MOUSE_R=120;
+function initParticles(){
+  particles=[];
+  for(let i=0;i<PN;i++){
+    particles.push({x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*1.8+.4,hue:[190,45,270,160][Math.floor(Math.random()*4)],pulse:Math.random()*Math.PI*2});
+  }
+}
+function drawParticles(){
+  const nodeA=isDark()?.55:.55;const lineA=isDark()?.14:.28;
+  for(let i=0;i<particles.length;i++){
+    for(let j=i+1;j<particles.length;j++){
+      const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if(d<CONN){
+        const op=lineA*(1-d/CONN);
+        ctx.strokeStyle=isDark()?`rgba(0,212,255,${op})`:`rgba(0,80,160,${op})`;
+        ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.stroke();
+      }
+    }
+  }
+  particles.forEach(p=>{
+    const mdx=p.x-mouseX,mdy=p.y-mouseY;
+    const md=Math.sqrt(mdx*mdx+mdy*mdy);
+    if(md<MOUSE_R&&md>0){const f=(1-md/MOUSE_R)*.8;p.vx+=mdx/md*f;p.vy+=mdy/md*f}
+    p.vx*=.995;p.vy*=.995;
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0||p.x>W)p.vx*=-1;
+    if(p.y<0||p.y>H)p.vy*=-1;
+    const pulse=.7+Math.sin(t*.02+p.pulse)*.3;
+    const cols={190:isDark()?'0,212,255':'0,100,180',270:isDark()?'192,132,252':'110,40,220',45:isDark()?'255,193,7':'200,120,0',160:isDark()?'0,128,128':'0,110,110'};
+    const rgb=cols[p.hue];
+    ctx.fillStyle=`rgba(${rgb},${nodeA*pulse})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    if(isDark()){ctx.fillStyle=`rgba(${rgb},${nodeA*.15*pulse})`;ctx.beginPath();ctx.arc(p.x,p.y,p.r*4,0,Math.PI*2);ctx.fill()}
+  });
+}
+let matCols=[],matFont=12;
+function initMatrix(){
+  if(!mctx)return;
+  matFont=Math.max(10,Math.floor(W/80));
+  const cols=Math.ceil(W/matFont);
+  matCols=Array.from({length:cols},()=>({y:Math.random()*H/matFont|0,speed:.3+Math.random()*.7,chars:'KVCACHEPROMPTBEDROCKCLAUDETOKENSANTHROPIC01'}));
+}
+function drawMatrix(){
+  if(!mctx)return;
+  mctx.fillStyle=isDark()?'rgba(10,15,28,.12)':'rgba(248,250,252,.06)';
+  mctx.fillRect(0,0,W,H);
+  mctx.font=matFont+'px Fira Code,monospace';
+  const fg=isDark()?'0,212,255':'0,100,140';
+  matCols.forEach((col,i)=>{
+    const ch=col.chars[Math.floor(Math.random()*col.chars.length)];
+    const bright=Math.random()>.7?.9:.4;
+    mctx.fillStyle=`rgba(${fg},${bright})`;
+    mctx.fillText(ch,i*matFont,col.y*matFont);
+    col.y+=col.speed;
+    if(col.y*matFont>H&&Math.random()>.97)col.y=0;
+  });
+}
+function frame(){t++;ctx.clearRect(0,0,W,H);drawParticles();drawMatrix();raf=requestAnimationFrame(frame)}
+const hero=document.getElementById('s1');
+hero.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top});
+hero.addEventListener('mouseleave',()=>{mouseX=-999;mouseY=-999});
+function checkHeroVis(){if(hero.classList.contains('active')){if(!raf){resize();frame()}}else{if(raf){cancelAnimationFrame(raf);raf=null}}}
+new MutationObserver(checkHeroVis).observe(hero,{attributes:true,attributeFilter:['class']});
+checkHeroVis();
+window.addEventListener('resize',()=>{if(raf)resize()});
+})();
+
+/* ====== INTERACTIVE COST CALCULATOR DEMO ====== */
+;(function(){
+  const btn = document.getElementById('demoBtn');
+  if (!btn) return;
+  const reset = document.getElementById('demoReset');
+  const log = document.getElementById('demoLog');
+  const queryInput = document.getElementById('demoQ');
+
+  // Opus 4.6 pricing in $/M tokens
+  const PRICE = {
+    input: 5.00,
+    cache_write_5m: 6.25,
+    cache_read: 0.50,
+    output: 25.00
+  };
+  const PREFIX_TOKENS = 15700;
+  const OUTPUT_TOKENS = 250;
+
+  const STATE = {
+    requests: 0,
+    hits: 0,
+    totalCost: 0,
+    totalSaved: 0,
+    cacheActive: false,
+    cacheExpiresAt: 0
+  };
+
+  function tokensFromQuery(q) {
+    if (!q) return 12;
+    return Math.max(8, Math.ceil(q.length / 3.5));
+  }
+
+  function fmt(n) { return '$' + n.toFixed(5); }
+  function fmtShort(n) { return '$' + n.toFixed(4); }
+
+  function updateMeters() {
+    document.getElementById('m1').textContent = STATE.requests;
+    document.getElementById('m2').textContent = fmtShort(STATE.totalCost);
+    document.getElementById('m3').textContent = fmtShort(STATE.totalSaved);
+    const rate = STATE.requests > 0 ? Math.round(STATE.hits / STATE.requests * 100) : 0;
+    document.getElementById('m4').textContent = rate + '%';
+  }
+
+  function appendBlock(html) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = html;
+    log.insertBefore(wrap.firstElementChild, log.firstChild);
+    log.scrollTop = 0;
+  }
+
+  btn.addEventListener('click', () => {
+    const q = (queryInput.value || 'Welche Rechtsgebiete unterstützt unser KI-Assistent?').trim();
+    const queryTokens = tokensFromQuery(q);
+    STATE.requests++;
+
+    // Cost without any cache (full input pricing)
+    const costNoCache = ((PREFIX_TOKENS + queryTokens) * PRICE.input + OUTPUT_TOKENS * PRICE.output) / 1e6;
+
+    let costWithCache, ttft, isHit, breakdown;
+    const now = Date.now();
+    const cacheValid = STATE.cacheActive && now < STATE.cacheExpiresAt;
+
+    if (!cacheValid) {
+      // Cache MISS - first request or expired
+      isHit = false;
+      const writeCost = PREFIX_TOKENS * PRICE.cache_write_5m / 1e6;
+      const queryCost = queryTokens * PRICE.input / 1e6;
+      const outputCost = OUTPUT_TOKENS * PRICE.output / 1e6;
+      costWithCache = writeCost + queryCost + outputCost;
+      ttft = 4.2;
+      STATE.cacheActive = true;
+      STATE.cacheExpiresAt = now + 5 * 60 * 1000; // 5min TTL
+      breakdown = {
+        label: 'Cache WRITE',
+        rate: '$6.25/M',
+        cost: writeCost,
+        queryCost: queryCost,
+        outputCost: outputCost
+      };
+    } else {
+      // Cache HIT
+      isHit = true;
+      STATE.hits++;
+      const readCost = PREFIX_TOKENS * PRICE.cache_read / 1e6;
+      const queryCost = queryTokens * PRICE.input / 1e6;
+      const outputCost = OUTPUT_TOKENS * PRICE.output / 1e6;
+      costWithCache = readCost + queryCost + outputCost;
+      ttft = 0.8;
+      breakdown = {
+        label: 'Cache READ',
+        rate: '$0.50/M',
+        cost: readCost,
+        queryCost: queryCost,
+        outputCost: outputCost
+      };
+    }
+
+    STATE.totalCost += costWithCache;
+    STATE.totalSaved += (costNoCache - costWithCache);
+
+    const saved = costNoCache - costWithCache;
+    const savedPct = ((1 - costWithCache / costNoCache) * 100).toFixed(1);
+    const qDisplay = q.length > 55 ? q.slice(0, 55) + '…' : q;
+
+    const symb = isHit ? '✓' : '⊘';
+    const headerText = isHit ? 'CACHE HIT' : 'CACHE MISS';
+    const cls = isHit ? 'hit' : 'miss';
+
+    const html = `
+<div class="req-block ${cls}">
+<div class="req-header">${symb} ${headerText} · Request #${STATE.requests}</div><span class="dim">→ Query: "${qDisplay}" (${queryTokens} tokens)
+→ Cached prefix: 15,700 tokens (tools 3,200 + system 12,500)</span>
+<span class="${isHit ? 'ok' : 'warn'}">→ ${breakdown.label}: 15,700 × ${breakdown.rate} = ${fmt(breakdown.cost)}</span><span class="dim">→ Query input:  ${queryTokens.toString().padStart(6)} × $5.00/M = ${fmt(breakdown.queryCost)}
+→ Output:       ${OUTPUT_TOKENS.toString().padStart(6)} × $25.00/M = ${fmt(breakdown.outputCost)}
+─────────────────────────────────────</span>
+<span class="ok">  TOTAL:   ${fmt(costWithCache)}    TTFT: ${ttft}s</span>
+<span class="dim">  No-cache: ${fmt(costNoCache)}</span>
+${saved > 0
+  ? `<span class="ok">  SAVED:   ${fmt(saved)}  (${savedPct}%)</span>`
+  : `<span class="warn">  PREMIUM: ${fmt(-saved)}  (cache write surcharge — pays off on next hit)</span>`}
+</div>`;
+
+    appendBlock(html);
+    updateMeters();
+  });
+
+  reset.addEventListener('click', () => {
+    STATE.requests = 0;
+    STATE.hits = 0;
+    STATE.totalCost = 0;
+    STATE.totalSaved = 0;
+    STATE.cacheActive = false;
+    STATE.cacheExpiresAt = 0;
+    log.innerHTML = '<span class="warn">⟳ Cache reset.</span> Next request will be a MISS (cache write).';
+    updateMeters();
+  });
+})();
+;(function(){
+const cv=document.getElementById('globalWave');
+const ctx=cv.getContext('2d');
+let w=0,h=0,gt=0;
+function isDark(){return document.documentElement.dataset.theme!=='light'}
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  w=window.innerWidth;
+  h=Math.min(window.innerHeight*.08, 60);
+  cv.width=w*dpr;cv.height=h*dpr;
+  cv.style.width=w+'px';cv.style.height=h+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function drawWave(){
+  ctx.clearRect(0,0,w,h);
+  const dk=isDark();
+  const wy=h*.45,amp=h*.38;
+  const waves=[
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',a:dk?.12:.22,dash:[],lw:1},
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',a:dk?.18:.38,dash:[2,8],lw:1},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',a:dk?.08:.16,dash:[],lw:.8},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',a:dk?.14:.3,dash:[3,12],lw:.8},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',a:dk?.06:.12,dash:[],lw:.7},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',a:dk?.1:.22,dash:[1,6],lw:.7},
+  ];
+  function yw(x,wv){return wy+Math.sin(x*wv.f+gt*wv.s)*amp*Math.sin(x/w*Math.PI)}
+  waves.forEach(wv=>{
+    ctx.setLineDash(wv.dash);
+    ctx.beginPath();ctx.moveTo(0,wy);
+    for(let x=0;x<=w;x+=2){ctx.lineTo(x,yw(x,wv))}
+    ctx.strokeStyle=`rgba(${wv.rgb},${wv.a})`;ctx.lineWidth=wv.lw;ctx.stroke();
+    if(wv.dash.length===0){ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();ctx.fillStyle=`rgba(${wv.rgb},${wv.a*.15})`;ctx.fill()}
+  });
+  ctx.setLineDash([]);
+  const pulseWaves=[
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',speed:.003,width:120},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',speed:.002,width:100},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',speed:.004,width:80},
+  ];
+  pulseWaves.forEach((pw,i)=>{
+    const px=((gt*pw.speed+i*.33)%1.4-.2)*w;
+    const grad=ctx.createRadialGradient(px,yw(px,pw),0,px,yw(px,pw),pw.width);
+    const pa=dk?.4:.5;
+    grad.addColorStop(0,`rgba(${pw.rgb},${pa})`);grad.addColorStop(.5,`rgba(${pw.rgb},${pa*.3})`);grad.addColorStop(1,`rgba(${pw.rgb},0)`);
+    ctx.beginPath();
+    const start=Math.max(0,px-pw.width),end=Math.min(w,px+pw.width);
+    ctx.moveTo(start,yw(start,pw));
+    for(let x=start;x<=end;x+=2){ctx.lineTo(x,yw(x,pw))}
+    ctx.strokeStyle=grad;ctx.lineWidth=2.5;ctx.stroke();
+  });
+}
+function updateVisibility(){const heroActive=document.getElementById('s1').classList.contains('active');cv.classList.toggle('hide',heroActive)}
+new MutationObserver(updateVisibility).observe(document.getElementById('s1'),{attributes:true,attributeFilter:['class']});
+updateVisibility();
+function frame(){gt++;drawWave();requestAnimationFrame(frame)}
+resize();frame();
+window.addEventListener('resize',resize);
+})();
+</script>
+</body>
+</html>

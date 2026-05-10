@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Claude Code Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css?v=gm6&amp;_=32" />
+</head>
+<body>
+  <div id="bg-fill" aria-hidden="true"></div>
+  <canvas id="neuralBg" aria-hidden="true"></canvas>
+  <div id="staticGrid"></div>
+  <div id="staticScan"></div>
+  <div id="root"></div>
+
+  <script>
+    // Neural network background — adapted from yuriodev's CanvasBackground.tsx
+    (function () {
+      const canvas = document.getElementById('neuralBg');
+      const ctx = canvas.getContext('2d');
+      const mouse = { x: undefined, y: undefined };
+      const interactionRadius = 140;
+      const repulsionStrength = 0.65;
+      const dampingFactor = 0.985;
+      let nodes = [];
+      const numNodes = 64;
+      let raf;
+
+      function bounds(){
+        const cs = getComputedStyle(document.documentElement);
+        const sbw = parseFloat(cs.getPropertyValue('--sb-w')) || 0;
+        const topbar = 52;
+        return { w: Math.max(1, window.innerWidth - sbw), h: Math.max(1, window.innerHeight - topbar), left: sbw, top: topbar };
+      }
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const b = bounds();
+        canvas.width = Math.max(1, b.w * dpr);
+        canvas.height = Math.max(1, b.h * dpr);
+        canvas.style.width = b.w + 'px';
+        canvas.style.height = b.h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      function seed() {
+        nodes = [];
+        const b = bounds(); const w = b.w, h = b.h;
+        for (let i = 0; i < numNodes; i++) {
+          nodes.push({
+            x: Math.random() * w, y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.7,
+            vy: (Math.random() - 0.5) * 0.7,
+            radius: Math.random() * 2 + 1.2,
+            glow: Math.random() * 0.5 + 0.5,
+            kind: Math.random() > 0.7 ? 'gold' : (Math.random() > 0.5 ? 'purple' : 'cyan'),
+          });
+        }
+      }
+      window.addEventListener('resize', () => { resize(); });
+      window.addEventListener('mousemove', e => { const b = bounds(); mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top; });
+      window.addEventListener('mouseout', () => { mouse.x = undefined; mouse.y = undefined; });
+
+      function hexToRgba(hex, a) {
+        hex = (hex || '').trim().replace('#', '');
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const n = parseInt(hex, 16);
+        if (Number.isNaN(n)) return `rgba(6,182,212,${a})`;
+        return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+      }
+
+      function tick() {
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        const bgFade = isDark ? 0.18 : 0.16;
+        const b = bounds(); const w = b.w, h = b.h;
+        ctx.fillStyle = isDark ? `rgba(7,11,20,${bgFade})` : `rgba(255,247,237,${bgFade})`;
+        ctx.fillRect(0, 0, w, h);
+
+        const cs = getComputedStyle(document.body);
+        const cyan = cs.getPropertyValue('--cyan').trim() || '#06b6d4';
+        const gold = cs.getPropertyValue('--gold').trim() || '#FFC107';
+        const purple = cs.getPropertyValue('--purple').trim() || '#a78bfa';
+        const colors = { cyan, gold, purple };
+
+        nodes.forEach(n => {
+          if (mouse.x !== undefined) {
+            const dx = n.x - mouse.x, dy = n.y - mouse.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < interactionRadius && d > 0.1) {
+              const fx = dx / d, fy = dy / d;
+              const f = (interactionRadius - d) / interactionRadius * repulsionStrength;
+              n.vx += fx * f; n.vy += fy * f;
+            }
+          }
+          n.x += n.vx; n.y += n.vy;
+          n.vx *= dampingFactor; n.vy *= dampingFactor;
+          if (Math.abs(n.vx) < 0.04 && Math.abs(n.vy) < 0.04) {
+            n.vx += (Math.random() - 0.5) * 0.1;
+            n.vy += (Math.random() - 0.5) * 0.1;
+          }
+          if (n.x - n.radius < 0) { n.x = n.radius; n.vx *= -0.8; }
+          else if (n.x + n.radius > w) { n.x = w - n.radius; n.vx *= -0.8; }
+          if (n.y - n.radius < 0) { n.y = n.radius; n.vy *= -0.8; }
+          else if (n.y + n.radius > h) { n.y = h - n.radius; n.vy *= -0.8; }
+
+          const c = colors[n.kind] || cyan;
+          const a = n.glow * (isDark ? 0.85 : 0.55);
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+          ctx.fillStyle = hexToRgba(c, a);
+          ctx.shadowBlur = isDark ? 14 : 6;
+          ctx.shadowColor = c;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        });
+
+        const maxPer = 4;
+        for (let i = 0; i < nodes.length; i++) {
+          let count = 0;
+          for (let j = i + 1; j < nodes.length; j++) {
+            if (count >= maxPer) break;
+            const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 180) {
+              const opacity = (isDark ? 0.32 : 0.22) * (180 - d) / 180;
+              const c = d < 90 ? gold : cyan;
+              ctx.beginPath();
+              ctx.moveTo(nodes[i].x, nodes[i].y);
+              ctx.lineTo(nodes[j].x, nodes[j].y);
+              ctx.strokeStyle = hexToRgba(c, opacity);
+              ctx.lineWidth = 0.8;
+              ctx.stroke();
+              count++;
+            }
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      }
+
+      window.__neuralBg = {
+        start() { if (!raf) { resize(); seed(); tick(); } },
+        stop() { cancelAnimationFrame(raf); raf = null; ctx.clearRect(0, 0, canvas.width, canvas.height); },
+      };
+      window.__neuralBg.start();
+    })();
+  </script>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="data.js"></script>
+
+  <!-- Tweak defaults -->
+  <script>
+    window.TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "theme": "light",
+      "density": "cozy",
+      "showStaticGrid": false,
+      "terminalSpeed": "fast",
+      "accentTone": "cyan",
+      "reposLayout": "board"
+    }/*EDITMODE-END*/;
+  </script>
+
+  <script type="text/babel" src="icons.jsx?v=10"></script>
+  <script type="text/babel" src="components/Common.jsx?v=12"></script>
+  <script type="text/babel" src="components/Sidebar.jsx?v=11"></script>
+  <script type="text/babel" src="components/LiveTerminal.jsx?v=11"></script>
+  <script type="text/babel" src="components/Repos.jsx?v=10"></script>
+  <script type="text/babel" src="components/Dashboard.jsx?v=11"></script>
+  <script type="text/babel" src="components/RepoDetail.jsx?v=11"></script>
+  <script type="text/babel" src="components/Pages.jsx?v=14"></script>
+  <script type="text/babel" src="components/Misc.jsx?v=14"></script>
+  <script type="text/babel" src="components/Graph.jsx?v=12"></script>
+  <script type="text/babel" src="components/AgentDetail.jsx?v=10"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // ============== Live event stream (deterministic but feels live) ==============
+    function useLiveStream() {
+      const seed = window.MOCK_DATA.LIVE_EVENTS_SEED;
+      const future = window.MOCK_DATA.LIVE_EVENTS_FUTURE;
+      const [events, setEvents] = useState(() => seed.map(e => ({ ...e, t: e.t })));
+      const [tick, setTick] = useState(0);
+      const speedMap = { slow: 5500, normal: 2400, fast: 900 };
+
+      useEffect(() => {
+        const speed = window.__tweakSpeed || 'normal';
+        const interval = speedMap[speed] || 2400;
+        const id = setInterval(() => setTick(t => t + 1), interval);
+        return () => clearInterval(id);
+      }, []);
+
+      useEffect(() => {
+        if (tick === 0) return;
+        const idx = (tick - 1) % future.length;
+        const e = future[idx];
+        setEvents(prev => {
+          const next = [...prev, { ...e, t: prev.length > 0 ? prev[prev.length - 1].t + (e.dt || 3) : 0 }];
+          return next.slice(-60);
+        });
+      }, [tick]);
+
+      return events;
+    }
+
+    // ============== App ==============
+    function App() {
+      const [tweaks, setTweak] = useTweaks(window.TWEAK_DEFAULTS);
+      const [route, setRoute] = useState({ page: 'dashboard' });
+      const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+      const liveEvents = useLiveStream();
+
+      // Apply theme to <html>
+      useEffect(() => {
+        document.documentElement.dataset.theme = tweaks.theme;
+        window.__tweakSpeed = tweaks.terminalSpeed;
+        document.getElementById('staticGrid').style.display = tweaks.showStaticGrid ? '' : 'none';
+        document.getElementById('staticScan').style.display = tweaks.showStaticGrid ? '' : 'none';
+        document.body.style.fontSize = tweaks.density === 'compact' ? '13px' : tweaks.density === 'cozy' ? '15px' : '14px';
+
+        // Force body + html background-color directly with !important — defeats any host stylesheet override.
+        const bgVal = tweaks.theme === 'light' ? '#fff7ed' : '#070b14';
+        document.documentElement.style.setProperty('background-color', bgVal, 'important');
+        document.body.style.setProperty('background-color', bgVal, 'important');
+
+        // Accent-tone tweak — only override --cyan when explicitly non-default AND in dark mode.
+        // Always clear first so toggling theme can never leak the dark cyan into light mode.
+        document.documentElement.style.removeProperty('--cyan');
+        if (tweaks.theme === 'dark' && tweaks.accentTone && tweaks.accentTone !== 'cyan') {
+          const tones = {
+            teal: '#06b6d4',
+            violet: '#a78bfa',
+            rose: '#f472b6',
+            amber: '#fbbf24',
+          };
+          if (tones[tweaks.accentTone]) {
+            document.documentElement.style.setProperty('--cyan', tones[tweaks.accentTone]);
+          }
+        }
+      }, [tweaks.theme, tweaks.density, tweaks.showStaticGrid, tweaks.terminalSpeed, tweaks.accentTone]);
+
+      const repos = window.MOCK_DATA.REPOS;
+      const allRepos = [...repos, window.MOCK_DATA.GLOBAL];
+      const sessions = window.MOCK_DATA.SESSIONS;
+      const allLive = repos.filter(r => r.isActive).length;
+
+      const openRepo = (id) => setRoute({ page: 'repo', repoId: id });
+      const openAgent = (name, kind) => setRoute({ page: 'agent', name, kind: kind || 'agent' });
+
+      const crumbs = useMemo(() => {
+        const map = {
+          dashboard: ['Workspace', 'Dashboard'],
+          repos: ['Workspace', 'Repositories'],
+          live: ['Workspace', 'Live Sessions'],
+          sessions: ['Workspace', 'Session Log'],
+          agents: ['Workspace', 'Agents & Skills'],
+          graph: ['Workspace', 'Delegation Graph'],
+          heatmap: ['Workspace', 'Activity Heatmap'],
+          cost: ['Workspace', 'Cost & Tokens'],
+          permissions: ['Workspace', 'Permissions Audit'],
+          plugins: ['Workspace', 'Plugins & MCP'],
+          diff: ['Workspace', 'Recent Diffs'],
+        };
+        if (route.page === 'repo') {
+          const r = allRepos.find(r => r.id === route.repoId);
+          return ['Workspace', 'Repositories', r?.name || route.repoId];
+        }
+        if (route.page === 'agent') {
+          return ['Workspace', 'Agents & Skills', route.name];
+        }
+        return map[route.page] || ['Workspace'];
+      }, [route]);
+
+      const renderPage = () => {
+        switch (route.page) {
+          case 'dashboard':
+            return <Dashboard repos={repos} sessions={sessions} liveEvents={liveEvents} onOpen={openRepo} />;
+          case 'repos':
+            return <ReposView repos={repos} onOpen={openRepo} layout={tweaks.reposLayout} />;
+          case 'live':
+            return <LivePage liveEvents={liveEvents} repos={repos} />;
+          case 'sessions':
+            return <SessionsPage sessions={sessions} repos={repos} />;
+          case 'agents':
+            return <AgentsPage repos={allRepos} onOpen={openAgent} />;
+          case 'graph':
+            return <Graph repos={repos} onOpen={openAgent} />;
+          case 'heatmap':
+            return <HeatmapPage repos={repos} />;
+          case 'cost':
+            return <CostPage repos={repos} />;
+          case 'permissions':
+            return <PermissionsPanel scope="all repos" />;
+          case 'plugins':
+            return <PluginsPanel repo={{ plugins: ['linear', 'slack', 'sentry', 'figma', 'greptile', 'pr-review-toolkit'], mcp: ['filesystem', 'sequential-thinking', 'linear', 'github', 'playwright', 'figma', 'code-review-graph'] }} />;
+          case 'diff':
+            return <DiffPage />;
+          case 'repo': {
+            const r = allRepos.find(r => r.id === route.repoId);
+            if (!r) return <div className="empty">Repo not found</div>;
+            return <RepoDetail repo={r} sessions={sessions} liveEvents={liveEvents} onOpen={openAgent} />;
+          }
+          case 'agent':
+            return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} onBack={() => setRoute({ page: 'agents' })} />;
+          default:
+            return <div>404</div>;
+        }
+      };
+
+      return (
+        <>
+          <Sidebar route={route} setRoute={setRoute} repos={repos} allLive={allLive} collapsed={sidebarCollapsed} setCollapsed={setSidebarCollapsed} />
+          <main className="main">
+            <Topbar
+              crumbs={crumbs}
+              theme={tweaks.theme}
+              setTheme={(t) => setTweak('theme', t)}
+              allLive={allLive}
+              onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
+            />
+            <div className="content" key={JSON.stringify(route)}>
+              {renderPage()}
+            </div>
+          </main>
+
+          <TweaksPanel>
+            <TweakSection title="Theme">
+              <TweakRadio
+                label="Mode"
+                value={tweaks.theme}
+                onChange={v => setTweak('theme', v)}
+                options={[{ value: 'dark', label: 'Dark' }, { value: 'light', label: 'Light' }]}
+              />
+              <TweakSelect
+                label="Accent tone (dark)"
+                value={tweaks.accentTone}
+                onChange={v => setTweak('accentTone', v)}
+                options={[
+                  { value: 'cyan', label: 'Cyan (default)' },
+                  { value: 'teal', label: 'Teal' },
+                  { value: 'violet', label: 'Violet' },
+                  { value: 'rose', label: 'Rose' },
+                  { value: 'amber', label: 'Amber' },
+                ]}
+              />
+            </TweakSection>
+            <TweakSection title="Layout">
+              <TweakRadio
+                label="Density"
+                value={tweaks.density}
+                onChange={v => setTweak('density', v)}
+                options={[
+                  { value: 'compact', label: 'Compact' },
+                  { value: 'comfy', label: 'Comfy' },
+                  { value: 'cozy', label: 'Cozy' },
+                ]}
+              />
+              <TweakRadio
+                label="Repos page"
+                value={tweaks.reposLayout}
+                onChange={v => setTweak('reposLayout', v)}
+                options={[
+                  { value: 'grid', label: 'Grid' },
+                  { value: 'list', label: 'List' },
+                  { value: 'board', label: 'Board' },
+                ]}
+              />
+            </TweakSection>
+            <TweakSection title="Atmosphere">
+              <TweakToggle label="Static grid + scanlines" value={tweaks.showStaticGrid} onChange={v => setTweak('showStaticGrid', v)} />
+              <TweakRadio
+                label="Live feed speed"
+                value={tweaks.terminalSpeed}
+                onChange={v => setTweak('terminalSpeed', v)}
+                options={[
+                  { value: 'slow', label: 'Slow' },
+                  { value: 'normal', label: 'Normal' },
+                  { value: 'fast', label: 'Fast' },
+                ]}
+              />
+            </TweakSection>
+          </TweaksPanel>
+        </>
+      );
+    }
+
+    // Wrapper to also expose layout prop
+    function ReposView({ repos, onOpen, layout }) {
+      const [local, setLocal] = useState(layout || 'grid');
+      useEffect(() => setLocal(layout || 'grid'), [layout]);
+      return (
+        <>
+          <PageHead
+            title="Repositories"
+            sub={`${repos.length} tracked codebases. Each has its own .claude folder with agents, skills, commands, and rules. Click any to drill in.`}
+            actions={<ViewToggle
+              value={local}
+              onChange={setLocal}
+              options={[
+                { id: 'grid', label: 'Grid', icon: 'grid3' },
+                { id: 'list', label: 'List', icon: 'list' },
+                { id: 'board', label: 'Board', icon: 'columns' },
+              ]}
+            />}
+          />
+          <ReposPage repos={repos} onOpen={onOpen} layout={local} />
+        </>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phonebot English Support — Technical Kickoff</title>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   YURIODEV DESIGN SYSTEM — DUAL THEME (DARK / LIGHT)
+   ============================================================ */
+
+/* ====== DARK THEME (DEFAULT) ====== */
+[data-theme="dark"]{
+  --bg:#0a0f1c;--bg2:rgba(10,15,28,.95);--card:rgba(15,23,42,.92);
+  --cyan:#00d4ff;--gold:#FFC107;--teal:#008080;--purple:#c084fc;
+  --green:#00ff88;--rose:#f472b6;--orange:#fb923c;--red:#ef4444;
+  --txt:#cbd5e1;--muted:#6b7280;--dim:rgba(0,212,255,.15);
+  --gc:rgba(0,212,255,.5);--gg:rgba(255,193,7,.5);--gt:rgba(0,128,128,.4);
+  --brd:rgba(0,212,255,.2);--brd2:rgba(0,212,255,.08);
+  --code-bg:rgba(0,0,0,.4);--hover:rgba(0,212,255,.04);
+  --scan:rgba(0,212,255,.012);--grid:rgba(0,212,255,.03);
+  --shadow:rgba(0,212,255,.06);--inv:#0a0f1c;
+}
+
+/* ====== LIGHT THEME ====== */
+[data-theme="light"]{
+  --bg:#f8fafc;--bg2:#f1f5f9;--card:#ffffff;
+  --cyan:#0284c7;--gold:#b45309;--teal:#0f766e;--purple:#7c3aed;
+  --green:#059669;--rose:#db2777;--orange:#c2410c;--red:#dc2626;
+  --txt:#1e293b;--muted:#64748b;--dim:rgba(2,132,199,.08);
+  --gc:rgba(2,132,199,.25);--gg:rgba(180,83,9,.25);--gt:rgba(15,118,110,.2);
+  --brd:rgba(2,132,199,.2);--brd2:rgba(2,132,199,.06);
+  --code-bg:rgba(0,0,0,.04);--hover:rgba(2,132,199,.04);
+  --scan:transparent;--grid:rgba(2,132,199,.08);
+  --shadow:rgba(0,0,0,.06);--inv:#fff;
+  --nav-bg:rgba(237,242,255,.92);--nav-brd:rgba(124,58,237,.22);--nav-shadow:0 2px 14px rgba(2,132,199,.18);
+  --dot-off:rgba(2,132,199,.3);--dot-on:#7c3aed;--dot-glow:rgba(124,58,237,.45);--dot-hover:#0284c7;
+  --tip-fg:#1e293b;--tip-bg:rgba(245,243,255,.98);--tip-brd:rgba(124,58,237,.22);
+}
+
+:root{
+  --font:'Fira Code',monospace;
+  --ts:clamp(1.5rem,4.8vw,3.2rem);--h2:clamp(1.6rem,4.2vw,2.8rem);
+  --h3:clamp(.9rem,2vw,1.25rem);--bs:clamp(.82rem,1.5vw,1.08rem);
+  --ss:clamp(.65rem,1.05vw,.84rem);--ms:clamp(.58rem,.9vw,.72rem);
+  --pad:clamp(1rem,3.5vw,3.5rem);--gap:clamp(.4rem,1.3vw,1rem);
+  --ease:cubic-bezier(.16,1,.3,1);
+  --nav-bg:rgba(10,10,20,.92);--nav-brd:rgba(0,212,255,.15);--nav-shadow:0 4px 20px rgba(0,0,0,.3);
+  --dot-off:rgba(148,163,184,.45);--dot-on:#00d4ff;--dot-glow:rgba(0,212,255,.5);--dot-hover:#e2e8f0;
+  --tip-fg:#e2e8f0;--tip-bg:rgba(10,10,20,.95);--tip-brd:rgba(0,212,255,.2);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;font-family:var(--font);background:var(--bg);color:var(--txt);-webkit-font-smoothing:antialiased;transition:background .4s,color .4s}
+
+/* ====== SLIDES ====== */
+.deck{position:relative;width:100vw;height:100vh;height:100dvh;overflow:hidden}
+.S{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--bg);transition:transform .28s var(--ease),opacity .28s ease;opacity:0;transform:translateX(80px);pointer-events:none;will-change:transform,opacity;overflow:hidden}
+.S.active{opacity:1;transform:translateX(0);pointer-events:auto;z-index:2}
+.S.prev{opacity:0;transform:translateX(-80px);z-index:1}
+.SC{flex:1;display:flex;flex-direction:column;justify-content:center;min-height:100vh;min-height:100dvh;overflow:hidden;padding:var(--pad);padding-bottom:calc(var(--pad) + 4vh);position:relative;z-index:2}
+
+/* ====== BG EFFECTS ====== */
+.gbg::before{display:none}
+.scan::after{display:none}
+#staticGrid{position:fixed;inset:0;z-index:3;pointer-events:none;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px}
+#staticScan{position:fixed;inset:0;z-index:3;pointer-events:none;background:repeating-linear-gradient(0deg,transparent,transparent 2px,var(--scan) 2px,var(--scan) 4px)}
+
+/* ====== GLOBAL WAVE (slides 2+) ====== */
+/* ====== GLOBAL WAVE (fixed, persistent) ====== */
+.wave-cv{position:fixed;bottom:0;left:0;width:100%;height:min(8vh,60px);z-index:50;pointer-events:none;opacity:.75;transition:opacity .8s ease}
+[data-theme="light"] .wave-cv{opacity:1}
+.wave-cv.hide{opacity:0}
+
+/* ====== HERO CANVAS BG (slide 1) ====== */
+.hero{position:relative}
+.hero-canvas{position:absolute;inset:0;z-index:0;pointer-events:none}
+.hero .SC{position:relative;z-index:2}
+
+/* Particle + Matrix canvases */
+#heroParticles,#heroMatrix{position:absolute;inset:0;width:100%;height:100%}
+#heroMatrix{opacity:.06}
+[data-theme="light"] #heroMatrix{opacity:.035}
+
+
+/* Glitch title */
+.glitch{position:relative;display:inline-block}
+.glitch::before,.glitch::after{content:attr(data-text);position:absolute;top:0;left:0;width:100%;overflow:hidden;pointer-events:none}
+.glitch::before{color:var(--cyan);z-index:-1;animation:g1 4s infinite step-end;clip-path:inset(0 0 75% 0)}
+.glitch::after{color:var(--purple);z-index:-2;animation:g2 3.5s infinite step-end;clip-path:inset(75% 0 0 0)}
+[data-theme="light"] .glitch::before{color:var(--teal)}
+[data-theme="light"] .glitch::after{color:#7c3aed}
+@keyframes g1{0%,90%{transform:none}91%{transform:translate(-3px,1px) skewX(-1deg)}92%{transform:translate(3px,-1px) skewX(1deg)}93%{transform:translate(-1px,2px)}94%,100%{transform:none}}
+@keyframes g2{0%,86%{transform:none}87%{transform:translate(2px,1px) skewX(1deg)}88%{transform:translate(-3px,-1px) skewX(-2deg)}89%{transform:translate(1px,-2px)}90%,100%{transform:none}}
+
+/* Typing cursor */
+.type-cursor::after{content:'\25AE';animation:tcBlink .8s step-end infinite;color:var(--gold);font-weight:300;margin-left:2px}
+@keyframes tcBlink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* Waveform glow line */
+.hero .bar{height:0;overflow:visible}
+.hero .bar::after{content:'';position:absolute;bottom:0;left:0;right:0;height:1px;background:var(--cyan);box-shadow:0 0 8px var(--cyan),0 0 20px rgba(0,212,255,.4);opacity:.3;animation:barGlow 3s ease-in-out infinite}
+[data-theme="light"] .hero .bar::after{background:var(--teal);box-shadow:0 0 8px var(--teal),0 0 20px rgba(15,118,110,.3)}
+@keyframes barGlow{0%,100%{opacity:.2}50%{opacity:.5}}
+
+
+/* ====== BARS ====== */
+.bar{position:absolute;top:0;left:0;right:0;height:2px;z-index:10}
+.bar-c{background:linear-gradient(90deg,var(--cyan),var(--teal))}
+.bar-g{background:linear-gradient(90deg,var(--gold),var(--orange))}
+.bar-p{background:linear-gradient(90deg,var(--purple),var(--cyan))}
+.bar-t{background:linear-gradient(90deg,var(--teal),var(--green))}
+.bar-r{background:linear-gradient(90deg,var(--red),var(--orange))}
+
+/* ====== SLIDE NUM ====== */
+.sn{position:fixed;top:clamp(.4rem,1.2vw,.9rem);right:clamp(.5rem,2vw,1.5rem);font-size:var(--ss);color:var(--muted);z-index:200;opacity:1;transform:none}
+.sn b{color:var(--cyan)}
+
+/* ====== TYPOGRAPHY ====== */
+h1{font-size:var(--ts);font-weight:700;line-height:1.1;letter-spacing:-.03em;color:var(--cyan);text-shadow:0 0 25px var(--gc),0 0 8px var(--gc)}
+h2{font-size:var(--h2);font-weight:600;line-height:1.15;letter-spacing:-.02em;color:var(--gold);text-shadow:0 0 12px var(--gg)}
+h3{font-size:var(--h3);font-weight:600;line-height:1.3;color:var(--txt)}
+p,li{font-size:var(--bs);line-height:1.55}
+.mono{font-size:var(--ms)}
+.lbl{font-size:var(--ss);text-transform:uppercase;letter-spacing:.12em;font-weight:600;display:flex;align-items:center;gap:.4em}
+.lbl svg{width:1em;height:1em;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.lc{color:var(--cyan)}.lg{color:var(--gold)}.lt{color:var(--teal)}.lp{color:var(--purple)}.lo{color:var(--orange)}.lr{color:var(--red)}
+.tc{color:var(--cyan)}.tg{color:var(--gold)}.tt{color:var(--teal)}.tp{color:var(--purple)}.to{color:var(--orange)}.tr{color:var(--red)}.tgr{color:var(--green)}.tro{color:var(--rose)}
+
+/* ====== ANIMATION ====== */
+.rv{opacity:0;transform:translateY(16px);transition:opacity .3s var(--ease),transform .3s var(--ease)}
+.vis .rv{opacity:1;transform:translateY(0)}
+.d1{transition-delay:.025s}.d2{transition-delay:.06s}.d3{transition-delay:.1s}.d4{transition-delay:.15s}.d5{transition-delay:.21s}.d6{transition-delay:.27s}.d7{transition-delay:.33s}
+
+/* ====== CARDS ====== */
+.cd{background:var(--card);border:1px solid var(--brd);border-radius:8px;padding:clamp(.5rem,1.2vw,1rem);backdrop-filter:blur(8px);box-shadow:0 4px 14px var(--shadow);transition:all .3s}
+.cd:hover{border-color:var(--cyan);box-shadow:0 6px 20px var(--shadow);transform:translateY(-1px)}
+.cg{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:var(--gap)}
+
+/* ====== ICON BOX ====== */
+.ib{display:inline-flex;align-items:center;justify-content:center;width:clamp(1.5rem,2.8vw,2rem);height:clamp(1.5rem,2.8vw,2rem);border-radius:7px;flex-shrink:0;margin-bottom:clamp(.15rem,.4vw,.3rem)}
+.ib svg{width:55%;height:55%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.ib-c{background:rgba(0,212,255,.1);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+.ib-g{background:rgba(255,193,7,.08);color:var(--gold);border:1px solid rgba(255,193,7,.18)}
+.ib-t{background:rgba(0,128,128,.08);color:var(--teal);border:1px solid rgba(0,128,128,.18)}
+.ib-p{background:rgba(192,132,252,.08);color:var(--purple);border:1px solid rgba(192,132,252,.18)}
+.ib-o{background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)}
+.ib-r{background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.18)}
+.ib-ro{background:rgba(244,114,182,.08);color:var(--rose);border:1px solid rgba(244,114,182,.18)}
+.ib-gr{background:rgba(0,255,136,.08);color:var(--green);border:1px solid rgba(0,255,136,.18)}
+[data-theme="light"] .ib-c{background:rgba(2,132,199,.08);border-color:rgba(2,132,199,.18)}
+[data-theme="light"] .ib-p{background:rgba(124,58,237,.08);border-color:rgba(124,58,237,.18)}
+
+/* ====== TABLE ====== */
+.tb{width:100%;border-collapse:separate;border-spacing:0;font-size:var(--ss);border-radius:8px;overflow:hidden;border:1px solid var(--brd);background:var(--card);transition:all .3s}
+.tb th{background:var(--dim);color:var(--cyan);font-weight:500;text-transform:uppercase;letter-spacing:.05em;padding:clamp(.25rem,.6vw,.45rem) clamp(.35rem,.8vw,.6rem);text-align:left;border-bottom:1px solid var(--brd)}
+.tb td{padding:clamp(.2rem,.5vw,.4rem) clamp(.35rem,.8vw,.6rem);border-top:1px solid var(--brd2)}
+.tb .tac{text-align:center}
+.tb tbody tr:hover{background:var(--hover)}
+.tb .w{color:var(--green);font-weight:600}
+.tb .x{color:var(--muted)}
+
+/* ====== BADGES ====== */
+.bg{display:inline-flex;align-items:center;gap:.25em;padding:.15em .5em;border-radius:4px;font-size:var(--ss);font-weight:500}
+.bg svg{width:.85em;height:.85em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bg-c{background:rgba(0,212,255,.08);color:var(--cyan);border:1px solid rgba(0,212,255,.18)}
+.bg-g{background:rgba(255,193,7,.08);color:var(--gold);border:1px solid rgba(255,193,7,.18)}
+.bg-t{background:rgba(0,128,128,.08);color:var(--teal);border:1px solid rgba(0,128,128,.18)}
+.bg-p{background:rgba(192,132,252,.08);color:var(--purple);border:1px solid rgba(192,132,252,.18)}
+.bg-o{background:rgba(251,146,60,.08);color:var(--orange);border:1px solid rgba(251,146,60,.18)}
+.bg-gr{background:rgba(0,255,136,.08);color:var(--green);border:1px solid rgba(0,255,136,.18)}
+
+/* ====== FLOW STEPS ====== */
+.steps{display:flex;flex-direction:column;gap:clamp(.3rem,.7vh,.5rem)}
+.step{display:flex;align-items:flex-start;gap:clamp(.35rem,.9vw,.6rem)}
+.snum{flex-shrink:0;width:clamp(1.3rem,2.4vw,1.7rem);height:clamp(1.3rem,2.4vw,1.7rem);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:var(--ss);font-weight:700;color:var(--inv)}
+.snum-c{background:var(--cyan);box-shadow:0 0 8px var(--gc)}
+.snum-g{background:var(--gold);box-shadow:0 0 8px var(--gg)}
+.snum-t{background:var(--teal);box-shadow:0 0 8px var(--gt)}
+.snum-p{background:var(--purple);box-shadow:0 0 8px rgba(192,132,252,.3)}
+.snum-o{background:var(--orange);box-shadow:0 0 8px rgba(251,146,60,.3)}
+.snum-r{background:var(--red);box-shadow:0 0 8px rgba(239,68,68,.3)}
+.snum-gr{background:var(--green);box-shadow:0 0 8px rgba(0,255,136,.3)}
+
+/* ====== ARCHITECTURE BOXES (Part 2) ====== */
+.abox{background:var(--card);border:1.5px solid var(--brd);border-radius:8px;padding:clamp(.25rem,.6vw,.45rem) clamp(.4rem,1vw,.7rem);text-align:center;min-width:clamp(50px,9vw,100px);backdrop-filter:blur(8px);font-size:var(--ss);transition:all .3s}
+.abox:hover{transform:translateY(-2px);box-shadow:0 6px 18px var(--shadow)}
+.ab-c{border-color:var(--cyan);color:var(--cyan)}.ab-g{border-color:var(--gold);color:var(--gold)}.ab-p{border-color:var(--purple);color:var(--purple)}
+.ab-t{border-color:var(--teal);color:var(--teal)}.ab-o{border-color:var(--orange);color:var(--orange)}.ab-r{border-color:var(--red);color:var(--red)}
+.aarr{font-size:var(--ss);color:var(--muted);display:flex;align-items:center}
+
+/* ====== SEQUENCE DIAGRAM ====== */
+.sd{border:1px solid var(--brd);border-radius:8px;background:var(--card);padding:clamp(.3rem,.6vw,.5rem);overflow-x:auto;font-size:var(--ss)}
+.sd-actors{display:flex;gap:2px}
+.sd-a{flex:1;text-align:center;padding:clamp(.15rem,.4vw,.3rem) clamp(.1rem,.3vw,.2rem);font-weight:600;font-size:clamp(.5rem,1.1vw,.68rem);border:1.5px solid var(--brd);border-radius:6px 6px 0 0;background:var(--dim);backdrop-filter:blur(8px);min-width:clamp(48px,9vw,86px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sd-body{display:flex;flex-direction:column}
+.sd-phase{text-align:center;padding:clamp(.12rem,.25vw,.2rem);font-weight:600;font-size:clamp(.48rem,1vw,.62rem);letter-spacing:.04em;border-top:1px solid;border-bottom:1px solid;backdrop-filter:blur(4px)}
+.sd-phase-c{color:var(--cyan);border-color:rgba(0,212,255,.15);background:rgba(0,212,255,.04)}
+.sd-phase-o{color:var(--orange);border-color:rgba(251,146,60,.15);background:rgba(251,146,60,.04)}
+.sd-phase-p{color:var(--purple);border-color:rgba(192,132,252,.15);background:rgba(192,132,252,.04)}
+.sd-phase-t{color:var(--teal);border-color:rgba(0,128,128,.15);background:rgba(0,128,128,.04)}
+.sd-phase-g{color:var(--gold);border-color:rgba(255,193,7,.15);background:rgba(255,193,7,.04)}
+.sd-phase-r{color:var(--red);border-color:rgba(239,68,68,.15);background:rgba(239,68,68,.04)}
+.sd-phase-gr{color:var(--green);border-color:rgba(0,255,136,.15);background:rgba(0,255,136,.04)}
+.sd-row{display:flex;align-items:center;min-height:clamp(1.2rem,2.4vw,1.8rem);position:relative}
+.sd-cell{flex:1;text-align:center;font-size:clamp(.46rem,1vw,.6rem);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 1px;position:relative}
+.sd-lifeline{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--brd2);opacity:.3;z-index:0}
+.sd-arrow{display:flex;align-items:center;position:absolute;height:100%;z-index:1}
+.sd-arrow .line{flex:1;height:1.5px;background:currentColor}
+.sd-arrow .head{border:3px solid transparent}
+.sd-arrow .head-r{border-left-color:currentColor}.sd-arrow .head-l{border-right-color:currentColor}
+/* Message spanning cells: use grid col positions */
+.sd-msg{position:absolute;top:50%;transform:translateY(-50%);display:flex;align-items:center;z-index:2}
+.sd-msg-line{flex:1;height:1.5px;position:relative}
+.sd-msg-line::after{content:'';position:absolute;top:50%;right:-1px;border:3px solid transparent;transform:translateY(-50%)}
+.sd-msg-line.arr-r::after{border-left-color:currentColor}
+.sd-msg-line.arr-l::after{right:auto;left:-1px;border-right-color:currentColor}
+.sd-txt{font-size:clamp(.46rem,1vw,.6rem);white-space:nowrap;padding:0 2px}
+
+/* ====== NAV TOOLTIPS ====== */
+.dt::before{content:attr(data-tip);position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%) scale(.9);font-size:10px;font-family:var(--mono);color:var(--txt);backdrop-filter:blur(14px);border-radius:4px;padding:2px 7px;white-space:nowrap;opacity:0;pointer-events:none;transition:all .15s var(--ease);z-index:999}
+.dt:hover::before{opacity:1;transform:translateY(-50%) scale(1)}
+.sbody h3{font-size:var(--bs)}.sbody p{font-size:var(--ss)}
+
+/* ====== CODE ====== */
+.code{background:var(--code-bg);border:1px solid var(--brd2);border-radius:7px;padding:clamp(.4rem,1vw,.8rem);font-size:var(--ms);line-height:1.6;overflow:hidden;transition:all .3s}
+.kw{color:var(--purple)}.fn{color:var(--cyan)}.str{color:var(--green)}.cmt{color:var(--muted);font-style:italic}.vr{color:var(--orange)}
+
+/* ====== ARCHITECTURE ====== */
+.arch{display:flex;align-items:center;justify-content:center;gap:clamp(.25rem,.9vw,.7rem);flex-wrap:wrap}
+.ax{background:var(--card);border:1.5px solid var(--brd);border-radius:8px;padding:clamp(.35rem,.9vw,.7rem) clamp(.4rem,1.1vw,.9rem);text-align:center;min-width:clamp(60px,10vw,110px);backdrop-filter:blur(8px);transition:all .3s}
+.ax:hover{transform:translateY(-2px);box-shadow:0 6px 18px var(--shadow)}
+.ax-de{border-color:var(--gold)}.ax-fr{border-color:#60a5fa}.ax-en{border-color:var(--red)}
+.ax-ws{border-color:var(--purple)}.ax-rd{border-color:var(--rose)}.ax-ag{border-color:var(--cyan)}
+.conn{font-size:var(--ss);color:var(--muted)}
+.conn svg{width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.darr{color:var(--muted);display:flex;justify-content:center}
+.darr svg{width:1em;height:1em;fill:none;stroke:var(--muted);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ====== TIMELINE ====== */
+.tl{display:flex;flex-direction:column;gap:clamp(.2rem,.5vh,.35rem)}
+.tli{display:grid;grid-template-columns:clamp(1.8rem,3.8vw,2.6rem) 1fr clamp(1.8rem,3.5vw,2.6rem);align-items:center;gap:clamp(.2rem,.6vw,.4rem)}
+.tlbar{height:clamp(4px,.55vh,6px);border-radius:4px;background:var(--brd2);overflow:hidden;border:1px solid var(--brd2)}
+.tlf{height:100%;border-radius:4px;transition:width .6s var(--ease);width:0}
+.vis .tlf{width:var(--w)}
+.tlf-c{background:linear-gradient(90deg,var(--cyan),rgba(0,212,255,.3))}.tlf-p{background:linear-gradient(90deg,var(--purple),rgba(192,132,252,.3))}
+.tlf-t{background:linear-gradient(90deg,var(--teal),rgba(0,128,128,.3))}.tlf-o{background:linear-gradient(90deg,var(--orange),rgba(251,146,60,.3))}
+
+/* ====== METRICS ====== */
+.mr{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,110px),1fr));gap:var(--gap)}
+.mx{text-align:center;padding:clamp(.4rem,1vw,.85rem);background:var(--card);border-radius:8px;border:1px solid var(--brd2)}
+.mv{font-size:clamp(1.1rem,3vw,1.8rem);font-weight:700;line-height:1;margin-bottom:.1em;letter-spacing:-.02em}
+.ml{font-size:var(--ss);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+
+/* ====== LAYOUT ====== */
+.tc2{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap)}
+.mx9{max-width:min(92vw,880px);margin:0 auto}.mx10{max-width:min(94vw,980px);margin:0 auto}
+.fl{display:flex;flex-direction:column}.gm{gap:var(--gap)}.gs{gap:clamp(.12rem,.3vw,.22rem)}
+.ctr{text-align:center}
+
+/* ====== INFO ====== */
+.nfo{border-left:2px solid;padding:clamp(.35rem,.8vw,.6rem);border-radius:0 7px 7px 0;font-size:var(--ss);transition:all .3s}
+.nfo-c{border-color:var(--cyan);background:rgba(0,212,255,.03);color:var(--cyan)}
+.nfo-t{border-color:var(--teal);background:rgba(0,128,128,.03);color:var(--teal)}
+.nfo-p{border-color:var(--purple);background:rgba(192,132,252,.03);color:var(--purple)}
+
+/* ====== TITLE SLIDE ====== */
+.ts .SC{align-items:center;text-align:center;gap:clamp(.55rem,1.5vh,1.1rem);justify-content:center}
+.ts h1{font-size:clamp(2.2rem,7vw,6rem);letter-spacing:-.04em}
+.ts .ttag{font-size:clamp(.9rem,1.8vw,1.35rem);max-width:720px}
+.ts .lbl{font-size:clamp(.55rem,1vw,.8rem)}
+.ts .tmeta{gap:clamp(.3rem,.8vw,.6rem)}
+.ts .tmeta .bg{font-size:clamp(.55rem,.9vw,.72rem);padding:.3em .7em}
+.ttag{font-size:var(--bs);max-width:520px;line-height:1.55}
+.tmeta{display:flex;gap:clamp(.25rem,.7vw,.5rem);flex-wrap:wrap;justify-content:center}
+
+/* ====== NAV DOTS ====== */
+.nav{position:fixed;right:clamp(.4rem,1vw,.7rem);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:6px;z-index:100;padding:8px 5px;border-radius:12px;backdrop-filter:blur(12px);box-shadow:var(--nav-shadow)}
+.dt{position:relative;width:6px;height:6px;border-radius:50%;background:var(--dot-off);border:none;cursor:pointer;transition:all .3s;padding:0}
+.dt.on{background:var(--dot-on);box-shadow:0 0 8px var(--dot-glow);transform:scale(1.5)}
+.dt:hover:not(.on){background:var(--dot-hover);transform:scale(1.3)}
+
+/* ====== THEME TOGGLE ====== */
+.theme-btn{position:fixed;top:clamp(.4rem,1.2vw,.9rem);left:clamp(.5rem,1.5vw,1.2rem);z-index:200;background:var(--card);border:1px solid var(--brd);border-radius:8px;padding:6px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:var(--font);font-size:var(--ss);color:var(--cyan);transition:all .3s;backdrop-filter:blur(8px)}
+.theme-btn:hover{border-color:var(--cyan);box-shadow:0 0 12px var(--gc)}
+.theme-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.theme-btn .sun{display:none}
+[data-theme="light"] .theme-btn .sun{display:block}
+[data-theme="light"] .theme-btn .moon{display:none}
+
+/* ====== HINT ====== */
+.hint{position:fixed;bottom:clamp(1.6rem,3vw,2.4rem);left:50%;transform:translateX(-50%);font-size:clamp(.42rem,.6vw,.5rem);color:var(--muted);z-index:100;display:flex;gap:.3rem;align-items:center;opacity:.35}
+.ky{display:inline-flex;padding:.06em .3em;border:1px solid var(--muted);border-radius:3px;background:rgba(128,128,128,.05);font-size:.9em}
+
+/* ====== RESPONSIVE ====== */
+@media(max-width:600px){.tc2{grid-template-columns:1fr}.arch{flex-direction:column}.tmeta{flex-wrap:wrap;justify-content:center;gap:.3rem}:root{--ts:clamp(1.4rem,7vw,2.2rem);--h2:clamp(1.1rem,5vw,1.6rem);--bs:clamp(.72rem,3vw,.9rem)}.ts h1{font-size:clamp(1.8rem,9vw,3rem)}.ts .ttag{font-size:clamp(.8rem,3.5vw,1rem)}}
+@media(min-width:601px) and (max-width:900px){.ts h1{font-size:clamp(2rem,6vw,3.5rem)}:root{--h2:clamp(1.2rem,3.5vw,2rem);--bs:clamp(.75rem,1.4vw,.95rem)}}
+@media(max-height:700px){:root{--pad:clamp(.5rem,2vw,1.2rem);--h2:clamp(.95rem,2.8vw,1.5rem);--bs:clamp(.68rem,1.2vw,.85rem)}.ts h1{font-size:clamp(1.6rem,5vw,3rem)}}
+@media(max-height:600px){:root{--pad:clamp(.3rem,1.5vw,.7rem);--bs:clamp(.6rem,1vw,.78rem)}.hint{display:none}.ts h1{font-size:clamp(1.3rem,4vw,2.2rem)}.nav{padding:4px 3px;gap:3px}.dt{width:4px;height:4px}}
+@media(max-width:500px){.nav{padding:4px 3px;gap:3px}.dt{width:4px;height:4px}}
+@media(max-height:500px){:root{--pad:clamp(.2rem,1.2vw,.5rem);--h2:clamp(.7rem,1.8vw,.9rem)}.ts h1{font-size:clamp(1.1rem,3.5vw,1.8rem)}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.2s!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<div id="staticGrid"></div><div id="staticScan"></div>
+
+<!-- THEME TOGGLE -->
+<button class="theme-btn" onclick="toggleTheme()" title="Toggle theme">
+  <svg class="moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+  <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+</button>
+
+<!-- GLOBAL WAVE CANVAS (persistent, fixed) -->
+<canvas class="wave-cv" id="globalWave"></canvas>
+
+<!-- ============== S1: TITLE ============== -->
+<div class="deck">
+<section class="S active ts gbg scan hero" id="s1">
+<div class="hero-canvas">
+  <canvas id="heroParticles"></canvas>
+  <canvas id="heroMatrix"></canvas>
+</div>
+<div class="bar bar-c"></div>
+<div class="SC">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.12.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.58 2.81.7A2 2 0 0122 16.92z"/></svg> JUPUS AI · TECHNICAL KICKOFF</div>
+  <h1 class="rv d2"><span class="glitch" data-text="Phonebot">Phonebot</span><br><span class="type-cursor" style="color:var(--gold);text-shadow:0 0 18px var(--gg)">English Support</span></h1>
+  <p class="ttag rv d3">Two features: <strong class="tc">English language switching</strong> via Agent Transfer + <strong class="tg">Forward Waiting</strong> via Twilio Queue.</p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-c"><svg viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg> DE ↔ EN</span>
+    <span class="bg bg-p"><svg viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg> FR ↔ EN</span>
+    <span class="bg bg-t"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ~22h</span>
+    <span class="bg bg-o"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> Bidirectional</span>
+    <span class="bg bg-g"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Queue Wait</span>
+  </div>
+  <p class="mono rv d5" style="color:var(--muted)">February 2026 · Yurii · Agent Transfer + Twilio Queue</p>
+</div>
+</section>
+
+<!-- ============== S2: PROBLEM + 3 APPROACHES OVERVIEW ============== -->
+<section class="S gbg scan" id="s2">
+<div class="bar bar-g"></div><div class="SC fl gm mx9">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> THE CHALLENGE</div>
+  <h2 class="rv d2">English callers get a <span class="to">broken experience</span></h2>
+  <p class="rv d3" style="max-width:580px">When an English-speaking caller reaches a DE/FR phonebot, the system has no way to switch — garbled ASR, wrong voice, frustrated drop-offs. We evaluated <strong class="tc">3 approaches</strong>:</p>
+  <div class="cg rv d4">
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <div class="ib ib-o"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+      <h3 class="to">Option A: Prompt-Only</h3>
+      <p>Add "respond in English" instruction to the system prompt. Zero infra changes.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <div class="ib ib-p"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></div>
+      <h3 class="tp">Option B: Multilingual</h3>
+      <p>Set Retell's <code class="mono">language: "multi"</code> for auto-detection. One config change.</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <div class="ib ib-c"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></div>
+      <h3 class="tc">Option C: Agent Transfer</h3>
+      <p>Swap mid-call to a separate EN-configured Retell agent. Native voice + ASR.</p>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S3: OPTION A — PROMPT-ONLY ============== -->
+<section class="S gbg scan" id="s3">
+<div class="bar bar-g"></div><div class="SC fl gm mx9">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> OPTION A</div>
+  <h2 class="rv d2">Prompt-Only <span class="to">Override</span></h2>
+  <p class="rv d3">Add <code class="mono">"Respond in English from now on"</code> to the system prompt when the caller asks. The simplest possible approach.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✓ Pros</h3>
+      <div class="fl gs"><p><span class="tgr">▸</span> Zero infrastructure changes</p><p><span class="tgr">▸</span> Instant to implement (~30 min)</p><p><span class="tgr">▸</span> No new agents or Retell config</p><p><span class="tgr">▸</span> Works with current architecture as-is</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✗ Cons</h3>
+      <div class="fl gs"><p><span class="tr">▸</span> <strong>Same DE/FR voice</strong> speaks English — heavy accent, unnatural</p><p><span class="tr">▸</span> <strong>Same DE/FR ASR</strong> transcribes English — "I need a lawyer" → "Ei nied ä lohja"</p><p><span class="tr">▸</span> No bidirectional switch possible</p><p><span class="tr">▸</span> Entity extraction degrades on garbled transcripts</p></div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5" style="border-color:var(--red);background:rgba(239,68,68,.03);color:var(--red)"><strong>Verdict:</strong> Band-aid solution. LLM output is English but the voice and ears are still German. Caller experience is barely improved.</div>
+</div>
+</section>
+
+<!-- ============== S4: OPTION B — MULTILINGUAL ============== -->
+<section class="S gbg scan" id="s4">
+<div class="bar bar-p"></div><div class="SC fl gm mx9">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> OPTION B</div>
+  <h2 class="rv d2">Multilingual <span class="tp">Mode</span></h2>
+  <p class="rv d3">Set Retell agent's <code class="mono">language: "multi"</code> — ASR auto-detects the spoken language. One config toggle in the Retell dashboard.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✓ Pros</h3>
+      <div class="fl gs"><p><span class="tgr">▸</span> Better ASR — auto-detect handles English input</p><p><span class="tgr">▸</span> Single config change in Retell dashboard</p><p><span class="tgr">▸</span> No backend or voice service changes needed</p><p><span class="tgr">▸</span> Some language detection out of the box</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✗ Cons</h3>
+      <div class="fl gs"><p><span class="tr">▸</span> <strong>Same DE/FR voice model</strong> — German accent speaking English</p><p><span class="tr">▸</span> <strong>One-way only</strong> — can't switch back to DE/FR once in multi mode</p><p><span class="tr">▸</span> ASR auto-detect inconsistent — may misidentify short phrases</p><p><span class="tr">▸</span> No control over when/how the switch happens</p></div>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d5"><strong>Verdict:</strong> Better ASR, but the voice is still German. One-way only kills bidirectional. No explicit caller confirmation flow possible.</div>
+</div>
+</section>
+
+<!-- ============== S5: OPTION C — AGENT TRANSFER ============== -->
+<section class="S gbg scan" id="s5">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> OPTION C</div>
+  <h2 class="rv d2">Agent <span class="tc">Transfer</span></h2>
+  <p class="rv d3">Retell's <code class="mono">agent_transfer</code> tool swaps to a separate EN-configured agent mid-call. Separate voice, separate ASR, same Custom LLM WebSocket.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✓ Pros</h3>
+      <div class="fl gs"><p><span class="tgr">▸</span> <strong>Native EN voice</strong> — separate 11labs English TTS</p><p><span class="tgr">▸</span> <strong>Native EN ASR</strong> — en-US transcription, no garbled text</p><p><span class="tgr">▸</span> <strong>Bidirectional</strong> — DE↔EN, FR↔EN, switch back anytime</p><p><span class="tgr">▸</span> State preserved via Redis (same pattern as call forwarding)</p><p><span class="tgr">▸</span> Same Custom LLM endpoint — JupusAgent logic unchanged</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">⚠ Tradeoffs</h3>
+      <div class="fl gs"><p><span class="to">▸</span> Requires 3 agents per environment (DE, FR, EN × 3 envs)</p><p><span class="to">▸</span> Backend model change (PhoneNumber → M2M additional agents)</p><p><span class="to">▸</span> Admin UI work for multi-agent phone number config</p><p><span class="to">▸</span> ~22h implementation vs ~0.5h for prompt-only</p></div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5"><strong>Key insight (pending verification):</strong> Agent Transfer <em>should</em> work with Custom LLM WebSocket agents — both source and destination point to the same endpoint. <strong class="to">Requires confirmation from Retell support before implementation begins.</strong></div>
+</div>
+</section>
+
+<!-- ============== S6: DECISION TABLE ============== -->
+<section class="S gbg scan" id="s6">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg> DECISION</div>
+  <h2 class="rv d2">Comparison + <span class="tgr">Final Choice</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Criteria</th><th class="to">A: Prompt-Only</th><th class="tp">B: Multilingual</th><th class="tc">C: Agent Transfer</th></tr></thead><tbody>
+    <tr><td><strong>Voice quality</strong></td><td class="x">DE voice speaks EN</td><td class="x">DE voice speaks EN</td><td class="w">✓ Native EN voice</td></tr>
+    <tr><td><strong>ASR quality</strong></td><td class="x">DE ASR for EN (garbled)</td><td>Auto-detect (inconsistent)</td><td class="w">✓ Native EN ASR</td></tr>
+    <tr><td><strong>Bidirectional</strong></td><td class="x">✗ No</td><td class="x">✗ One-way</td><td class="w">✓ DE↔EN, FR↔EN</td></tr>
+    <tr><td><strong>Caller confirmation</strong></td><td class="x">✗ No control</td><td class="x">✗ No control</td><td class="w">✓ Explicit 2-step</td></tr>
+    <tr><td><strong>State preservation</strong></td><td>Same agent (trivial)</td><td>Same agent (trivial)</td><td class="w">✓ Redis cache</td></tr>
+    <tr><td><strong>Implementation</strong></td><td class="w">~0.5h</td><td class="w">~0.5h</td><td class="x">~22h</td></tr>
+    <tr><td><strong>Infra changes</strong></td><td class="w">None</td><td class="w">1 config</td><td class="x">3 agents/env + backend</td></tr>
+  </tbody></table></div>
+  <div style="display:flex;gap:clamp(.25rem,.6vw,.4rem);flex-wrap:wrap;align-items:center" class="rv d4">
+    <span class="bg bg-gr" style="font-size:var(--bs);padding:.25em .7em"><svg viewBox="0 0 24 24" style="width:1em;height:1em"><polyline points="9 11 12 14 22 4"/></svg> <strong>Agent Transfer chosen</strong></span>
+    <span style="font-size:var(--ss);color:var(--muted)">— the extra effort is justified by native quality in both directions. Options A and B are fundamentally limited by keeping the same voice+ASR.</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S7: ARCHITECTURE ============== -->
+<section class="S gbg scan" id="s7">
+<div class="bar bar-p"></div><div class="SC fl gm mx10 ctr">
+  <div class="lbl lp rv d1" style="justify-content:center"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> ARCHITECTURE</div>
+  <h2 class="rv d2">3 Agents × 3 Environments</h2>
+  <div class="arch rv d3">
+    <div class="ax ax-de"><div style="font-size:clamp(.85rem,1.4vw,1.1rem)">🇩🇪</div><h3 style="font-size:var(--bs);color:var(--gold)">DE Agent</h3><p class="mono" style="color:var(--muted)">de-DE voice+ASR</p></div>
+    <div class="conn"><svg viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg></div>
+    <div class="ax ax-en"><div style="font-size:clamp(.85rem,1.4vw,1.1rem)">🇬🇧</div><h3 style="font-size:var(--bs);color:var(--red)">EN Agent</h3><p class="mono" style="color:var(--muted)">en-US voice+ASR</p></div>
+    <div class="conn"><svg viewBox="0 0 24 24"><path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/></svg></div>
+    <div class="ax ax-fr"><div style="font-size:clamp(.85rem,1.4vw,1.1rem)">🇫🇷</div><h3 style="font-size:var(--bs);color:#60a5fa">FR Agent</h3><p class="mono" style="color:var(--muted)">fr-FR voice+ASR</p></div>
+  </div>
+  <div class="darr rv d4"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></div>
+  <div class="arch rv d5">
+    <div class="ax ax-ws"><span class="tp" style="font-size:clamp(.85rem,1.3vw,1rem)">⚡</span><h3 style="font-size:var(--bs);color:var(--purple)">WebSocket</h3><p class="mono" style="color:var(--muted)">Custom LLM endpoint</p></div>
+    <div class="conn">→</div>
+    <div class="ax ax-ag"><span class="tc" style="font-size:clamp(.85rem,1.3vw,1rem)">⚙</span><h3 style="font-size:var(--bs);color:var(--cyan)">JupusAgent</h3><p class="mono" style="color:var(--muted)">State machine intact</p></div>
+    <div class="conn">↔</div>
+    <div class="ax ax-rd"><span class="tro" style="font-size:clamp(.85rem,1.3vw,1rem)">◉</span><h3 style="font-size:var(--bs);color:var(--rose)">Redis</h3><p class="mono" style="color:var(--muted)">State cache</p></div>
+  </div>
+  <div class="rv d6" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Environment</th><th>DE Agent</th><th>FR Agent</th><th>EN Agent</th><th>WebSocket</th></tr></thead><tbody>
+    <tr><td class="tgr">Dev</td><td>Yurii (DE)</td><td>Yurii (FR)</td><td>Yurii (EN)</td><td class="mono" style="color:var(--muted)">wss://dev.../llm-ws/{id}</td></tr>
+    <tr><td class="to">Staging</td><td>Stage (DE)</td><td>Stage (FR)</td><td>Stage (EN)</td><td class="mono" style="color:var(--muted)">wss://stage.../llm-ws/{id}</td></tr>
+    <tr><td class="tr">Production</td><td>Prod (DE)</td><td>Prod (FR)</td><td>Prod (EN)</td><td class="mono" style="color:var(--muted)">wss://prod.../llm-ws/{id}</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S5: TRANSFER FLOW ============== -->
+<section class="S gbg scan" id="s8">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> SEQUENCE</div>
+  <h2 class="rv d2">Agent Transfer <span class="tc">Sequence</span></h2>
+  <div class="sd rv d3">
+    <div class="sd-actors">
+      <div class="sd-a" style="color:var(--cyan)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg> Caller</div>
+      <div class="sd-a" style="color:var(--gold)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="11"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg> Retell&nbsp;DE/FR</div>
+      <div class="sd-a" style="color:var(--purple)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> WebSocket</div>
+      <div class="sd-a" style="color:var(--teal)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> JupusAgent</div>
+      <div class="sd-a" style="color:var(--rose)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> Redis</div>
+      <div class="sd-a" style="color:var(--green)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> Retell&nbsp;EN</div>
+    </div>
+    <div class="sd-body">
+      <div class="sd-phase sd-phase-c">▸ Phase 1 — Normal Conversation (DE / FR)</div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tc">Speaks DE/FR →</span></div>
+        <div class="sd-cell"><span class="tg">ASR+TTS</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span class="tt">draft_response()</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tg">← Voice response</span></div>
+        <div class="sd-cell"><span class="tg">← Stream</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">←</span></div>
+        <div class="sd-cell"><span class="tt">LLM response</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+
+      <div class="sd-phase sd-phase-o">▸ Phase 2 — English Detected + Confirmation</div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="to">"Sprechen Sie Englisch?" →</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span class="to">detect_english()</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tp">← "Auf Englisch fortfahren?"</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">←</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">←</span></div>
+        <div class="sd-cell"><span class="tp">Confirm prompt</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tgr">"Ja" / "Yes" →</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span class="tgr">✓ confirmed!</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+
+      <div class="sd-phase sd-phase-p">▸ Phase 3 — Cache State + Transfer</div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tro">cache_state() →</span></div>
+        <div class="sd-cell"><span class="tro">▸ Stored</span></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tp">← agent_transfer</span></div>
+        <div class="sd-cell"><span style="color:var(--muted)">←</span></div>
+        <div class="sd-cell"><span class="tp">EN agent ID</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tr">WS₁ closes ✕</span></div>
+        <div class="sd-cell"><span class="tr">────────────────→</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tgr">▸ Swap!</span></div>
+      </div>
+
+      <div class="sd-phase sd-phase-gr">▸ Phase 4 — English Session (state restored)</div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tro">← restore_state()</span></div>
+        <div class="sd-cell"><span class="tro">State →</span></div>
+        <div class="sd-cell"><span class="tgr">WS₂ connect</span></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tgr">Speaks English ─────────────────────────────→</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tgr">EN ASR</span></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tgr">← English voice TTS ─────────────────────────</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tt">Response (EN)</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tgr">EN TTS</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d4"><strong>No repeated questions.</strong> Entities, history, classification all restored from Redis. Same call_id, new WebSocket.</div>
+</div>
+</section>
+
+<!-- ============== S6: STATE PRESERVATION ============== -->
+<section class="S gbg scan" id="s9">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> STATE</div>
+  <h2 class="rv d2">What <span class="tgr">Persists</span> vs What <span class="tp">Changes</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Component</th><th class="w">✓ Persists</th><th class="tp">⟳ Changes</th></tr></thead><tbody>
+    <tr><td>State machine</td><td>36 DE + 25 FR states unchanged</td><td class="x">—</td></tr>
+    <tr><td>Entities</td><td>Name, phone, email preserved</td><td class="x">—</td></tr>
+    <tr><td>Questions asked</td><td>Tracked, not re-asked</td><td class="x">—</td></tr>
+    <tr><td>Conversation history</td><td>Full transcript restored</td><td class="x">—</td></tr>
+    <tr><td>Classification</td><td>Legal topic + forwarding rules</td><td class="x">—</td></tr>
+    <tr><td>Retell voice</td><td class="x">—</td><td>→ EN native TTS (11labs)</td></tr>
+    <tr><td>Retell ASR</td><td class="x">—</td><td>→ EN transcription</td></tr>
+    <tr><td>System prompt</td><td class="x">—</td><td>+ <code class="mono">ENGLISH_OVERRIDE_INSTRUCTION</code></td></tr>
+    <tr><td>WebSocket</td><td class="x">—</td><td>New connection, same call_id</td></tr>
+  </tbody></table></div>
+  <div class="nfo nfo-t rv d4"><strong>No new states, prompts, or extraction logic needed.</strong> The LLM handles English naturally when instructed via system prompt override.</div>
+</div>
+</section>
+
+<!-- ============== S7: DETECTION CODE ============== -->
+<section class="S gbg scan" id="s10">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> DETECTION</div>
+  <h2 class="rv d2">Two-Step <span class="tc">Confirmation</span> Flow</h2>
+  <div class="code rv d3"><span class="cmt"># Turn 1: Caller hints at English</span><br><span class="kw">if</span> <span class="fn">detect_english_request</span>(<span class="vr">transcript</span>):<br>&nbsp;&nbsp;self.<span class="vr">english_switch_pending</span> = <span class="kw">True</span><br>&nbsp;&nbsp;<span class="kw">return</span> <span class="str">ENGLISH_CONFIRMATION_QUESTION</span>[self.language]<br><br><span class="cmt"># Turn 2: Caller responds</span><br><span class="kw">if</span> self.<span class="vr">english_switch_pending</span>:<br>&nbsp;&nbsp;<span class="kw">if</span> <span class="fn">detect_english_confirmation</span>(<span class="vr">transcript</span>):<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="fn">cache_agent_state</span>(<span class="vr">call_id</span>, self)<br>&nbsp;&nbsp;&nbsp;&nbsp;<span class="kw">return</span> <span class="fn">agent_transfer_response</span>(<span class="vr">en_agent_id</span>)<br>&nbsp;&nbsp;<span class="kw">else</span>:<br>&nbsp;&nbsp;&nbsp;&nbsp;self.<span class="vr">english_switch_pending</span> = <span class="kw">False</span></div>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Language</th><th>Affirmative</th><th>Negative</th></tr></thead><tbody>
+    <tr><td>🇩🇪 DE</td><td class="w">Ja, Ja bitte, Genau, Klar</td><td class="x">Nein, Nein danke, Lieber nicht</td></tr>
+    <tr><td>🇫🇷 FR</td><td class="w">Oui, Bien sûr, D'accord</td><td class="x">Non, Non merci, Pas besoin</td></tr>
+    <tr><td>🇬🇧 EN</td><td class="w">Yes, Sure, Of course, Yeah</td><td class="x">No, No thanks, Never mind</td></tr>
+  </tbody></table></div>
+  <div style="display:flex;gap:clamp(.2rem,.5vw,.35rem);flex-wrap:wrap" class="rv d5">
+    <span class="bg bg-c">40+ trigger phrases</span>
+    <span class="bg bg-o">Auto-expire 1 turn</span>
+    <span class="bg bg-p">Interruption-safe</span>
+    <span class="bg bg-t">No re-ask after decline</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S8: AGENT RESOLUTION CHAIN ============== -->
+<section class="S gbg scan" id="s11">
+<div class="bar bar-p"></div><div class="SC fl gm mx9">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> AGENT RESOLUTION</div>
+  <h2 class="rv d2">How the Voice Service <span class="tp">Resolves</span> the Target</h2>
+  <div class="steps rv d3">
+    <div class="step"><div class="snum snum-c">1</div><div class="sbody"><h3><span class="tc">Phone number additional_agents</span></h3><p>Look up <code class="mono">phone_number.additional_agents.filter(language="en")</code> → get <code class="mono">retell_agent_id</code></p></div></div>
+    <div class="step"><div class="snum snum-p">2</div><div class="sbody"><h3><span class="tp">Org english_agent</span> (fallback)</h3><p>If phone has no EN agent but <code class="mono">org.english_enabled=True</code> → use <code class="mono">org.english_agent</code></p></div></div>
+    <div class="step"><div class="snum snum-o">3</div><div class="sbody"><h3><span class="to">Graceful fallback</span></h3><p>"Es tut mir leid, wir können nur auf Deutsch weiterhelfen" + log <code class="mono">english_requested_but_unavailable</code> to Langfuse</p></div></div>
+  </div>
+  <div class="code rv d4"><span class="cmt"># WebSocket response for agent_transfer (PENDING RETELL CONFIRMATION)</span><br>{<br>&nbsp;&nbsp;<span class="str">"response_type"</span>: <span class="str">"agent_transfer"</span>,<br>&nbsp;&nbsp;<span class="str">"agent_id"</span>: <span class="vr">en_agent.retell_agent_id</span>,<br>&nbsp;&nbsp;<span class="str">"transfer_to"</span>: <span class="str">"agent"</span>&nbsp;&nbsp;<span class="cmt"># Retell protocol field</span><br>}</div>
+  <div class="nfo nfo-p rv d5"><strong>New tool:</strong> <code class="mono">agent_transfer</code> — genuinely new. Only <code class="mono">end_call</code> and <code class="mono">state_transition</code> exist today in <code class="mono">jupusai/agent/tools/</code></div>
+</div>
+</section>
+
+<!-- ============== S9: DJANGO MODELS ============== -->
+<section class="S gbg scan" id="s12">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> BACKEND MODELS</div>
+  <h2 class="rv d2">Django + Pydantic <span class="tt">Changes</span></h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--teal)">
+      <h3 class="tt" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">PhoneNumber Model</h3>
+      <div class="code" style="font-size:var(--ms)"><span class="cmt"># Before: single agent</span><br><span class="vr">agent</span> = FK(<span class="str">RetellAgent</span>)<br><br><span class="cmt"># After: primary + additional</span><br><span class="vr">primary_agent</span> = FK(<span class="str">RetellAgent</span>)<br><span class="vr">additional_agents</span> = M2M(<span class="str">RetellAgent</span>)</div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">Organisation Model</h3>
+      <div class="code" style="font-size:var(--ms)"><span class="cmt"># New fields</span><br><span class="vr">english_enabled</span> = <span class="fn">BooleanField</span>(<span class="kw">False</span>)<br><span class="vr">english_agent</span> = FK(<br>&nbsp;&nbsp;<span class="str">RetellAgent</span>, <span class="kw">null</span>=<span class="kw">True</span>)</div>
+    </div>
+  </div>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">retell_agent_sync() fix</h3>
+      <div class="code" style="font-size:var(--ms)"><span class="cmt"># Currently does NOT sync language</span><br><span class="cmt"># Must map Retell locale → short</span><br><span class="str">"de-DE"</span> → <span class="str">"de"</span><br><span class="str">"fr-FR"</span> → <span class="str">"fr"</span><br><span class="str">"en-US"</span> → <span class="str">"en"</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">Pydantic Model (Voice)</h3>
+      <div class="code" style="font-size:var(--ms)"><span class="cmt"># jupusai/models/jupus_backend.py</span><br><span class="cmt"># Currently: uuid + retell_agent_id</span><br><span class="cmt"># Must add:</span><br><span class="vr">language</span>: <span class="fn">str</span> = <span class="str">"de"</span></div>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5"><strong>Validation:</strong> Cannot add two agents with same language to one phone number. <strong class="tr">P0 FIX:</strong> <code class="mono">retell_agent_id</code> max_length=32 must be increased to 64 — some Retell IDs are 35 chars. Migration required in Sprint 2.1 before EN agent creation.</div>
+</div>
+</section>
+
+<!-- ============== S10: ADMIN UI ============== -->
+<section class="S gbg scan" id="s13">
+<div class="bar bar-p"></div><div class="SC fl gm mx9">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> ADMIN UI</div>
+  <h2 class="rv d2">Multi-Agent <span class="tp">Phone Numbers</span></h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">← Before</h3>
+      <div class="code" style="font-size:var(--ss)">Retell agent: <span class="str">[Agent dropdown ▾]</span><br><span class="cmt">← Single agent only</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">→ After</h3>
+      <div class="code" style="font-size:var(--ss)">Primary: <span class="str">🇩🇪 [DE Agent ▾]</span><br>Additional: <span class="str">🇬🇧 EN Agent</span> <span class="vr">[✕]</span><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="fn">[+ Add agent ▾]</span></div>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d4"><strong>Org-Level Toggle:</strong> One click enables English for entire organisation — auto-adds EN agent to all phone numbers. Confirm dialog on disable. Extensible: Spanish, Italian later.</div>
+  <div style="display:flex;gap:clamp(.2rem,.5vw,.35rem);flex-wrap:wrap" class="rv d5">
+    <span class="bg bg-t">🇩🇪🇬🇧🇫🇷 Flag column on list</span>
+    <span class="bg bg-c">Dropdown excludes duplicates</span>
+    <span class="bg bg-p">Chips with ✕ remove</span>
+    <span class="bg bg-o">Hint: "Match org language"</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S11: EDGE CASES ============== -->
+<section class="S gbg scan" id="s14">
+<div class="bar bar-g"></div><div class="SC fl gm mx10">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> ROBUSTNESS</div>
+  <h2 class="rv d2">Edge Cases <span class="to">Handled</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th style="width:30%">Edge Case</th><th>Handling</th></tr></thead><tbody>
+    <tr><td><span class="to">▸</span> <strong>No response</strong> after confirm Q</td><td><code class="mono">no_user_response</code> fires → clear flag → continue in org language</td></tr>
+    <tr><td><span class="tp">▸</span> <strong>Ambiguous</strong> "Maybe", "Hmm"</td><td>Treat as declined — clear flag, don't re-ask</td></tr>
+    <tr><td><span class="tr">▸</span> <strong>Transfer fails</strong></td><td>Catch error, log Sentry, say "Der Sprachwechsel hat nicht funktioniert", continue</td></tr>
+    <tr><td><span class="tc">▸</span> <strong>Multiple transfers</strong> DE→EN→DE→EN</td><td>Each restores LATEST cached state — cache key is <code class="mono">call_id</code> (overwrites)</td></tr>
+    <tr><td><span class="tt">▸</span> <strong>Pending flag expiry</strong></td><td>Auto-clears after 1 turn if next transcript doesn't match confirmation</td></tr>
+    <tr><td><span class="tro">▸</span> <strong>No EN agent configured</strong></td><td>Inform caller in org language, log <code class="mono">english_requested_but_unavailable</code> to Langfuse</td></tr>
+    <tr><td><span class="tgr">▸</span> <strong>Rapid double-trigger</strong></td><td>Second mention ignored — flag already set</td></tr>
+    <tr><td><span class="tc">▸</span> <strong>Caller speaks English from start</strong></td><td>DE/FR ASR mangles English. Detection fires on first turn → confirm → transfer. No state to cache (fresh call). EN agent starts fresh.</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S12: POST-TRANSFER ============== -->
+<section class="S gbg scan" id="s15">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg> POST-TRANSFER</div>
+  <h2 class="rv d2">State Restoration + <span class="tc">Summary</span></h2>
+  <div class="code rv d3"><span class="cmt"># llm_websocket.py — new WebSocket connect (same call_id)</span><br><span class="vr">agent</span> = <span class="fn">JupusAgent</span>(language=<span class="str">"en"</span>)<br><span class="vr">cached</span> = <span class="fn">redis.get</span>(f<span class="str">"transfer:{call_id}"</span>)<br><span class="kw">if</span> <span class="vr">cached</span>:<br>&nbsp;&nbsp;<span class="vr">agent</span>.<span class="fn">restore_state</span>(<span class="vr">cached</span>)&nbsp;&nbsp;<span class="cmt"># entities, questions, history</span><br>&nbsp;&nbsp;<span class="vr">agent</span>.<span class="vr">language_switched_to</span> = <span class="str">"en"</span><br>&nbsp;&nbsp;<span class="vr">agent</span>.<span class="fn">append_prompt</span>(<span class="str">ENGLISH_OVERRIDE_INSTRUCTION</span>)</div>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:clamp(.1rem,.2vw,.15rem)">Summary Side Note</h3>
+      <p style="font-size:var(--ss)">DE: "Hinweis: Der Anrufer hat auf Englisch kommuniziert."</p>
+      <p style="font-size:var(--ss)">FR: "Note: L'appelant a communiqué en anglais."</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:clamp(.1rem,.2vw,.15rem)">Observability</h3>
+      <p style="font-size:var(--ss)">Langfuse trace: <code class="mono">language_switched_to: "en"</code></p>
+      <p style="font-size:var(--ss)">Sentry: soft warning on transfer failures</p>
+    </div>
+  </div>
+  <div class="nfo nfo-c rv d5"><strong>Forwarding persistence:</strong> <code class="mono">language_switched_to</code> survives call forwarding — same Redis cache mechanism as second leg state.</div>
+</div>
+</section>
+
+<!-- ============== S13: FILES MODIFIED ============== -->
+<section class="S gbg scan" id="s16">
+<div class="bar bar-t"></div><div class="SC fl gm mx10">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> FILES</div>
+  <h2 class="rv d2">Files <span class="tt">Modified</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th class="tac">Action</th><th>File</th><th class="tac">Sprint</th></tr></thead><tbody>
+    <tr><td class="tgr tac">CREATE</td><td><code class="mono">jupusai/agent/language_switch.py</code></td><td class="tac">3.1</td></tr>
+    <tr><td class="tgr tac">CREATE</td><td><code class="mono">jupusai/agent/tools/agent_transfer.py</code></td><td class="tac">3.2</td></tr>
+    <tr><td class="tgr tac">CREATE</td><td><code class="mono">jupusai/tests/test_agent_transfer.py</code></td><td class="tac">4.1</td></tr>
+    <tr><td class="tgr tac">CREATE</td><td><code class="mono">devgui/datasets/calltest/english_switch_*.json</code> ×3</td><td class="tac">4.2</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/agent/jupus_agent.py</code></td><td class="tac">3.2–3.4</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/api/llm_websocket.py</code></td><td class="tac">3.3</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/utils/call_tracer.py</code></td><td class="tac">3.2, 3.4</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/prompt_handlers/handlers.py</code></td><td class="tac">3.3</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/models/jupus_backend.py</code></td><td class="tac">2.1</td></tr>
+    <tr><td class="to tac">EDIT</td><td><code class="mono">jupusai/constants.py</code></td><td class="tac">3.1</td></tr>
+    <tr><td class="tp tac">DJANGO</td><td>PhoneNumber model + Organisation model + migrations</td><td class="tac">2.1</td></tr>
+    <tr><td class="tp tac">DJANGO</td><td>Admin frontend (phone number + org settings pages)</td><td class="tac">2.2</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S14: SPRINT PLAN ============== -->
+<section class="S gbg scan" id="s17">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> PLAN</div>
+  <h2 class="rv d2">4 Phases, <span class="tc">~22.5 Hours</span></h2>
+  <div class="tl rv d3">
+    <div class="tli"><span class="mono tc" style="font-size:var(--ss)">P1</span><div><h3 style="font-size:var(--bs)">Retell Agent Setup</h3><div class="tlbar"><div class="tlf tlf-c" style="--w:4.5%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">1h</span></div>
+    <div class="tli"><span class="mono tp" style="font-size:var(--ss)">P2</span><div><h3 style="font-size:var(--bs)">Backend: Model + Admin UI</h3><div class="tlbar"><div class="tlf tlf-p" style="--w:36%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">8h</span></div>
+    <div class="tli"><span class="mono tt" style="font-size:var(--ss)">P3</span><div><h3 style="font-size:var(--bs)">Voice: Detection + Transfer + Restore</h3><div class="tlbar"><div class="tlf tlf-t" style="--w:37%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">8.2h</span></div>
+    <div class="tli"><span class="mono to" style="font-size:var(--ss)">P4</span><div><h3 style="font-size:var(--bs)">Testing &amp; Validation</h3><div class="tlbar"><div class="tlf tlf-o" style="--w:22.5%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">5h</span></div>
+  </div>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th class="tac">Sprint</th><th>Focus</th><th class="tac">Tasks</th><th class="tac">Hrs</th></tr></thead><tbody>
+    <tr><td class="tr tac"><strong>0.1</strong></td><td>Verify agent_transfer + Custom LLM with Retell support; assess SDK upgrade path</td><td class="tac">2</td><td class="tac">0.5h</td></tr>
+    <tr><td class="tc tac"><strong>1.1</strong></td><td>Create EN agent, configure agent_transfer tools (bidirectional), silent transfer</td><td class="tac">7</td><td class="tac">1h</td></tr>
+    <tr><td class="tp tac"><strong>2.1</strong></td><td>Sync language field, M2M additional_agents, org toggle, validation, <strong>retell_agent_id max_length→64 migration</strong></td><td class="tac">9</td><td class="tac">4h</td></tr>
+    <tr><td class="tp tac"><strong>2.2</strong></td><td>Rename to "Primary agent", flag UI, "+ Add agent", org settings toggle</td><td class="tac">9</td><td class="tac">4.5h</td></tr>
+    <tr><td class="tt tac"><strong>3.1</strong></td><td>Create language_switch.py, detection + confirmation + constants</td><td class="tac">6</td><td class="tac">1.2h</td></tr>
+    <tr><td class="tt tac"><strong>3.2</strong></td><td>Pending flag, agent_transfer tool, cache state, resolve target agent</td><td class="tac">8</td><td class="tac">4h</td></tr>
+    <tr><td class="tt tac"><strong>3.3</strong></td><td>Post-transfer WS detection, state restore, English override, reverse</td><td class="tac">5</td><td class="tac">2h</td></tr>
+    <tr><td class="tt tac"><strong>3.4</strong></td><td>Summary side note, forwarding persistence, Langfuse metadata</td><td class="tac">3</td><td class="tac">1h</td></tr>
+    <tr><td class="to tac"><strong>4.1</strong></td><td>27+ detection tests, confirmation tests, transfer + restore tests</td><td class="tac">6</td><td class="tac">1.5h</td></tr>
+    <tr><td class="to tac"><strong>4.2</strong></td><td>CallTest datasets: basic, DE-request, bidirectional</td><td class="tac">3</td><td class="tac">1.5h</td></tr>
+    <tr><td class="to tac"><strong>4.3</strong></td><td>Manual E2E: 9 scenarios (trigger, decline, entity, forwarding, summary)</td><td class="tac">9</td><td class="tac">2h</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S15: COST ============== -->
+<section class="S gbg scan" id="s18">
+<div class="bar bar-t"></div><div class="SC fl gm mx9 ctr">
+  <div class="lbl lt rv d1" style="justify-content:center"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg> COST</div>
+  <h2 class="rv d2">Zero Additional <span class="tgr">Cost</span></h2>
+  <div class="mr rv d3">
+    <div class="mx"><div class="mv tgr">$0</div><div class="ml">Extra / transfer</div></div>
+    <div class="mx"><div class="mv tc">1 call</div><div class="ml">Same phone leg</div></div>
+    <div class="mx"><div class="mv tp">N/A</div><div class="ml">LLM (Custom)</div></div>
+  </div>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Component</th><th>Before Transfer</th><th>After Transfer</th></tr></thead><tbody>
+    <tr><td>Voice infra ($0.055/min)</td><td>Charged</td><td class="w">↓ Old agent billing stops; new agent starts (net neutral)</td></tr>
+    <tr><td>TTS ($0.015–0.04/min)</td><td>Charged</td><td>Charged (new voice)</td></tr>
+    <tr><td>Telephony ($0.015/min)</td><td>Charged</td><td>Same call, no change</td></tr>
+    <tr><td>LLM</td><td colspan="2" style="text-align:center;color:var(--muted)">Custom LLM — our costs, not Retell's</td></tr>
+  </tbody></table></div>
+  <p class="rv d5 mono" style="color:var(--muted)">DE→EN→DE→EN is still one call. No cost surprise for multiple transfers.</p>
+</div>
+</section>
+
+<!-- ============== S20: RISKS & MITIGATIONS ============== -->
+<section class="S gbg scan" id="s19">
+<div class="bar bar-r"></div><div class="SC fl gm mx10">
+  <div class="lbl lr rv d1"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> RISKS</div>
+  <h2 class="rv d2">Risks &amp; <span class="tr">Mitigations</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th style="width:25%">Risk</th><th style="width:12%;text-align:center">Impact</th><th style="width:14%;text-align:center">Likelihood</th><th>Mitigation</th></tr></thead><tbody>
+    <tr><td><span class="tr">▸</span> <strong>agent_transfer not supported</strong> for Custom LLM WebSocket</td><td class="tr tac">Project blocked</td><td class="tr tac"><strong>HIGH</strong> (unverified)</td><td>Verify with Retell before Sprint 2. Fallback: Option B (Multilingual)</td></tr>
+    <tr><td><span class="to">▸</span> <strong>SDK upgrade breaks</strong> WebSocket handler (4.22→5.x)</td><td class="to tac">2–5h extra</td><td class="to tac"><strong>MEDIUM</strong></td><td>Test upgrade in isolation first. Pin to specific 5.x version</td></tr>
+    <tr><td><span class="tp">▸</span> <strong>Transfer latency</strong> — caller hears silence during switch</td><td class="tp tac">Poor UX</td><td class="tac">LOW</td><td>Measure latency in dev; add "Please wait" audio if >1s</td></tr>
+    <tr><td><span class="tt">▸</span> <strong>Multi-language ASR</strong> degrades DE/FR transcription</td><td class="tt tac">Existing calls affected</td><td class="tac">LOW</td><td>Only EN agents use en-US ASR; DE/FR agents keep native locale</td></tr>
+    <tr><td><span class="tr">▸</span> <strong>retell_agent_id truncation</strong> (32 char limit)</td><td class="tr tac">EN agent can't be saved</td><td class="tr tac"><strong>HIGH</strong> (known bug)</td><td>Fix max_length before agent creation (Sprint 2.1 P0)</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S21: DEMO & ROLLOUT ============== -->
+<section class="S gbg scan" id="s20">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg> ROLLOUT</div>
+  <h2 class="rv d2">Demo &amp; <span class="tc">Rollout</span> Strategy</h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">✓ Demo Checklist (Dev)</h3>
+      <div class="fl gs"><p><span class="tc">□</span> Call DE number → "Do you speak English?" → confirm → switch</p><p><span class="tc">□</span> Verify EN voice + EN ASR active after transfer</p><p><span class="tc">□</span> Verify entities (name, phone, email) preserved</p><p><span class="tc">□</span> Verify bidirectional: "Können Sie auf Deutsch?" → switch back</p><p><span class="tc">□</span> Verify summary includes "Hinweis: …auf Englisch kommuniziert"</p><p><span class="tc">□</span> Verify call forwarding still works after switch</p><p><span class="tc">□</span> Verify decline: "Nein danke" → continues in German</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">🚀 Staging Rollout</h3>
+      <div class="fl gs"><p><span class="tp">1.</span> Deploy backend (models, admin UI, API sync)</p><p><span class="tp">2.</span> Create EN agents in Retell staging dashboard</p><p><span class="tp">3.</span> Enable English for 1 test organisation</p><p><span class="tp">4.</span> Run automated calltest suite (no regressions)</p><p><span class="tp">5.</span> Run 9 manual E2E scenarios (Sprint 4.3)</p><p><span class="tp">6.</span> Demo to team</p></div>
+    </div>
+  </div>
+  <div class="rv d4">
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">🏁 Production Rollout</h3>
+      <div class="fl gs"><p><span class="tgr">1.</span> Deploy behind org-level toggle (<code class="mono">english_enabled=False</code> default)</p><p><span class="tgr">2.</span> Enable for pilot organisation</p><p><span class="tgr">3.</span> Monitor Langfuse for transfer events + error rates</p><p><span class="tgr">4.</span> If stable after 1 week → enable for remaining orgs</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!-- ═══════════════ PART 2: FORWARD WAITING ═════════════════ -->
+<!-- ══════════════════════════════════════════════════════════ -->
+
+<!-- ============== S21: SECTION DIVIDER ============== -->
+<section class="S ts gbg scan" id="s21">
+<div class="bar bar-g"></div>
+<div class="SC">
+  <div class="lbl lg rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> PART 2</div>
+  <h1 class="rv d2" style="font-size:var(--ts)"><span class="tg">Forward Waiting</span><br><span style="font-size:var(--h2);color:var(--fg)">Feature</span></h1>
+  <p class="ttag rv d3">Voice-based queue choice when the human target <strong class="to">doesn't answer</strong></p>
+  <div class="tmeta rv d4">
+    <span class="bg bg-g"><svg viewBox="0 0 24 24"><path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9.512C4.596 8.396 3 6.806 3 5c0-1.657 1.396-3 3.12-3C7.963 2 9.27 3.309 10.048 4.5z"/></svg> 🇩🇪🇫🇷🇬🇧 All Languages</span>
+    <span class="bg bg-o"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ⏱ 60s Max Wait</span>
+    <span class="bg bg-c"><svg viewBox="0 0 24 24"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.12.96.36 1.9.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.34 1.85.58 2.81.7A2 2 0 0122 16.92z"/></svg> Twilio Queue</span>
+    <span class="bg bg-t"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> 🔄 State Preserved</span>
+  </div>
+  <p class="mono rv d5" style="color:var(--muted)">February 2026 · Yurii · Twilio Queue Approach</p>
+</div>
+</section>
+
+<!-- ============== S22: THE PROBLEM ============== -->
+<section class="S gbg scan" id="s22">
+<div class="bar bar-g"></div><div class="SC fl gm mx9">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> THE PROBLEM</div>
+  <h2 class="rv d2">Failed forwards → callers feel <span class="to">dismissed</span></h2>
+  <p class="rv d3" style="color:var(--muted)">When forwarding triggers and the human doesn't answer, the system immediately reconnects the caller to the AI. From the caller's perspective: <em>"I was told 'I'll connect you' and instantly got the robot back."</em> This creates distrust — especially during business hours.</p>
+  <div class="tc2 rv d4">
+    <div class="cd" style="border-left:2px solid var(--red)">
+      <h3 class="tr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">← Today</h3>
+      <div class="fl gs"><p><span class="tr">▸</span> Forward triggers → dial target</p><p><span class="tr">▸</span> No answer → <strong>immediate AI reconnect</strong></p><p><span class="tr">▸</span> Caller: <em>"Why didn't you let me wait?"</em></p><p><span class="tr">▸</span> Perceived as dismissive</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--green)">
+      <h3 class="tgr" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">→ After</h3>
+      <div class="fl gs"><p><span class="tgr">▸</span> Forward triggers → dial target</p><p><span class="tgr">▸</span> No answer → <strong>voice prompt: "Wait or continue?"</strong></p><p><span class="tgr">▸</span> Caller CHOOSES → feels in control</p><p><span class="tgr">▸</span> Professional experience</p></div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ============== S23: USER FLOW ============== -->
+<section class="S gbg scan" id="s23">
+<div class="bar bar-c"></div><div class="SC fl gm mx10">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg> SEQUENCE</div>
+  <h2 class="rv d2">Forward Waiting <span class="tc">Sequence</span></h2>
+  <div class="sd rv d3">
+    <div class="sd-actors">
+      <div class="sd-a" style="color:var(--cyan)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg> Caller</div>
+      <div class="sd-a" style="color:var(--gold)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg> Twilio</div>
+      <div class="sd-a" style="color:var(--purple)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="3"/><line x1="12" y1="8" x2="12" y2="11"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg> Retell&nbsp;AI</div>
+      <div class="sd-a" style="color:var(--teal)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> JupusAgent</div>
+      <div class="sd-a" style="color:var(--orange)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Worker</div>
+      <div class="sd-a" style="color:var(--rose)"><svg viewBox="0 0 24 24" style="width:1em;height:1em;vertical-align:middle;fill:none;stroke:currentColor;stroke-width:2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Human</div>
+    </div>
+    <div class="sd-body">
+      <div class="sd-phase sd-phase-c">▸ Phase 1 — Intake Complete, Forward Triggers</div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tt">Intake done</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tt">forward_rule →</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tg">Dial target ──────────────────────→</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tro">▸ Ring ~20s</span></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tr">← No answer ─────────────────────</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tr">✕</span></div>
+      </div>
+
+      <div class="sd-phase sd-phase-o">▸ Phase 2 — Voice Choice Prompt</div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tp">← "Möchten Sie warten?"</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span style="color:var(--muted)">←</span></div>
+        <div class="sd-cell"><span class="tt">Choice prompt</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tgr">"Ja, ich warte" →</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span style="color:var(--muted)">→</span></div>
+        <div class="sd-cell"><span class="tgr">detect_wait()</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+
+      <div class="sd-phase sd-phase-t">▸ Phase 3 — Twilio Queue (Retell disconnects)</div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tr">Session ends ✕</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tg">→ &lt;Enqueue&gt;</span></div>
+        <div class="sd-cell"><span class="tg">▸ Hold music</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="to">Retry dial 15s →</span></div>
+        <div class="sd-cell"><span class="tro">▸ Ring…</span></div>
+      </div>
+
+      <div class="sd-phase sd-phase-gr">▸ 4a — Human Answers → Bridge</div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tgr">← Pickup!</span></div>
+        <div class="sd-cell"><span class="tgr">✓ Hello?</span></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tgr">← Dequeue + Bridge ──────────────────────────→</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tgr">▸ Connected</span></div>
+      </div>
+
+      <div class="sd-phase sd-phase-r">▸ 4b — 60s Timeout → Reconnect AI</div>
+      <div class="sd-row">
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tr">Dequeue →</span></div>
+        <div class="sd-cell"><span class="tp">New SIP session</span></div>
+        <div class="sd-cell"><span class="tt">restore_state()</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+      <div class="sd-row">
+        <div class="sd-cell"><span class="tp">← "Leitung noch besetzt…" — AI resumes</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"><span class="tt">2nd leg ✓</span></div>
+        <div class="sd-cell"></div>
+        <div class="sd-cell"></div>
+      </div>
+    </div>
+  </div>
+  <div class="nfo nfo-t rv d4"><strong>Anti-loop:</strong> If caller already waited once → skip choice, reconnect AI directly. No infinite queue cycles.</div>
+</div>
+</section>
+
+<!-- ============== S24: PLATFORM CONSTRAINTS ============== -->
+<section class="S gbg scan" id="s24">
+<div class="bar bar-g"></div><div class="SC fl gm mx9">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg> CONSTRAINTS</div>
+  <h2 class="rv d2">Retell <span class="tr">Can't Hold</span> — Twilio <span class="tgr">Can</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Capability</th><th>Retell AI</th><th>Twilio</th></tr></thead><tbody>
+      <tr><td>Hold / pause call</td><td class="tr">✗ NOT supported</td><td class="tgr">✓ &lt;Enqueue&gt; + hold music</td></tr>
+      <tr><td>Keep connection alive</td><td class="tr">5s ping → disconnect</td><td class="tgr">✓ No hard limit</td></tr>
+      <tr><td>Max call duration</td><td>600s (10 min)</td><td>~4 hours</td></tr>
+      <tr><td>Custom hold music</td><td class="tr">✗ No</td><td class="tgr">✓ MP3/WAV/TwiML</td></tr>
+      <tr><td>Programmatic dequeue</td><td class="tr">✗ N/A</td><td class="tgr">✓ REST API</td></tr>
+      <tr><td>Queue capacity</td><td class="tr">✗ N/A</td><td class="tgr">1000 (configurable)</td></tr>
+    </tbody></table>
+  </div>
+  <div class="cd rv d4" style="border-left:2px solid var(--cyan)">
+    <p style="font-size:var(--bs)"><span class="tc">⚡ Key trade-off:</span> The Retell session <strong>ENDS</strong> during queue phase. Caller is parked in Twilio's native queue. When dequeued, a new Retell SIP session starts — using the same <strong>2nd-leg reconnection pattern</strong> already proven in the codebase.</p>
+  </div>
+</div>
+</section>
+
+<!-- ============== S25: APPROACH COMPARISON ============== -->
+<section class="S gbg scan" id="s25">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> APPROACHES</div>
+  <h2 class="rv d2">Three Approaches <span class="tt">Evaluated</span></h2>
+  <div class="rv d3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:var(--gap)">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">A · Twilio Queue</h3>
+      <div class="fl gs"><p><span class="tc">▸</span> Caller parked via <code class="mono">&lt;Enqueue&gt;</code></p><p><span class="tc">▸</span> Hold music via <code class="mono">waitUrl</code></p><p><span class="tc">▸</span> Background worker retries dial</p><p><span class="tc">▸</span> On answer → dequeue → bridge</p><p><span class="tc">▸</span> On timeout → reconnect Retell (2nd leg)</p></div>
+      <p class="mono" style="font-size:var(--ss);color:var(--muted)">Medium complexity · Clean separation</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">B · Twilio Conference</h3>
+      <div class="fl gs"><p><span class="tp">▸</span> Caller in Conference room</p><p><span class="tp">▸</span> <code class="mono">startConferenceOnEnter=false</code></p><p><span class="tp">▸</span> Target dialed as moderator</p><p><span class="tp">▸</span> More flexible but heavier</p></div>
+      <p class="mono" style="font-size:var(--ss);color:var(--muted)">Medium-Large · Overkill for 1:1</p>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--orange)">
+      <h3 class="to" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">C · Keep Retell Alive</h3>
+      <div class="fl gs"><p><span class="to">▸</span> AI sends periodic "still trying…"</p><p><span class="to">▸</span> No disconnection — seamless but awkward</p><p><span class="to">▸</span> 600s limit eats conversation time</p><p><span class="to">▸</span> No hold music, Retell charges for hold</p></div>
+      <p class="mono" style="font-size:var(--ss);color:var(--muted)">Small complexity · Major UX + cost issues</p>
+    </div>
+  </div>
+  <div class="rv d4" style="text-align:center">
+    <span class="bg bg-gr" style="font-size:var(--bs);padding:.25em .7em"><svg viewBox="0 0 24 24" style="width:1em;height:1em"><polyline points="9 11 12 14 22 4"/></svg> <strong>Twilio Queue chosen</strong> — purpose-built for call parking, reuses existing 2nd-leg pattern</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S26: ARCHITECTURE ============== -->
+<section class="S gbg scan" id="s26">
+<div class="bar bar-c"></div><div class="SC fl gm mx10 ctr">
+  <div class="lbl lc rv d1" style="justify-content:center"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9c.18.64.83 1.06 1.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg> ARCHITECTURE</div>
+  <h2 class="rv d2">Twilio Queue <span class="tc">Architecture</span></h2>
+  <div class="arch rv d3">
+    <div class="abox ab-c">Caller</div><div class="aarr">→</div>
+    <div class="abox ab-g">Twilio</div><div class="aarr">→</div>
+    <div class="abox ab-p">Retell AI (SIP)</div><div class="aarr">↔</div>
+    <div class="abox ab-t">JupusAI WS</div>
+  </div>
+  <p class="mono rv d3" style="color:var(--gold);text-align:center;font-size:var(--ss)">▼ Forward triggers, no answer ▼</p>
+  <div class="arch rv d4">
+    <div class="abox ab-c">Caller</div><div class="aarr">→</div>
+    <div class="abox ab-g">Twilio Queue ♪</div><div class="aarr">←</div>
+    <div class="abox ab-o">Worker ⚙ retry 15s</div>
+  </div>
+  <div class="tc2 rv d4" style="margin-top:var(--gap)">
+    <div class="cd ctr" style="border-left:2px solid var(--green)"><h3 class="tgr">Human Answers ✓</h3><p>Dequeue → Bridge call → AI exits</p></div>
+    <div class="cd ctr" style="border-left:2px solid var(--red)"><h3 class="tr">60s Timeout ⏱</h3><p>Dequeue → Reconnect Retell → AI resumes</p></div>
+  </div>
+  <div class="rv d5" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th class="tac">Phase</th><th class="tac">Platform</th><th class="tac">Retell?</th><th class="tac">State</th></tr></thead><tbody>
+      <tr><td class="tac">1. Intake</td><td class="tac">Retell + WS</td><td class="tgr tac">✓ Yes</td><td class="tac">Conversation</td></tr>
+      <tr><td class="tac">2. Choice</td><td class="tac">Retell + WS</td><td class="tgr tac">✓ Yes</td><td class="tac">Voice prompt</td></tr>
+      <tr><td class="tac">3. Queue</td><td class="tac">Twilio only</td><td class="tr tac">✗ Disconnected</td><td class="tac">Hold music</td></tr>
+      <tr><td class="tac">4a. Connect</td><td class="tac">Twilio</td><td class="tr tac">✗ N/A</td><td class="tac">Human call</td></tr>
+      <tr><td class="tac">4b. Fallback</td><td class="tac">Retell + WS</td><td class="tgr tac">✓ Reconnected</td><td class="tac">2nd leg</td></tr>
+    </tbody></table>
+  </div>
+</div>
+</section>
+
+<!-- ============== S27: VOICE CHOICE DETECTION ============== -->
+<section class="S gbg scan" id="s27">
+<div class="bar bar-p"></div><div class="SC fl gm mx9">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg> DETECTION</div>
+  <h2 class="rv d2">Voice-Based <span class="tp">Choice</span> — No Keypad</h2>
+  <pre class="code rv d3"><code><span class="mono" style="color:var(--muted)"># After failed forward, AI asks the choice question</span>
+WAITING_CHOICE_QUESTION = {
+    <span class="tg">"de"</span>: <span class="tc">"Die Leitung ist besetzt. Möchten Sie warten</span>
+          <span class="tc">oder soll ich Ihre Daten weiter aufnehmen?"</span>,
+    <span class="tg">"fr"</span>: <span class="tc">"La ligne est occupée. Souhaitez-vous patienter</span>
+          <span class="tc">ou préférez-vous continuer avec moi?"</span>,
+    <span class="tg">"en"</span>: <span class="tc">"The line is busy. Would you like to hold</span>
+          <span class="tc">or shall I continue taking your details?"</span>
+}
+
+<span class="tp">if</span> detect_wait_choice(transcript):
+    enqueue_caller(call_sid, max_wait=<span class="to">60</span>)
+<span class="tp">elif</span> detect_ai_choice(transcript):
+    reconnect_to_retell(call_sid)
+<span class="tp">else</span>:  <span class="mono" style="color:var(--muted)"># Unclear → ask once more, then default AI</span>
+    ask_clarification()</code></pre>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th>Lang</th><th>"I'll wait"</th><th>"Continue with AI"</th></tr></thead><tbody>
+      <tr><td>🇩🇪 DE</td><td>Ja warten · Ich warte · Verbinden Sie</td><td>Weiter mit Ihnen · Nein danke</td></tr>
+      <tr><td>🇫🇷 FR</td><td>J'attends · Oui patienter</td><td>Continuez · Non merci</td></tr>
+      <tr><td>🇬🇧 EN</td><td>I'll wait · Hold please · Connect me</td><td>Continue · No thanks · Keep going</td></tr>
+    </tbody></table>
+  </div>
+  <div class="rv d5" style="display:flex;gap:var(--gap);flex-wrap:wrap">
+    <span class="bg bg-p"><svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/></svg> Voice-only (no DTMF)</span>
+    <span class="bg bg-o"><svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg> Unclear → 1 retry → default AI</span>
+    <span class="bg bg-t"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Anti-loop: wait→AI→forward→wait blocked</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S28: USER STORIES ============== -->
+<section class="S gbg scan" id="s28">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> USER STORIES</div>
+  <h2 class="rv d2">3 Stories, <span class="tt">MoSCoW</span> Prioritized</h2>
+  <div class="rv d3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:var(--gap)">
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:clamp(.15rem,.3vw,.2rem)"><h3 class="tc">Story 1: Wait vs AI</h3><span class="bg bg-c" style="font-size:var(--ss);padding:.15em .4em">P0</span></div>
+      <p style="font-size:var(--ss);color:var(--muted);margin-bottom:clamp(.15rem,.3vw,.2rem)"><em>As a caller, I want to choose whether to wait or continue with AI, so I feel in control.</em></p>
+      <div class="fl gs"><p><span class="tc">▸</span> Voice prompt after failed forward</p><p><span class="tc">▸</span> No keypad — voice intent detection</p><p><span class="tc">▸</span> Unclear → 1 clarification → default AI</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--teal)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:clamp(.15rem,.3vw,.2rem)"><h3 class="tt">Story 2: 60s Timeout</h3><span class="bg bg-t" style="font-size:var(--ss);padding:.15em .4em">P0</span></div>
+      <p style="font-size:var(--ss);color:var(--muted);margin-bottom:clamp(.15rem,.3vw,.2rem)"><em>As a caller, I want to be informed if no one answers, so I'm not stuck indefinitely.</em></p>
+      <div class="fl gs"><p><span class="tt">▸</span> Max 60s in queue</p><p><span class="tt">▸</span> Human answers → call connects, AI exits</p><p><span class="tt">▸</span> Timeout → "line still busy" → reconnect AI</p></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:clamp(.15rem,.3vw,.2rem)"><h3 class="tp">Story 3: Logging</h3><span class="bg bg-p" style="font-size:var(--ss);padding:.15em .4em">P1</span></div>
+      <p style="font-size:var(--ss);color:var(--muted);margin-bottom:clamp(.15rem,.3vw,.2rem)"><em>As a law firm user, I want visibility into waiting attempts.</em></p>
+      <div class="fl gs"><p><span class="tp">▸</span> Forwarding attempt logged as today</p><p><span class="tp">▸</span> Summary: "Caller chose to wait. Human did not answer."</p><p><span class="tp">▸</span> Human answered → standard success log</p></div>
+    </div>
+  </div>
+  <div class="cd rv d4" style="border-left:2px solid var(--teal)">
+    <p style="font-size:var(--bs)"><span class="tt">P0</span> = must ship · <span class="tp">P1</span> = fast-follow · <span class="to">P2</span> (configurable wait, custom music) = post-launch · <span class="mono" style="color:var(--muted)">P3</span> (retries, routing, staff detection) = out of scope</p>
+  </div>
+</div>
+</section>
+
+<!-- ============== S29: EDGE CASES ============== -->
+<section class="S gbg scan" id="s29">
+<div class="bar bar-g"></div><div class="SC fl gm mx10">
+  <div class="lbl lo rv d1"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> ROBUSTNESS</div>
+  <h2 class="rv d2">Edge Cases <span class="to">Handled</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th style="width:30%">Edge Case</th><th>Handling</th></tr></thead><tbody>
+    <tr><td><span class="to">▸</span> <strong>Unclear choice</strong> ("Hmm", silence)</td><td>Ask once more → default to AI reconnect after 1 retry</td></tr>
+    <tr><td><span class="tp">▸</span> <strong>Caller hangs up</strong> during queue</td><td>Twilio <code class="mono">StatusCallback</code> → clean up worker, log abandonment to PostHog</td></tr>
+    <tr><td><span class="tr">▸</span> <strong>Human hangs up</strong> immediately</td><td>Standard call-ended flow — no AI reconnect triggered</td></tr>
+    <tr><td><span class="tc">▸</span> <strong>Wait→AI→forward again</strong></td><td><strong>Block re-queue</strong> for same call (<code class="mono">already_waited=True</code>) — prevent infinite loop</td></tr>
+    <tr><td><span class="tt">▸</span> <strong>Retell reconnect fails</strong></td><td>Sentry alert, caller hears "technical difficulty" message + graceful hangup</td></tr>
+    <tr><td><span class="tro">▸</span> <strong>Speech during hold</strong></td><td>Not transcribed (no Retell session active) — by design, documented</td></tr>
+    <tr><td><span class="tgr">▸</span> <strong>Multiple rules match</strong></td><td>First matching forwarding rule wins → then voice choice offered once</td></tr>
+    <tr><td><span class="tc">▸</span> <strong>English caller in queue</strong></td><td>Hold music is language-agnostic; AI resumes in English on reconnect</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+<!-- ============== S30: OBSERVABILITY ============== -->
+<section class="S gbg scan" id="s30">
+<div class="bar bar-p"></div><div class="SC fl gm mx9">
+  <div class="lbl lp rv d1"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> OBSERVABILITY</div>
+  <h2 class="rv d2">7 Events + <span class="tp">Forwarding Dashboard</span></h2>
+  <div class="tc2 rv d3">
+    <div class="cd" style="border-left:2px solid var(--purple)">
+      <h3 class="tp" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">PostHog Events</h3>
+      <div class="code" style="font-size:var(--ss)"><span class="tc">1.</span> <span class="fn">phone_forward_triggered</span><br><span class="to">2.</span> <span class="fn">phone_forward_not_answered</span><br><span class="tt">3.</span> <span class="fn">phone_wait_selected</span><br><span class="tc">4.</span> <span class="fn">phone_ai_selected_after_forward</span><br><span class="tgr">5.</span> <span class="fn">phone_wait_connected</span><br><span class="tr">6.</span> <span class="fn">phone_wait_timeout</span><br><span class="tp">7.</span> <span class="fn">phone_wait_fallback_to_ai</span></div>
+    </div>
+    <div class="cd" style="border-left:2px solid var(--cyan)">
+      <h3 class="tc" style="margin-bottom:clamp(.15rem,.3vw,.2rem)">Dashboard Views</h3>
+      <div class="fl gs">
+        <p><span class="tc">▸</span> <strong>Forwarding Funnel</strong> — triggered → not_answered → wait → outcome</p>
+        <p><span class="tg">▸</span> <strong>Wait vs AI Ratio</strong> — wait_selected vs ai_selected</p>
+        <p><span class="tgr">▸</span> <strong>Wait Success Rate</strong> — connected / wait_selected</p>
+        <p><span class="to">▸</span> <strong>Forward Failure Rate</strong> — not_answered / triggered</p>
+        <p><span class="tp">▸</span> <strong>Post-Timeout %</strong> — continues vs hangs up after timeout</p>
+      </div>
+    </div>
+  </div>
+  <div class="nfo nfo-p rv d4"><strong>All events include:</strong> <code class="mono">call_id</code>, <code class="mono">org_id</code>, <code class="mono">forwarding_rule_id</code>, <code class="mono">phone_number</code>, <code class="mono">language</code>. Dashboard auto-filters by organization.</div>
+  <div style="display:flex;gap:clamp(.2rem,.5vw,.35rem);flex-wrap:wrap" class="rv d5">
+    <span class="bg bg-p">7 structured events</span>
+    <span class="bg bg-c">5 dashboard panels</span>
+    <span class="bg bg-t">Auto org-filter</span>
+    <span class="bg bg-o">Sentry on reconnect fail</span>
+  </div>
+</div>
+</section>
+
+<!-- ============== S31: SPRINT PLAN ============== -->
+<section class="S gbg scan" id="s31">
+<div class="bar bar-c"></div><div class="SC fl gm mx9">
+  <div class="lbl lc rv d1"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> PLAN</div>
+  <h2 class="rv d2">4 Phases, <span class="tc">~25 Hours</span></h2>
+  <div class="tl rv d3">
+    <div class="tli"><span class="mono tc" style="font-size:var(--ss)">P1</span><div><h3 style="font-size:var(--bs)">Twilio Queue + Worker</h3><div class="tlbar"><div class="tlf tlf-c" style="--w:44%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">11h</span></div>
+    <div class="tli"><span class="mono tp" style="font-size:var(--ss)">P2</span><div><h3 style="font-size:var(--bs)">Voice Choice + Detection</h3><div class="tlbar"><div class="tlf tlf-p" style="--w:12%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">3h</span></div>
+    <div class="tli"><span class="mono tt" style="font-size:var(--ss)">P3</span><div><h3 style="font-size:var(--bs)">Reconnect + Config + Observability</h3><div class="tlbar"><div class="tlf tlf-t" style="--w:28%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">7h</span></div>
+    <div class="tli"><span class="mono to" style="font-size:var(--ss)">P4</span><div><h3 style="font-size:var(--bs)">Testing &amp; Validation</h3><div class="tlbar"><div class="tlf tlf-o" style="--w:16%"></div></div></div><span class="mono" style="color:var(--muted);font-size:var(--ss)">4h</span></div>
+  </div>
+  <div class="rv d4" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th class="tac">Sprint</th><th>Focus</th><th class="tac">Tasks</th><th class="tac">Hrs</th></tr></thead><tbody>
+    <tr><td class="tc tac"><strong>1.1</strong></td><td>Twilio <code class="mono">&lt;Enqueue&gt;</code>/<code class="mono">&lt;Dequeue&gt;</code>, <code class="mono">waitUrl</code> TwiML, queue webhook</td><td class="tac">5</td><td class="tac">6h</td></tr>
+    <tr><td class="tc tac"><strong>1.2</strong></td><td>Background dial-retry worker (async, 15s interval, max 4 attempts)</td><td class="tac">4</td><td class="tac">4h</td></tr>
+    <tr><td class="tc tac"><strong>1.3</strong></td><td>Hold music MP3 upload + periodic "still trying" TwiML messages</td><td class="tac">2</td><td class="tac">1h</td></tr>
+    <tr><td class="tp tac"><strong>2.1</strong></td><td>Voice choice detection — wait/AI phrases in DE, FR, EN + clarification retry</td><td class="tac">4</td><td class="tac">3h</td></tr>
+    <tr><td class="tt tac"><strong>3.1</strong></td><td>Reconnect-to-Retell fallback (reuse 2nd-leg pattern from <code class="mono">call.py:202-361</code>)</td><td class="tac">3</td><td class="tac">3h</td></tr>
+    <tr><td class="tt tac"><strong>3.2</strong></td><td>ForwardingRule config: <code class="mono">max_wait_seconds</code>, enable/disable toggle, admin UI</td><td class="tac">3</td><td class="tac">2.5h</td></tr>
+    <tr><td class="tt tac"><strong>3.3</strong></td><td>PostHog 7 events + 5 dashboard panels + Sentry alerts</td><td class="tac">2</td><td class="tac">1.5h</td></tr>
+    <tr><td class="to tac"><strong>4.1</strong></td><td>Unit tests (choice detection), integration (queue flow), E2E manual (6 scenarios)</td><td class="tac">6</td><td class="tac">4h</td></tr>
+  </tbody></table></div>
+</div>
+</section>
+
+id="s32">
+<div class="bar bar-t"></div><div class="SC fl gm mx9">
+  <div class="lbl lt rv d1"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> FILES</div>
+  <h2 class="rv d2">Files <span class="tt">Modified</span></h2>
+  <div class="rv d3" style="overflow:hidden;border-radius:8px"><table class="tb"><thead><tr><th class="tac">Action</th><th>File</th><th class="tac">Sprint</th></tr></thead><tbody>
+      <tr><td class="tgr">CREATE</td><td><code class="mono">jupusai/agent/waiting_choice.py</code></td><td>2.1</td></tr>
+      <tr><td class="tgr">CREATE</td><td><code class="mono">jupusai/twilio/queue_manager.py</code></td><td>1.1</td></tr>
+      <tr><td class="tgr">CREATE</td><td><code class="mono">jupusai/twilio/hold_music.xml</code> (TwiML)</td><td>1.3</td></tr>
+      <tr><td class="tgr">CREATE</td><td><code class="mono">jupusai/tests/test_waiting_choice.py</code></td><td>4.1</td></tr>
+      <tr><td class="tgr">CREATE</td><td><code class="mono">devgui/datasets/calltest/forward_wait_*.json</code> ×3</td><td>4.1</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/twilio/twilio_server.py</code></td><td>1.1-1.2</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/api/call.py</code></td><td>1.1-1.2</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/api/llm_websocket.py</code></td><td>3.1</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/agent/jupus_agent.py</code></td><td>2.1-3.1</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/utils/call_tracer.py</code></td><td>3.1</td></tr>
+      <tr><td class="to">EDIT</td><td><code class="mono">jupusai/constants.py</code></td><td>2.1</td></tr>
+      <tr><td class="tp">DJANGO</td><td><code class="mono">ForwardingRule</code> model (<code class="mono">max_wait_seconds</code>)</td><td>3.2</td></tr>
+    </tbody></table>
+  </div>
+</div>
+</section>
+
+<!-- ============== S33: COMBINED TAKEAWAYS ============== -->
+<section class="S gbg scan" id="s33">
+<div class="bar bar-c"></div><div class="SC fl gm mx9 ctr" style="gap:clamp(.2rem,.5vw,.4rem);padding-top:clamp(.5rem,1.5vw,1rem)">
+  <div class="lbl lg rv d1" style="justify-content:center"><svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> SUMMARY</div>
+  <h2 class="rv d2" style="margin:0">Key <span class="tc">Takeaways</span></h2>
+  <p class="mono rv d2" style="color:var(--cyan);font-size:var(--ss);margin:0">ENGLISH SUPPORT</p>
+  <div class="cg rv d3" style="grid-template-columns:repeat(4,1fr);gap:clamp(.25rem,.5vw,.4rem)">
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-c" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></div><h3 style="font-size:var(--ss);margin:0">Native Quality</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">EN voice + ASR</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-t" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></div><h3 style="font-size:var(--ss);margin:0">Bidirectional</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">Switch anytime</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-p" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div><h3 style="font-size:var(--ss);margin:0">Zero State Loss</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">Redis preserves all</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-gr" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><h3 style="font-size:var(--ss);margin:0">Safe Design</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">Confirm first</p></div>
+  </div>
+  <p class="mono rv d3" style="color:var(--gold);font-size:var(--ss);margin:0">FORWARD WAITING</p>
+  <div class="cg rv d4" style="grid-template-columns:repeat(4,1fr);gap:clamp(.25rem,.5vw,.4rem)">
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-g" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><h3 style="font-size:var(--ss);margin:0">Caller Choice</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">Wait or continue</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-o" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><h3 style="font-size:var(--ss);margin:0">60s Queue</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">Twilio-native hold</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-t" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div><h3 style="font-size:var(--ss);margin:0">State Preserved</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">2nd-leg pattern</p></div>
+    <div class="cd ctr" style="padding:clamp(.25rem,.4vw,.4rem)"><div class="ib ib-p" style="margin:0 auto .15rem;width:1.3em;height:1.3em"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div><h3 style="font-size:var(--ss);margin:0">Full Observability</h3><p style="font-size:calc(var(--ss) - 1px);margin:0">7 PostHog events</p></div>
+  </div>
+  <div class="rv d5" style="display:flex;gap:clamp(.4rem,1.5vw,1rem);flex-wrap:wrap;justify-content:center;align-items:center">
+    <div><span class="mono" style="color:var(--muted);font-size:var(--ss)">English</span><br><span class="tc" style="font-size:var(--h3);font-weight:700">~22.5h</span></div>
+    <div style="width:1px;height:1.2rem;background:var(--brd)"></div>
+    <div><span class="mono" style="color:var(--muted);font-size:var(--ss)">Waiting</span><br><span class="tg" style="font-size:var(--h3);font-weight:700">~25h</span></div>
+    <div style="width:1px;height:1.2rem;background:var(--brd)"></div>
+    <div><span class="mono" style="color:var(--muted);font-size:var(--ss)">EN Files</span><br><span class="to" style="font-size:var(--h3);font-weight:700">4+8</span></div>
+    <div style="width:1px;height:1.2rem;background:var(--brd)"></div>
+    <div><span class="mono" style="color:var(--muted);font-size:var(--ss)">Wait Files</span><br><span class="tp" style="font-size:var(--h3);font-weight:700">5+7</span></div>
+    <div style="width:1px;height:1.2rem;background:var(--brd)"></div>
+    <div><span class="mono" style="color:var(--muted);font-size:var(--ss)">Extra Cost</span><br><span class="tgr" style="font-size:var(--h3);font-weight:700">~$0</span></div>
+  </div>
+  <p class="rv d5 mono" style="color:var(--muted);margin:0">JUPUS AI · Phonebot Technical Kickoff · Feb 2026</p>
+</div>
+</section>
+</div>
+
+<!-- PAGE COUNTER -->
+<span class="sn" id="pageNum"><b>01</b>/33</span>
+<!-- NAV -->
+<nav class="nav" aria-label="Slides"></nav>
+<div class="hint"><span class="ky">←</span><span class="ky">→</span> or <span class="ky">Space</span></div>
+
+<script>
+// Build nav dots
+const S=document.querySelectorAll('.S'),N=document.querySelector('.nav');
+const total=S.length;
+const tipMap=['1·Hero','2·Challenge','3·Option A','4·Option B','5·Option C','6·Decision','7·Architecture','8·Sequence','9·State','10·Detection','11·Agent Resolve','12·Django Models','13·Admin UI','14·Edge Cases','15·Post-Transfer','16·Files','17·Sprint Plan','18·Cost','19·Risks','20·Demo','21·Part 2','22·Problem','23·Flow','24·Constraints','25·Approaches','26·Queue Arch','27·Voice Choice','28·User Stories','29·Edge Cases','30·Observability','31·Sprint Plan','32·Files','33·Takeaways'];
+S.forEach((_,i)=>{const d=document.createElement('button');d.className='dt'+(i===0?' on':'');d.dataset.s=i;d.dataset.tip=tipMap[i]||'Slide '+(i+1);N.appendChild(d)});
+const D=document.querySelectorAll('.dt');
+
+// Slide navigation
+let ci=0,animating=false;
+function goTo(n){
+  if(n===ci||n<0||n>=total||animating)return;
+  animating=true;
+  const prev=S[ci],next=S[n];
+  const dir=n>ci?1:-1;
+  // Set starting position for incoming slide
+  next.style.transition='none';
+  next.style.transform=`translateX(${dir*80}px)`;
+  next.style.opacity='0';
+  next.offsetHeight; // force reflow
+  next.style.transition='';
+  // Animate out current
+  prev.classList.remove('active');
+  prev.classList.add('prev');
+  prev.style.transform=`translateX(${-dir*80}px)`;
+  prev.style.opacity='0';
+  // Animate in next
+  next.classList.add('active');
+  next.style.transform='translateX(0)';
+  next.style.opacity='1';
+  // Update dots
+  D.forEach(d=>d.classList.remove('on'));
+  D[n].classList.add('on');
+  document.getElementById('pageNum').innerHTML='<b>'+String(n+1).padStart(2,'0')+'</b>/'+total;
+  // Cleanup after transition
+  setTimeout(()=>{
+    prev.classList.remove('prev');
+    prev.style.transform='';prev.style.opacity='';
+    prev.classList.remove('vis');
+    next.classList.add('vis');
+    ci=n;animating=false;
+  },300);
+}
+
+D.forEach(d=>d.addEventListener('click',()=>goTo(+d.dataset.s)));
+
+// Keyboard nav
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown',' '].includes(e.key)){e.preventDefault();goTo(ci+1)}
+  else if(['ArrowLeft','ArrowUp'].includes(e.key)){e.preventDefault();goTo(ci-1)}
+});
+
+// Touch/swipe support
+let tx=0,ty=0;
+document.addEventListener('touchstart',e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+document.addEventListener('touchend',e=>{
+  const dx=e.changedTouches[0].clientX-tx;
+  const dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>Math.abs(dy)&&Math.abs(dx)>50){
+    if(dx<0)goTo(ci+1);else goTo(ci-1);
+  }
+},{passive:true});
+
+// Hint auto-hide
+const h=document.querySelector('.hint');function hh(){h.style.transition='opacity .5s';h.style.opacity='0';setTimeout(()=>h.style.display='none',500)}
+document.addEventListener('keydown',hh,{once:true});document.addEventListener('click',hh,{once:true});document.addEventListener('touchstart',hh,{once:true});
+
+// Initial reveal for first slide
+S[0].classList.add('vis');
+
+// Theme toggle
+function toggleTheme(){const t=document.documentElement.dataset.theme==='dark'?'light':'dark';document.documentElement.dataset.theme=t;try{localStorage.setItem('theme',t)}catch(e){}}
+try{const saved=localStorage.getItem('theme');if(saved)document.documentElement.dataset.theme=saved}catch(e){}
+
+// ====== HERO CANVAS: PARTICLES + CONNECTIONS + ORBS + GRID + WAVEFORM ======
+;(function(){
+const cv=document.getElementById('heroParticles');if(!cv)return;
+const ctx=cv.getContext('2d');
+const mv=document.getElementById('heroMatrix');
+const mctx=mv?mv.getContext('2d'):null;
+let W,H,dpr,particles=[],t=0,raf;
+let mouseX=-999,mouseY=-999;
+
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect();
+  dpr=Math.min(window.devicePixelRatio||1,2);
+  W=r.width;H=r.height;
+  cv.width=W*dpr;cv.height=H*dpr;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  if(mv){mv.width=W*dpr;mv.height=H*dpr;mv.style.width=W+'px';mv.style.height=H+'px';mctx.setTransform(dpr,0,0,dpr,0,0)}
+  initParticles();initMatrix();
+}
+
+const isDark=()=>document.documentElement.dataset.theme!=='light';
+const c=(d,l)=>isDark()?d:l;
+
+// ── PARTICLES ──
+const N=80,CONN=140,MOUSE_R=120;
+function initParticles(){
+  particles=[];
+  for(let i=0;i<N;i++){
+    particles.push({
+      x:Math.random()*W,y:Math.random()*H,
+      vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,
+      r:Math.random()*1.8+.4,
+      hue:[190,45,270,160][Math.floor(Math.random()*4)],
+      pulse:Math.random()*Math.PI*2
+    });
+  }
+}
+
+// ── ORBS ──
+consts=[
+  {x:.12,y:.18,r:.2,hue:190,sp:.0003,ph:0},
+  {x:.82,y:.78,r:.17,hue:270,sp:.00025,ph:2},
+  {x:.55,y:.45,r:.14,hue:45,sp:.00035,ph:4},
+  {x:.28,y:.82,r:.11,hue:160,sp:.0002,ph:1}
+];
+function drawOrbs(){
+ s.forEach(o=>{
+    const ox=o.x*W+Math.sin(t*o.sp*6+o.ph)*W*.07;
+    const oy=o.y*H+Math.cos(t*o.sp*5+o.ph)*H*.06;
+    const rad=o.r*Math.min(W,H);
+    const g=ctx.createRadialGradient(ox,oy,0,ox,oy,rad);
+    const a=isDark()?.12:.15;
+    const cols={190:['0,212,255'],270:['192,132,252'],45:['255,193,7'],160:['0,128,128']};
+    const rgb=cols[o.hue][0];
+    g.addColorStop(0,`rgba(${rgb},${a})`);g.addColorStop(1,`rgba(${rgb},0)`);
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(ox,oy,rad,0,Math.PI*2);ctx.fill();
+  });
+}
+
+// ── PARTICLES DRAW ──
+function drawParticles(){
+  const nodeA=isDark()?.55:.55;const lineA=isDark()?.14:.28;
+  // connections
+  for(let i=0;i<particles.length;i++){
+    for(let j=i+1;j<particles.length;j++){
+      const dx=particles[i].x-particles[j].x,dy=particles[i].y-particles[j].y;
+      const d=Math.sqrt(dx*dx+dy*dy);
+      if(d<CONN){
+        const op=lineA*(1-d/CONN);
+        ctx.strokeStyle=isDark()?`rgba(0,212,255,${op})`:`rgba(0,80,160,${op})`;
+        ctx.lineWidth=.6;ctx.beginPath();ctx.moveTo(particles[i].x,particles[i].y);ctx.lineTo(particles[j].x,particles[j].y);ctx.stroke();
+      }
+    }
+  }
+  // nodes
+  particles.forEach(p=>{
+    // mouse repulsion
+    const mdx=p.x-mouseX,mdy=p.y-mouseY;
+    const md=Math.sqrt(mdx*mdx+mdy*mdy);
+    if(md<MOUSE_R&&md>0){const f=(1-md/MOUSE_R)*.8;p.vx+=mdx/md*f;p.vy+=mdy/md*f}
+    // dampen
+    p.vx*=.995;p.vy*=.995;
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0||p.x>W)p.vx*=-1;
+    if(p.y<0||p.y>H)p.vy*=-1;
+
+    const pulse=.7+Math.sin(t*.02+p.pulse)*.3;
+    const cols={190:c('0,212,255','0,100,180'),270:c('192,132,252','110,40,220'),45:c('255,193,7','200,120,0'),160:c('0,128,128','0,110,110')};
+    const rgb=cols[p.hue];
+    ctx.fillStyle=`rgba(${rgb},${nodeA*pulse})`;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    // glow
+    if(isDark()){
+      ctx.fillStyle=`rgba(${rgb},${nodeA*.15*pulse})`;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r*4,0,Math.PI*2);ctx.fill();
+    }
+  });
+}
+
+// ── VOICE WAVEFORM ──
+function drawWaveform(){
+  const wy=H*.86,amp=H*.04;
+  const waves=[
+    {f:.012,s:.0015,c:isDark()?'0,212,255':'2,132,199',a:isDark()?.25:.3},
+    {f:.008,s:.001,c:isDark()?'192,132,252':'124,58,237',a:isDark()?.15:.2},
+    {f:.015,s:.002,c:isDark()?'255,193,7':'180,83,9',a:isDark()?.1:.15}
+  ];
+  waves.forEach(w=>{
+    ctx.beginPath();ctx.moveTo(0,wy);
+    for(let x=0;x<=W;x+=2){ctx.lineTo(x,wy+Math.sin(x*w.f+t*w.s)*amp*Math.sin(x/W*Math.PI))}
+    ctx.strokeStyle=`rgba(${w.c},${w.a})`;ctx.lineWidth=1.5;ctx.stroke();
+    ctx.lineTo(W,H);ctx.lineTo(0,H);ctx.closePath();ctx.fillStyle=`rgba(${w.c},${w.a*.3})`;ctx.fill();
+  });
+}
+
+// ── SCAN FLASH ──
+let fTimer=0,fY=-1;
+function drawFlash(){
+  fTimer--;
+  if(fTimer<=0){fTimer=Math.random()*250+80;fY=Math.random()*H}
+  if(fTimer>0&&fTimer<6){ctx.fillStyle=`rgba(0,212,255,${isDark()?.06:.14})`;ctx.fillRect(0,fY,W,2)}
+}
+
+// ── DATA BURSTS (periodic constellation flash) ──
+let burstTimer=0,burstPts=[];
+function drawBurst(){
+  burstTimer--;
+  if(burstTimer<=0){
+    burstTimer=Math.random()*400+200;
+    const cx=W*.2+Math.random()*W*.6,cy=H*.2+Math.random()*H*.6;
+    burstPts=[];
+    for(let i=0;i<6;i++){const a=i/6*Math.PI*2;burstPts.push({x:cx+Math.cos(a)*(30+Math.random()*40),y:cy+Math.sin(a)*(30+Math.random()*40)})}
+  }
+  if(burstTimer>0&&burstTimer<30&&burstPts.length){
+    const fade=burstTimer/30;const a=isDark()?.2*fade:.35*fade;
+    ctx.strokeStyle=`rgba(0,212,255,${a})`;ctx.lineWidth=1;
+    for(let i=0;i<burstPts.length;i++){
+      for(let j=i+1;j<burstPts.length;j++){ctx.beginPath();ctx.moveTo(burstPts[i].x,burstPts[i].y);ctx.lineTo(burstPts[j].x,burstPts[j].y);ctx.stroke()}
+    }
+    burstPts.forEach(p=>{ctx.fillStyle=`rgba(0,212,255,${a*2})`;ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()});
+  }
+}
+
+// ── MATRIX RAIN ──
+let matCols=[],matFont=12;
+function initMatrix(){
+  if(!mctx)return;
+  matFont=Math.max(10,Math.floor(W/80));
+  const cols=Math.ceil(W/matFont);
+  matCols=Array.from({length:cols},()=>({y:Math.random()*H/matFont|0,speed:.3+Math.random()*.7,chars:'JUPUSAIRETELLWEBSOCKETAGENTTRANSFERREDISPHONEBOTVOICEASR01'}));
+}
+function drawMatrix(){
+  if(!mctx)return;
+  mctx.fillStyle=isDark()?'rgba(10,15,28,.12)':'rgba(248,250,252,.06)';
+  mctx.fillRect(0,0,W,H);
+  mctx.font=matFont+'px Fira Code,monospace';
+  const fg=isDark()?'0,212,255':'0,100,140';
+  matCols.forEach((col,i)=>{
+    const ch=col.chars[Math.floor(Math.random()*col.chars.length)];
+    const bright=Math.random()>.7?.9:.4;
+    mctx.fillStyle=`rgba(${fg},${bright})`;
+    mctx.fillText(ch,i*matFont,col.y*matFont);
+    col.y+=col.speed;
+    if(col.y*matFont>H&&Math.random()>.97)col.y=0;
+  });
+}
+
+// ── MAIN LOOP ──
+function frame(){
+  t++;
+  ctx.clearRect(0,0,W,H);
+  drawParticles();drawFlash();drawBurst();
+  drawMatrix();
+  raf=requestAnimationFrame(frame);
+}
+
+// Mouse tracking
+const hero=document.getElementById('s1');
+hero.addEventListener('mousemove',e=>{const r=cv.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top});
+hero.addEventListener('mouseleave',()=>{mouseX=-999;mouseY=-999});
+
+// Visibility: check if hero is active slide
+function checkHeroVis(){
+  if(hero.classList.contains('active')){if(!raf){resize();frame()}}
+  else{if(raf){cancelAnimationFrame(raf);raf=null}}
+}
+// Watch for class changes on hero
+new MutationObserver(checkHeroVis).observe(hero,{attributes:true,attributeFilter:['class']});
+// Initial check
+checkHeroVis();
+window.addEventListener('resize',()=>{if(raf)resize()});
+})();
+
+// ====== GLOBAL WAVEFORM (single fixed canvas, always running) ======
+;(function(){
+const cv=document.getElementById('globalWave');
+const ctx=cv.getContext('2d');
+let w=0,h=0,gt=0;
+
+function isDark(){return document.documentElement.dataset.theme!=='light'}
+
+function resize(){
+  const dpr=Math.min(window.devicePixelRatio||1,2);
+  w=window.innerWidth;
+  h=Math.min(window.innerHeight*.08, 60); // match CSS min(8vh,60px)
+  cv.width=w*dpr;cv.height=h*dpr;
+  cv.style.width=w+'px';cv.style.height=h+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+
+function drawWave(){
+  ctx.clearRect(0,0,w,h);
+  const dk=isDark();
+  const wy=h*.45,amp=h*.38;
+
+  // Wave configs: solid base + dotted overlay
+  const waves=[
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',a:dk?.12:.22,dash:[],lw:1},
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',a:dk?.18:.38,dash:[2,8],lw:1},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',a:dk?.08:.16,dash:[],lw:.8},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',a:dk?.14:.3,dash:[3,12],lw:.8},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',a:dk?.06:.12,dash:[],lw:.7},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',a:dk?.1:.22,dash:[1,6],lw:.7},
+  ];
+
+  function yw(x,wv){return wy+Math.sin(x*wv.f+gt*wv.s)*amp*Math.sin(x/w*Math.PI)}
+
+  // Draw wave lines
+  waves.forEach(wv=>{
+    ctx.setLineDash(wv.dash);
+    ctx.beginPath();ctx.moveTo(0,wy);
+    for(let x=0;x<=w;x+=2){ctx.lineTo(x,yw(x,wv))}
+    ctx.strokeStyle=`rgba(${wv.rgb},${wv.a})`;ctx.lineWidth=wv.lw;ctx.stroke();
+    if(wv.dash.length===0){
+      ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();
+      ctx.fillStyle=`rgba(${wv.rgb},${wv.a*.15})`;ctx.fill();
+    }
+  });
+  ctx.setLineDash([]);
+
+  // Traveling pulses
+  const pulseWaves=[
+    {f:.01,s:.0012,rgb:dk?'0,212,255':'0,90,160',speed:.003,width:120},
+    {f:.007,s:.0008,rgb:dk?'192,132,252':'100,40,200',speed:.002,width:100},
+    {f:.013,s:.0016,rgb:dk?'255,193,7':'190,110,0',speed:.004,width:80},
+  ];
+  pulseWaves.forEach((pw,i)=>{
+    const px=((gt*pw.speed+i*.33)%1.4-.2)*w;
+    const grad=ctx.createRadialGradient(px,yw(px,pw),0,px,yw(px,pw),pw.width);
+    const pa=dk?.4:.5;
+    grad.addColorStop(0,`rgba(${pw.rgb},${pa})`);
+    grad.addColorStop(.5,`rgba(${pw.rgb},${pa*.3})`);
+    grad.addColorStop(1,`rgba(${pw.rgb},0)`);
+    ctx.beginPath();
+    const start=Math.max(0,px-pw.width),end=Math.min(w,px+pw.width);
+    ctx.moveTo(start,yw(start,pw));
+    for(let x=start;x<=end;x+=2){ctx.lineTo(x,yw(x,pw))}
+    ctx.strokeStyle=grad;ctx.lineWidth=2.5;ctx.stroke();
+  });
+
+  // Floating dots
+  const dotCount=18;
+  for(let i=0;i<dotCount;i++){
+    const wIdx=i%3;
+    const pw=pulseWaves[wIdx];
+    const phase=i/dotCount*w+gt*.15*(wIdx===1?-1:1);
+    const dx=((phase%w)+w)%w;
+    const dy=yw(dx,pw);
+    const breathe=.4+Math.sin(gt*.015+i*1.7)*.6;
+    const r=dk?1.5:2;
+    const da=(dk?.3:.45)*breathe;
+    ctx.fillStyle=`rgba(${pw.rgb},${da})`;
+    ctx.beginPath();ctx.arc(dx,dy,r,0,Math.PI*2);ctx.fill();
+    if(dk){
+      ctx.fillStyle=`rgba(${pw.rgb},${da*.2})`;
+      ctx.beginPath();ctx.arc(dx,dy,r*4,0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+
+// Hide on hero (slide 1), show on all others
+function updateVisibility(){
+  const heroActive=document.getElementById('s1').classList.contains('active');
+  cv.classList.toggle('hide',heroActive);
+}
+
+// Watch for slide changes
+new MutationObserver(updateVisibility).observe(document.getElementById('s1'),{attributes:true,attributeFilter:['class']});
+updateVisibility();
+
+function frame(){
+  gt++;
+  drawWave();
+  requestAnimationFrame(frame);
+}
+
+resize();frame();
+window.addEventListener('resize',resize);
+})()
+</script>
+</body>
+</html>
