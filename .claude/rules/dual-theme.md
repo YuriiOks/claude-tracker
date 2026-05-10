@@ -33,6 +33,16 @@ Pure cool blue is reserved for charts / rare secondary use — get it via `--tea
 - ❌ Using `#fff` instead of `var(--inv)` (which flips to dark navy in dark theme).
 - ❌ Assuming "cyan" looks blue in both themes. It does not.
 
+## Documented exemptions
+
+These elements are intentionally **always-light** regardless of `data-theme`. The decision is conscious — they read as floating control sheets / inspectors, not part of the dashboard chrome.
+
+| Component | File | Rationale |
+|---|---|---|
+| TweaksPanel (`.twk-panel`) | `src/components/TweaksPanel.jsx` (`TWEAKS_STYLE`) | Floating macOS-style control sheet — should look like a system inspector overlay regardless of dashboard theme. The hardcoded `rgba(250,249,247,.78)` background + `#29261b` text is by design. |
+
+When adding a new always-light/always-dark element, add a row here so future readers don't try to "fix" it.
+
 ## See also
 
 - `skill: dual-theme` — full breakdown including glow shadows, code-block backgrounds, accent-tone tweaks.

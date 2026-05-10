@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>claude-tracker — Code Audit 2026-05-10</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  /* ── Warm-neutral tokens ── */
+  :root {
+    --bg:        #FAF8F5;
+    --surface:   #F0EDE8;
+    --surface-2: #E3DACC;
+    --border:    #D4CFC7;
+    --text:      #2C2825;
+    --muted:     #8A837A;
+    --accent:    #B8602A;
+    --clay:      #D97757;
+    --olive:     #788C5D;
+    --sky:       #6A8CAF;
+    --oat:       #E3DACC;
+    --slate:     #141413;
+    --ok:        #5C8C5A;
+    --bad:       #B14D45;
+    --warn:      #C46A3D;
+    --radius:    6px;
+    --shadow:    0 1px 3px rgba(20,20,19,.06), 0 2px 8px rgba(20,20,19,.05);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  main { max-width: 900px; margin: 0 auto; padding: 48px 28px 88px; }
+
+  /* ── Typography ── */
+  h1 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 2rem; font-weight: 600;
+    letter-spacing: -0.015em; line-height: 1.15;
+    color: var(--slate); margin-bottom: .25em;
+  }
+  h2 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 1.3rem; font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--slate);
+    margin: 2.6em 0 .6em;
+    padding-bottom: .3em;
+    border-bottom: 1px solid var(--border);
+  }
+  h3 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 1.05rem; font-weight: 600;
+    color: var(--accent);
+    margin: 1.8em 0 .45em;
+  }
+
+  p { margin-bottom: .75em; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(184,96,42,.3); }
+  a:hover { border-bottom-color: var(--accent); }
+
+  ul { padding-left: 1.35em; margin-bottom: .75em; }
+  li + li { margin-top: .25em; }
+
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .84em;
+  }
+  code {
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  pre {
+    background: var(--slate);
+    color: #E3DACC;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .82rem;
+    line-height: 1.55;
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    margin: .75em 0;
+  }
+  pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: 1em; }
+
+  /* ── Tables ── */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .9em;
+    margin: .75em 0 1.4em;
+    background: var(--surface);
+    border-radius: var(--radius);
+    overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--oat);
+    font-weight: 600;
+    font-size: .75em;
+    text-transform: uppercase;
+    letter-spacing: .055em;
+    color: var(--slate);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(212,207,199,.25); }
+  td.loc { font-family: ui-monospace, monospace; font-size: .82em; color: var(--sky); white-space: nowrap; }
+  td.id  { font-family: ui-monospace, monospace; font-weight: 600; }
+
+  /* ── Severity badges ── */
+  .sev {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 99px;
+    font-size: .72em;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+  .sev-critical { background: rgba(177,77,69,.1);  color: var(--bad);   border: 1px solid rgba(177,77,69,.3); }
+  .sev-medium   { background: rgba(196,106,61,.1); color: var(--warn);  border: 1px solid rgba(196,106,61,.3); }
+  .sev-low      { background: rgba(120,140,93,.1); color: var(--olive); border: 1px solid rgba(120,140,93,.3); }
+
+  /* ── Status badges ── */
+  .status {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 99px;
+    font-size: .78em;
+    font-weight: 500;
+  }
+  .status-fixed    { background: rgba(92,140,90,.12);  color: var(--ok);  border: 1px solid rgba(92,140,90,.3); }
+  .status-deferred { background: rgba(106,140,175,.12); color: var(--sky); border: 1px solid rgba(106,140,175,.3); }
+
+  /* ── Callout boxes ── */
+  .callout {
+    background: var(--surface);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin: .8em 0 1.2em;
+    break-inside: avoid;
+  }
+  .callout.medium  { border-left-color: var(--clay); }
+  .callout.low     { border-left-color: var(--olive); }
+  .callout.backend { border-left-color: var(--sky); }
+  .callout.info    { border-left-color: var(--muted); }
+  .callout > strong { display: block; margin-bottom: .3em; }
+  .callout:not(.medium):not(.low):not(.backend):not(.info) > strong { color: var(--bad); }
+  .callout.medium  > strong { color: var(--warn); }
+  .callout.low     > strong { color: var(--olive); }
+  .callout.backend > strong { color: var(--sky); }
+  .callout.info    > strong { color: var(--muted); }
+
+  /* ── Finding blocks ── */
+  .finding {
+    background: #FFFEFB;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 1.2em 0;
+    box-shadow: var(--shadow);
+    break-inside: avoid;
+  }
+  .finding-id {
+    font-family: ui-monospace, monospace;
+    font-size: .75em;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .35em;
+  }
+  .finding-title {
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: var(--slate);
+    margin-bottom: .6em;
+  }
+
+  /* ── Page header ── */
+  .page-header {
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 1.4em;
+    margin-bottom: 2em;
+  }
+  .page-eyebrow {
+    font-family: ui-monospace, monospace;
+    font-size: .75em;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: .4em;
+  }
+  .page-meta {
+    display: flex;
+    gap: 1em;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: .6em;
+    font-size: .82em;
+    color: var(--muted);
+  }
+  .pill {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 99px;
+    font-size: .72em;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .pill-done { background: rgba(92,140,90,.12); color: var(--ok); border: 1px solid rgba(92,140,90,.3); }
+
+  /* ── Files modified grid ── */
+  .file-list {
+    list-style: none;
+    padding: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin: .75em 0;
+  }
+  .file-list li {
+    font-family: ui-monospace, monospace;
+    font-size: .81em;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 5px 9px;
+    color: var(--sky);
+  }
+  @media (max-width: 600px) { .file-list { grid-template-columns: 1fr; } }
+
+  /* ── Method footer ── */
+  .method-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: .88em;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .method-block strong { color: var(--text); display: block; margin-bottom: .3em; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+
+  @media (max-width: 680px) {
+    main { padding: 28px 16px 60px; }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.15rem; }
+  }
+
+  @media print {
+    main { padding: 16px; }
+    h1 { font-size: 1.5rem; }
+    h2 { margin-top: 1.6em; }
+    pre { font-size: .75rem; }
+    .finding, .callout { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <!-- ── Page header ─────────────────────────────────────────── -->
+  <div class="page-header">
+    <div class="page-eyebrow">claude-tracker &middot; Code Audit</div>
+    <h1>Codebase Audit Report</h1>
+    <div class="page-meta">
+      <span>2026-05-10</span>
+      <span>&middot;</span>
+      <span>React 19 + Vite 8 frontend &mdash; FastAPI + SQLAlchemy backend</span>
+      <span>&middot;</span>
+      <span class="pill pill-done">Audit complete &mdash; fixes applied</span>
+    </div>
+    <p style="margin-top:1em; color:var(--muted); font-size:.92em; max-width:68ch;">
+      Three Explore agents scanned the full codebase: frontend components, backend services,
+      Docker configuration, and documentation. Every agent claim was verified by direct file
+      read before inclusion. Eleven claims did not survive verification; they are listed in
+      the <a href="#not-issues">Not Issues</a> table below.
+    </p>
+  </div>
+
+  <!-- ── Summary ─────────────────────────────────────────────── -->
+  <h2>Summary</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Severity</th>
+        <th>Primary file</th>
+        <th>Finding</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="id">F1</td>
+        <td><span class="sev sev-critical">Critical</span></td>
+        <td class="loc">src/styles.css</td>
+        <td><code>#00ff88</code> not a CSS token &mdash; used in 6 locations</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">F2</td>
+        <td><span class="sev sev-critical">Critical</span></td>
+        <td class="loc">Repos.jsx, LiveAgents.jsx</td>
+        <td>Injected <code>&lt;style&gt;</code> tags inside component renders</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">F3</td>
+        <td><span class="sev sev-critical">Critical</span></td>
+        <td class="loc">LiveAgents.jsx</td>
+        <td><code>--bord</code> typo &mdash; dark navy borders in light mode</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">F4</td>
+        <td><span class="sev sev-critical">Critical</span></td>
+        <td class="loc">TweaksPanel.jsx</td>
+        <td>Panel always-light &mdash; never responds to <code>data-theme="dark"</code></td>
+        <td><span class="status status-fixed">&#10003; documented exemption</span></td>
+      </tr>
+      <tr>
+        <td class="id">F5</td>
+        <td><span class="sev sev-medium">Medium</span></td>
+        <td class="loc">AgentDetail.jsx</td>
+        <td><code>Math.random()</code> without <code>useMemo</code> &mdash; flickers on re-render</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">F6</td>
+        <td><span class="sev sev-medium">Medium</span></td>
+        <td class="loc">Pages.jsx</td>
+        <td>Array-index key in dynamic filtered list</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">F7</td>
+        <td><span class="sev sev-medium">Medium</span></td>
+        <td class="loc">LiveAgents.jsx</td>
+        <td><code>.la-count</code> hardcoded blue tint, ignores theme</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">B1</td>
+        <td><span class="sev sev-medium">Medium</span></td>
+        <td class="loc">repos.py</td>
+        <td><code>get_repo()</code> O(n) full disk scan for single-repo lookup</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">B2</td>
+        <td><span class="sev sev-medium">Medium</span></td>
+        <td class="loc">db.py, ingest.py</td>
+        <td>5 bare <code>assert</code> statements &mdash; silent under <code>-O</code> flag</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+      <tr>
+        <td class="id">D1</td>
+        <td><span class="sev sev-low">Low</span></td>
+        <td class="loc">README.md</td>
+        <td>Default Vite starter template &mdash; no project content</td>
+        <td><span class="status status-fixed">&#10003; fixed</span></td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── Critical findings ───────────────────────────────────── -->
+  <h2>Design System Violations &mdash; Critical</h2>
+
+  <div class="finding">
+    <div class="finding-id">F1 &mdash; Design System</div>
+    <div class="finding-title"><code>#00ff88</code> live-green is not a CSS token</div>
+
+    <div class="callout">
+      <strong>Impact</strong>
+      The live-green color is hardcoded in 6 places across 3 files. Any future brand change
+      requires a grep-and-replace across components rather than a single token edit. The value
+      also cannot participate in the dual-theme system while hardcoded.
+    </div>
+
+    <p>
+      <code>styles.css</code> defines <code>--green</code> for the <code>pulseLive</code> glow
+      animation but has no <code>--live</code> token for the bright <code>#00ff88</code>
+      indicator used wherever an active session is shown.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>File</th><th>Line(s)</th><th>Context</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="loc">src/components/Sidebar.jsx</td>
+          <td class="loc">L59</td>
+          <td>Live badge: <code>color: '#00ff88'</code>, <code>rgba(0,255,136,.15)</code></td>
+        </tr>
+        <tr>
+          <td class="loc">src/components/Sidebar.jsx</td>
+          <td class="loc">L77</td>
+          <td>Repo dot: <code>--accent: r.isActive ? '#00ff88' : r.accent</code></td>
+        </tr>
+        <tr>
+          <td class="loc">src/components/Repos.jsx</td>
+          <td class="loc">L13&ndash;14</td>
+          <td><code>LIVE_BADGE_STYLE</code> &mdash; <code>.rb-live</code> background + color</td>
+        </tr>
+        <tr>
+          <td class="loc">src/components/Repos.jsx</td>
+          <td class="loc">L27, L30</td>
+          <td><code>LIVE_BADGE_STYLE</code> &mdash; <code>.rb-now</code> border + bold color</td>
+        </tr>
+        <tr>
+          <td class="loc">src/components/Repos.jsx</td>
+          <td class="loc">L40</td>
+          <td><code>RepoCard</code>: <code>--accent: repo.isActive ? '#00ff88' : repo.accent</code></td>
+        </tr>
+        <tr>
+          <td class="loc">src/components/Repos.jsx</td>
+          <td class="loc">L102</td>
+          <td><code>RepoListRow</code>: same active-accent pattern</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Fix applied:</strong> Added <code>--live: #00ff88;</code> to both
+    <code>[data-theme="dark"]</code> and <code>[data-theme="light"]</code> blocks in
+    <code>src/styles.css</code>. Replaced all hardcoded occurrences with <code>var(--live)</code>
+    and <code>rgba(from var(--live) r g b / 0.12)</code> for the alpha variant. The value is
+    identical in both themes &mdash; live green is a fixed brand signal regardless of theme.</p>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">F2 &mdash; Design System</div>
+    <div class="finding-title">Injected <code>&lt;style&gt;</code> tags inside component renders</div>
+
+    <div class="callout">
+      <strong>Impact</strong>
+      With 5 repos in grid view, <code>LIVE_BADGE_STYLE</code> inside <code>RepoCard</code>
+      injects 5 identical <code>&lt;style&gt;</code> blocks into the DOM on every render.
+      Beyond the DOM bloat, the styles live outside the token system and cannot reference
+      <code>var(--live)</code>, <code>var(--brd)</code>, or any theme variable.
+    </div>
+
+    <ul>
+      <li><code>src/components/Repos.jsx</code> L36:
+          <code>&lt;style&gt;{LIVE_BADGE_STYLE}&lt;/style&gt;</code> inside
+          <code>RepoCard</code> &mdash; repeated once per card in grid view.</li>
+      <li><code>src/components/LiveAgents.jsx</code> L126:
+          <code>&lt;style&gt;{STYLES}&lt;/style&gt;</code> in the
+          <code>LiveAgents</code> component root.</li>
+    </ul>
+
+    <p><strong>Fix applied:</strong> Both <code>LIVE_BADGE_STYLE</code> and <code>STYLES</code>
+    are static CSS. They were moved to <code>src/styles.css</code>, eliminating repeated injection
+    and allowing all rules to reference design tokens.</p>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">F3 &mdash; Design System / Dual-Theme Bug</div>
+    <div class="finding-title"><code>--bord</code> typo &mdash; dark navy borders in light mode</div>
+
+    <div class="callout">
+      <strong>Impact</strong>
+      In light mode, <code>--bord</code> is undefined, so borders on <code>.la-row</code> and
+      <code>.la-empty</code> fall back to the dark navy hardcoded value, appearing visually dark
+      on the cream background. In dark mode the fallback is close enough to the real value that
+      the bug is invisible, which delayed detection.
+    </div>
+
+    <p>The correct design token is <code>--brd</code>. The <code>STYLES</code> constant in
+    <code>LiveAgents.jsx</code> used <code>--bord</code> with a dark-navy fallback:</p>
+
+    <pre><code>/* Before — in STYLES constant (LiveAgents.jsx) */
+border: 1px solid var(--bord, #2a2f3a);   /* L26 — .la-row  */
+border: 1px dashed var(--bord, #2a2f3a);  /* L74 — .la-empty */</code></pre>
+
+    <p><strong>Fix applied:</strong> Replaced <code>var(--bord, #2a2f3a)</code> with
+    <code>var(--brd)</code> in both locations (no fallback needed once the rule lives in
+    <code>styles.css</code> where the token is defined).</p>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">F4 &mdash; Design System &mdash; Documented exemption</div>
+    <div class="finding-title">TweaksPanel always renders in light palette</div>
+
+    <div class="callout info">
+      <strong>Status: documented exemption (intentional design)</strong>
+      User confirmed the always-light palette is intentional &mdash; the TweaksPanel reads as a floating macOS-style control sheet, not part of the dashboard chrome. The exemption is now recorded in <code>.claude/rules/dual-theme.md</code> so future readers don&rsquo;t try to &ldquo;fix&rdquo; it.
+    </div>
+
+    <p>Lines 3&ndash;38 of <code>TweaksPanel.jsx</code> hardcode a warm-cream + dark-text palette:</p>
+
+    <pre><code>background: rgba(250,249,247,.78); color: #29261b;</code></pre>
+
+    <p>These values never respond to <code>data-theme="dark"</code>. In dark mode the panel
+    floats as a lit card over the dark dashboard.</p>
+
+    <p><strong>Resolution:</strong> Option A &mdash; intentional design. A new <em>Documented exemptions</em> section was added to <code>.claude/rules/dual-theme.md</code> with a table row for <code>TweaksPanel</code> explaining the always-light rationale. No code changes were needed.</p>
+  </div>
+
+  <!-- ── Medium findings ─────────────────────────────────────── -->
+  <h2>Code Logic &mdash; Medium</h2>
+
+  <div class="finding">
+    <div class="finding-id">F5 &mdash; React</div>
+    <div class="finding-title"><code>Math.random()</code> without <code>useMemo</code> in AgentDetail</div>
+
+    <div class="callout medium">
+      <strong>Impact</strong>
+      The <code>callsToday</code> metric regenerates on every parent-triggered re-render.
+      The value visibly changes when navigating or toggling the theme &mdash; a subtle flicker
+      that undermines the metric's credibility.
+    </div>
+
+    <p>The call was in the component body at <code>AgentDetail.jsx</code> L13:</p>
+
+    <pre><code>callsToday: Math.floor(Math.random() * 18) + 2,</code></pre>
+
+    <p><strong>Fix applied:</strong></p>
+
+    <pre><code>const defaultCallsToday = useMemo(
+  () =&gt; Math.floor(Math.random() * 18) + 2,
+  [name]
+);
+const meta = (AGENT_META &amp;&amp; AGENT_META[name]) || {
+  ...
+  callsToday: defaultCallsToday,
+};</code></pre>
+
+    <p>The <code>[name]</code> dependency reseeds the value only when the selected agent changes,
+    which is the intended behavior.</p>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">F6 &mdash; React</div>
+    <div class="finding-title">Array-index key in dynamic filtered list (Pages.jsx)</div>
+
+    <div class="callout medium">
+      <strong>Impact</strong>
+      When the search query changes, items shift position in the filtered array. With
+      <code>key={i}</code>, React reuses DOM nodes by position rather than identity &mdash;
+      causing wrong transitions and potentially rendering stale content for the wrong item.
+    </div>
+
+    <p><code>AgentsPage</code> in <code>Pages.jsx</code> L99:</p>
+
+    <pre><code>{/* Before */}
+{filtered.map((x, i) =&gt; (
+  &lt;div key={i} className="cd clickable" ...&gt;</code></pre>
+
+    <p><strong>Fix applied:</strong></p>
+
+    <pre><code>{filtered.map((x) =&gt; (
+  &lt;div key={x.kind + '-' + x.name} className="cd clickable" ...&gt;</code></pre>
+
+    <p>The compound key is stable and unique: the same name cannot appear as both
+    <code>agent</code> and <code>skill</code> in a single result set.</p>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">F7 &mdash; Design System / Dual-Theme</div>
+    <div class="finding-title"><code>.la-count</code> hardcoded blue tint</div>
+
+    <div class="callout medium">
+      <strong>Impact</strong>
+      The session-count pill shows a blue tint on the cream background in light mode
+      instead of the expected amber accent.
+    </div>
+
+    <p><code>STYLES</code> L85 in <code>LiveAgents.jsx</code>:</p>
+
+    <pre><code>background: rgba(108, 208, 255, .12);  /* hardcoded blue */</code></pre>
+
+    <p><strong>Fix applied:</strong> Changed to <code>background: var(--dim)</code>. The
+    <code>--dim</code> token is dual-themed: <code>rgba(6,182,212,.12)</code> in dark mode
+    (cyan tint), <code>rgba(217,119,6,.10)</code> in light mode (amber tint).</p>
+  </div>
+
+  <!-- ── Backend ─────────────────────────────────────────────── -->
+  <h2 id="backend">Backend &mdash; Medium</h2>
+
+  <div class="finding">
+    <div class="finding-id">B1 &mdash; Python / FastAPI</div>
+    <div class="finding-title"><code>get_repo()</code> does O(n) disk scan for a single-repo lookup</div>
+
+    <div class="callout backend">
+      <strong>Impact</strong>
+      <code>scan_all_repos()</code> walks every configured repo directory on disk before
+      returning. The early <code>return</code> inside the loop does not help &mdash;
+      all scans complete before the iterator is consumed.
+    </div>
+
+    <p>Before, in <code>backend/app/routers/repos.py</code>:</p>
+
+    <pre><code>async def get_repo(repo_id: str) -&gt; Repo:
+    for repo in scan_all_repos():   # walks ALL repo directories
+        if repo.id == repo_id:
+            return repo</code></pre>
+
+    <p>Because <code>id = repo_path.name</code> (see <code>repo_scanner.py</code> L84),
+    the repo can be located directly by directory name without scanning siblings.</p>
+
+    <p><strong>Fix applied:</strong> Added <code>get_repo_by_id()</code> helper to
+    <code>repo_scanner.py</code>:</p>
+
+    <pre><code># repo_scanner.py — new helper
+def get_repo_by_id(repo_id: str) -&gt; Repo | None:
+    settings = get_settings()
+    for i, repo_path in enumerate(settings.repo_paths):
+        if repo_path.name == repo_id:
+            return _scan_one(repo_path, ACCENTS[i % len(ACCENTS)])
+    return None
+
+# repos.py — updated endpoint
+async def get_repo(repo_id: str) -&gt; Repo:
+    repo = get_repo_by_id(repo_id)
+    if repo is None:
+        raise HTTPException(status_code=404, detail=f"repo not found: {repo_id}")
+    return repo</code></pre>
+  </div>
+
+  <div class="finding">
+    <div class="finding-id">B2 &mdash; Python</div>
+    <div class="finding-title">5 bare <code>assert</code> statements in initialization guard paths</div>
+
+    <div class="callout backend">
+      <strong>Impact</strong>
+      Python <code>assert</code> is a no-op under <code>-O</code> (optimize flag). If
+      triggered with optimization enabled, the guard is skipped silently and an unhelpful
+      <code>AttributeError: 'NoneType' object is not callable</code> fires several lines later.
+    </div>
+
+    <table>
+      <thead><tr><th>File</th><th>Line</th><th>Guard</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="loc">backend/app/db.py</td>
+          <td class="loc">L33</td>
+          <td><code>assert _engine is not None</code></td>
+        </tr>
+        <tr>
+          <td class="loc">backend/app/db.py</td>
+          <td class="loc">L47</td>
+          <td><code>assert _sessionmaker is not None</code></td>
+        </tr>
+        <tr>
+          <td class="loc">backend/app/services/ingest.py</td>
+          <td class="loc">L37</td>
+          <td><code>assert _sessionmaker is not None</code></td>
+        </tr>
+        <tr>
+          <td class="loc">backend/app/services/ingest.py</td>
+          <td class="loc">(follow-up scan)</td>
+          <td>Additional <code>assert</code> found in same file during fix pass</td>
+        </tr>
+        <tr>
+          <td class="loc">backend/app/services/ingest.py</td>
+          <td class="loc">(follow-up scan)</td>
+          <td>Additional <code>assert</code> found in same file during fix pass</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Fix applied:</strong> Replaced all 5 with explicit guards:</p>
+
+    <pre><code>if _engine is None:
+    raise RuntimeError("DB engine not initialized — call await init_db() first")
+
+if _sessionmaker is None:
+    raise RuntimeError("DB sessionmaker not initialized — call await init_db() first")</code></pre>
+  </div>
+
+  <!-- ── Documentation ───────────────────────────────────────── -->
+  <h2>Documentation &mdash; Low</h2>
+
+  <div class="finding">
+    <div class="finding-id">D1 &mdash; Docs</div>
+    <div class="finding-title">README.md was the default Vite starter template</div>
+
+    <p>The entire <code>README.md</code> contained only Vite boilerplate:
+    <em>"This template provides a minimal setup to get React working in Vite with HMR and
+    some ESLint rules."</em> No project description, no setup instructions, no port
+    references, no Docker commands.</p>
+
+    <p><strong>Fix applied:</strong> Rewrote with a one-paragraph project description,
+    bare-metal quickstart (install &rarr; backend &rarr; frontend), Docker quickstart
+    (<code>make docker-up</code>, ports 47820/47821), and references to key make targets.</p>
+  </div>
+
+  <!-- ── NOT Issues ──────────────────────────────────────────── -->
+  <h2 id="not-issues">Not Issues &mdash; Verified Correct or Intentional</h2>
+
+  <p style="color:var(--muted); font-size:.9em; margin-bottom:1em;">
+    Eleven agent claims did not survive direct file read. None required a change.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:42%">Agent claim</th>
+        <th>Verified reality</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Misc.jsx threshold logic "broken"</td>
+        <td>Three separate zone branches (L10&ndash;12) &mdash; intentionally different thresholds
+            for peak / off-peak / weekend zones.</td>
+      </tr>
+      <tr>
+        <td>TweaksPanel drag listener memory leak</td>
+        <td><code>mouseup</code> closure (<code>up()</code>) properly removes both
+            <code>mousemove</code> and <code>mouseup</code> listeners.</td>
+      </tr>
+      <tr>
+        <td>InlineSpark <code>seed</code> param ignored</td>
+        <td><code>sparkPoints(seed, ...)</code> uses seed as LCG initializer
+            (L37: <code>h = (h * 31 + seed.charCodeAt(i)) &gt;&gt;&gt; 0</code>).</td>
+      </tr>
+      <tr>
+        <td>Sidebar nav missing <code>key</code> prop</td>
+        <td>Uses <code>key={item.id}</code> at L51 &mdash; correct stable key.</td>
+      </tr>
+      <tr>
+        <td>Pages.jsx has <code>require('../api')</code></td>
+        <td>Does not exist. File uses standard ES module imports throughout.</td>
+      </tr>
+      <tr>
+        <td>Hardcoded user object in Sidebar</td>
+        <td>Mocked data &mdash; intentional per <code>data-shape-contract.md</code> rule.</td>
+      </tr>
+      <tr>
+        <td>No PropTypes / TypeScript</td>
+        <td>Explicitly deferred in <code>CLAUDE.md</code> while the design solidifies.</td>
+      </tr>
+      <tr>
+        <td>Mock data in AgentDetail / Pages</td>
+        <td>The mock IS the contract &mdash; per <code>data-shape-contract.md</code>.</td>
+      </tr>
+      <tr>
+        <td>Docker health check uses Python urllib</td>
+        <td><code>curl</code> is not installed in the runtime image. Python is available &mdash;
+            correct choice.</td>
+      </tr>
+      <tr>
+        <td><code>make docker-up</code> missing <code>.env.docker</code> warning</td>
+        <td>Makefile L74 already validates presence and shows a descriptive error.</td>
+      </tr>
+      <tr>
+        <td>Graph.jsx missing null check on <code>agents</code></td>
+        <td>L7 uses optional chaining <code>repos[0]?.id</code>; L9 has
+            <code>|| repos[0]</code> fallback.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ── Files modified ─────────────────────────────────────── -->
+  <h2>Files Modified</h2>
+
+  <ul class="file-list">
+    <li>src/styles.css</li>
+    <li>src/components/Sidebar.jsx</li>
+    <li>src/components/Repos.jsx</li>
+    <li>src/components/LiveAgents.jsx</li>
+    <li>src/components/AgentDetail.jsx</li>
+    <li>src/components/Pages.jsx</li>
+    <li>backend/app/services/repo_scanner.py</li>
+    <li>backend/app/routers/repos.py</li>
+    <li>backend/app/db.py</li>
+    <li>backend/app/services/ingest.py</li>
+    <li>README.md</li>
+  </ul>
+
+  <p style="color:var(--muted); font-size:.84em; margin-top:.4em;">
+    F4 (TweaksPanel always-light) confirmed intentional. <code>.claude/rules/dual-theme.md</code> now carries a <em>Documented exemptions</em> table so future contributors know not to &ldquo;fix&rdquo; it.
+  </p>
+
+  <hr />
+
+  <!-- ── Methodology ─────────────────────────────────────────── -->
+  <div class="method-block">
+    <strong>Verification methodology</strong>
+    Three Explore agents scanned the codebase in parallel and returned a combined findings list.
+    Each claim was then verified by a direct Read of the relevant source file at the reported line.
+    Eleven agent claims did not match actual file contents &mdash; they were hallucinated line
+    references, misread intent, or intentional design choices flagged as bugs. Only findings
+    confirmed by direct read were promoted to the verified list and subsequently fixed.
+  </div>
+
+</main>
+</body>
+</html>
