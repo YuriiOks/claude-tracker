@@ -41,11 +41,16 @@ def create_app() -> FastAPI:
     )
 
     # Routers
-    from app.routers import health, permissions, plugins, repos
+    from app.routers import agents, cost, diffs, health, live, permissions, plugins, repos, sessions
     app.include_router(health.router, prefix="/api")
     app.include_router(repos.router, prefix="/api")
     app.include_router(permissions.router, prefix="/api")
     app.include_router(plugins.router, prefix="/api")
+    app.include_router(sessions.router, prefix="/api")
+    app.include_router(agents.router, prefix="/api")
+    app.include_router(cost.router, prefix="/api")
+    app.include_router(diffs.router, prefix="/api")
+    app.include_router(live.router, prefix="/api")
 
     return app
 
