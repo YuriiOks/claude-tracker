@@ -17,8 +17,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
+    from app.services.live_stream import start_watcher, stop_watcher
+
+    await start_watcher()
     logger.info("claude-tracker backend started")
-    yield
+    try:
+        yield
+    finally:
+        await stop_watcher()
+        logger.info("claude-tracker backend stopped")
 
 
 def create_app() -> FastAPI:
@@ -50,7 +57,7 @@ def create_app() -> FastAPI:
     app.include_router(agents.router, prefix="/api")
     app.include_router(cost.router, prefix="/api")
     app.include_router(diffs.router, prefix="/api")
-    app.include_router(live.router, prefix="/api")
+    app.include_router(live.router)  # live.py declares full paths (/api + /ws)
 
     return app
 
