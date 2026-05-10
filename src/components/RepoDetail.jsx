@@ -3,7 +3,7 @@ import Icon from '../icons';
 import { Metric, Status, Tabs, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
-import { AGENT_META } from '../data';
+import { useAgents } from '../api';
 
 const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
   <div className="split">
@@ -67,10 +67,12 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
   </div>
 );
 
-const RepoAgents = ({ repo, onOpen }) => (
+const RepoAgents = ({ repo, onOpen }) => {
+  const { data: AGENT_META } = useAgents();
+  return (
   <div className="grid grid-auto">
     {repo.agents.map(a => {
-      const meta = AGENT_META[a];
+      const meta = AGENT_META?.[a];
       return (
         <div key={a} className="cd clickable" onClick={() => onOpen && onOpen(a, 'agent')}>
           <div className="row between mb-2">
@@ -98,6 +100,7 @@ const RepoAgents = ({ repo, onOpen }) => (
     })}
   </div>
 );
+};
 
 const RepoSkills = ({ repo }) => (
   <div className="grid grid-auto">

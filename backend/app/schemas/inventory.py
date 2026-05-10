@@ -20,5 +20,5 @@ class PermissionsDetail(BaseModel):
 
 
 class GlobalEnvelope(GlobalScope):
-    """GLOBAL plus computed file sizes."""
-    file_sizes: FileSizes = Field(default_factory=FileSizes)
+    """GLOBAL plus computed file sizes (camelCase alias for the wire)."""
+    file_sizes: FileSizes = Field(default_factory=FileSizes, alias="fileSizes")

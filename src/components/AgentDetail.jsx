@@ -1,9 +1,10 @@
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
-import { AGENT_META } from '../data';
+import { useAgents } from '../api';
 
 const AgentDetail = ({ name, kind, repos, onBack }) => {
-  const meta = AGENT_META[name] || {
+  const { data: AGENT_META } = useAgents();
+  const meta = (AGENT_META && AGENT_META[name]) || {
     role: kind === 'skill'
       ? 'Skill — encapsulated workflow knowledge that Claude loads when relevant files are touched.'
       : 'Specialist agent — defined in .claude/agents/' + name + '.md.',

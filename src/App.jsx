@@ -12,7 +12,7 @@ import RepoDetail from './components/RepoDetail';
 import AgentDetail from './components/AgentDetail';
 import { TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakSelect, useTweaks } from './components/TweaksPanel';
 
-import { REPOS, GLOBAL, SESSIONS, LIVE_EVENTS_SEED, LIVE_EVENTS_FUTURE } from './data';
+import { useRepos, useGlobal, useSessions, useLiveEvents } from './api';
 
 const TWEAK_DEFAULTS = {
   theme: 'light',
@@ -22,31 +22,6 @@ const TWEAK_DEFAULTS = {
   accentTone: 'cyan',
   reposLayout: 'board',
 };
-
-function useLiveStream() {
-  const [events, setEvents] = useState(() => LIVE_EVENTS_SEED.map(e => ({ ...e })));
-  const [tick, setTick] = useState(0);
-
-  useEffect(() => {
-    const speedMap = { slow: 5500, normal: 2400, fast: 900 };
-    const speed = window.__tweakSpeed || 'normal';
-    const interval = speedMap[speed] || 2400;
-    const id = setInterval(() => setTick(t => t + 1), interval);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    if (tick === 0) return;
-    const idx = (tick - 1) % LIVE_EVENTS_FUTURE.length;
-    const e = LIVE_EVENTS_FUTURE[idx];
-    setEvents(prev => {
-      const next = [...prev, { ...e, t: prev.length > 0 ? prev[prev.length - 1].t + (e.dt || 3) : 0 }];
-      return next.slice(-60);
-    });
-  }, [tick]);
-
-  return events;
-}
 
 function ReposView({ repos, onOpen, layout }) {
   const [local, setLocal] = useState(layout || 'grid');
@@ -75,7 +50,10 @@ function App() {
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [route, setRoute] = useState({ page: 'dashboard' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const liveEvents = useLiveStream();
+  const liveEvents = useLiveEvents();
+  const { data: repos } = useRepos();
+  const { data: globalScope } = useGlobal();
+  const { data: sessions } = useSessions(50);
 
   useEffect(() => {
     document.documentElement.dataset.theme = tweaks.theme;
@@ -101,9 +79,7 @@ function App() {
     }
   }, [tweaks.theme, tweaks.density, tweaks.showStaticGrid, tweaks.terminalSpeed, tweaks.accentTone]);
 
-  const repos = REPOS;
-  const allRepos = [...repos, GLOBAL];
-  const sessions = SESSIONS;
+  const allRepos = useMemo(() => (globalScope ? [...repos, globalScope] : repos), [repos, globalScope]);
   const allLive = repos.filter(r => r.isActive).length;
 
   const openRepo = (id) => setRoute({ page: 'repo', repoId: id });

@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { PageHead } from './Common';
-import { AGENT_META, FILE_SIZES } from '../data';
+import { useAgents, useFileSizes } from '../api';
 
 const Graph = ({ repos, onOpen }) => {
   const W = 900, H = 540;
   const [selectedRepo, setSelectedRepo] = useState(repos[0]?.id);
   const [layers, setLayers] = useState({ agents: true, skills: true, commands: true, rules: true });
   const repo = repos.find(r => r.id === selectedRepo) || repos[0];
+  const { data: AGENT_META } = useAgents();
+  const FILE_SIZES = useFileSizes();
 
   const { initialNodes, edges } = useMemo(() => {
     const ns = [];
@@ -116,7 +118,7 @@ const Graph = ({ repos, onOpen }) => {
     }
 
     return { initialNodes: ns, edges: es };
-  }, [repo, layers]);
+  }, [repo, layers, AGENT_META, FILE_SIZES]);
 
   const nodesRef = useRef([]);
   const [, force] = useState(0);

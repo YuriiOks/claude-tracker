@@ -1,6 +1,6 @@
 import Icon from '../icons';
 import { Metric, PageHead } from './Common';
-import { DIFF_SAMPLE, AGENT_META } from '../data';
+import { useDiff, useAgents } from '../api';
 
 export const HeatmapPage = ({ repos }) => {
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -80,9 +80,10 @@ export const HeatmapPage = ({ repos }) => {
 };
 
 export const CostPage = ({ repos }) => {
+  const { data: AGENT_META } = useAgents();
   const totalCost = repos.reduce((a, r) => a + r.stats.costWeek, 0);
   const totalTokens = repos.reduce((a, r) => a + r.stats.tokensWeek, 0);
-  const max = Math.max(...repos.map(r => r.stats.costWeek));
+  const max = Math.max(...repos.map(r => r.stats.costWeek), 1);
   return (
     <>
       <PageHead title="Cost & tokens" sub="Estimated spend across your tracked repositories. Calculated from token counts × model pricing." />
@@ -134,7 +135,7 @@ export const CostPage = ({ repos }) => {
           <div className="list-head" style={{ gridTemplateColumns: '1.5fr 1fr 90px 90px 70px' }}>
             <span>Agent</span><span>Repo</span><span>Calls</span><span>Tokens</span><span>Cost</span>
           </div>
-          {Object.entries(AGENT_META).slice(0, 8).map(([name, m]) => (
+          {Object.entries(AGENT_META || {}).slice(0, 8).map(([name, m]) => (
             <div key={name} className="list-row clickable" style={{ gridTemplateColumns: '1.5fr 1fr 90px 90px 70px' }}>
               <span className="row gap-sm"><Icon name="bot" size={12} /><span className="tb">{name}</span></span>
               <span style={{ color: 'var(--muted)' }}>{m.repo}</span>
@@ -150,7 +151,8 @@ export const CostPage = ({ repos }) => {
 };
 
 export const DiffPage = () => {
-  const D = DIFF_SAMPLE;
+  const { data: D } = useDiff();
+  if (!D) return <div className="empty">No recent diff captured yet.</div>;
   return (
     <>
       <PageHead title="Recent diffs" sub="When Claude edits files, the diff is captured here. Click any session to inspect what changed, who edited, and why." />

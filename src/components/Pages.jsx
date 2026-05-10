@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
-import { PERMISSIONS_DETAIL } from '../data';
+import { usePermissions } from '../api';
 
 export const SessionsPage = ({ sessions, repos }) => {
   const [filter, setFilter] = useState('all');
@@ -112,7 +112,7 @@ export const AgentsPage = ({ repos, onOpen }) => {
 };
 
 export const PermissionsPanel = ({ scope = 'all repos' }) => {
-  const D = PERMISSIONS_DETAIL;
+  const { data: D } = usePermissions();
   const Section = ({ title, items, badge, color }) => (
     <div className="card-frame">
       <div className="card-frame-head">
