@@ -16,7 +16,8 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --extra dev --no-install-project
 
-# Now install the project itself
+# Now install the project itself (hatchling reads README.md → must be present)
+COPY README.md ./
 COPY app ./app
 COPY tests ./tests
 RUN --mount=type=cache,target=/root/.cache/uv \
