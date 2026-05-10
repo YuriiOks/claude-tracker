@@ -1,18 +1,17 @@
 """Live event endpoints — REST cold-start (/api/live/recent) + WS (/ws/live)."""
 from __future__ import annotations
 
-import asyncio
 import contextlib
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.schemas.event import LiveEvent
 from app.services.ingest import fetch_recent_events
-from app.services.live_stream import get_hub
 from app.services.jsonl_parser import ParsedEvent
+from app.services.live_stream import get_hub
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["live"])
@@ -23,10 +22,10 @@ async def recent(n: int = 60) -> list[LiveEvent]:
     rows = await fetch_recent_events(limit=n)
     if not rows:
         return []
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     out: list[LiveEvent] = []
     for r in rows:
-        ts = r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)
+        ts = r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=UTC)
         delta_s = int((ts - now).total_seconds())
         payload = json.loads(r.payload) if r.payload else {}
         out.append(LiveEvent(t=delta_s, repo=r.repo, kind=r.kind, **payload))
@@ -34,8 +33,8 @@ async def recent(n: int = 60) -> list[LiveEvent]:
 
 
 def _event_to_wire(ev: ParsedEvent) -> dict:
-    now = datetime.now(tz=timezone.utc)
-    ts = ev.ts if ev.ts.tzinfo else ev.ts.replace(tzinfo=timezone.utc)
+    now = datetime.now(tz=UTC)
+    ts = ev.ts if ev.ts.tzinfo else ev.ts.replace(tzinfo=UTC)
     return {
         "t": int((ts - now).total_seconds()),
         "repo": ev.repo,

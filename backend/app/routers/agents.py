@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -66,10 +66,10 @@ async def list_agents() -> dict[str, AgentMeta]:
                 tgt = payload.get("to", "")
                 if tgt:
                     delegate_map[src].add(tgt)
-        today = datetime.now(tz=timezone.utc).date()
+        today = datetime.now(tz=UTC).date()
         summaries = (await session.execute(select(SessionSummaryRow))).scalars().all()
         for s in summaries:
-            ts = s.started_at if s.started_at.tzinfo else s.started_at.replace(tzinfo=timezone.utc)
+            ts = s.started_at if s.started_at.tzinfo else s.started_at.replace(tzinfo=UTC)
             if ts.date() == today and s.agent:
                 calls_today[s.agent] += 1
                 tokens_per_agent[s.agent].append(s.tokens)

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter
 from sqlalchemy import select
@@ -18,7 +18,7 @@ async def get_cost(days: int = 7) -> dict:
     db_mod._ensure_engine()
     sm = db_mod._sessionmaker
     assert sm is not None
-    cutoff = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(tz=UTC) - timedelta(days=days)
     async with sm() as session:
         rows = (await session.execute(select(SessionSummaryRow))).scalars().all()
 
@@ -28,7 +28,7 @@ async def get_cost(days: int = 7) -> dict:
     total_cost = 0.0
 
     for r in rows:
-        ts = r.started_at if r.started_at.tzinfo else r.started_at.replace(tzinfo=timezone.utc)
+        ts = r.started_at if r.started_at.tzinfo else r.started_at.replace(tzinfo=UTC)
         if ts < cutoff:
             continue
         day = ts.date().isoformat()

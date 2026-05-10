@@ -12,16 +12,14 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import time
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import watchfiles
 
 from app.config import get_settings
-from app.services.jsonl_parser import ParsedEvent, parse_jsonl
+from app.services.jsonl_parser import ParsedEvent
 
 logger = logging.getLogger(__name__)
 
@@ -215,16 +213,16 @@ def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
 
 
 async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
-    if not projects_dir.is_dir():
+    if not projects_dir.is_dir():  # noqa: ASYNC240
         logger.info("projects_dir missing, watcher idle: %s", projects_dir)
         # Keep the task alive so cancellation works cleanly.
-        while True:
+        while True:  # noqa: ASYNC110
             await asyncio.sleep(60)
 
     # Seed offsets from current file sizes so we don't replay history.
-    for f in projects_dir.rglob("*.jsonl"):
+    for f in projects_dir.rglob("*.jsonl"):  # noqa: ASYNC240
         try:
-            _offsets[f] = f.stat().st_size
+            _offsets[f] = f.stat().st_size  # noqa: ASYNC240
         except OSError:
             pass
 

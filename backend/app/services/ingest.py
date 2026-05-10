@@ -4,14 +4,12 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db import init_db, _ensure_engine  # noqa: PLC2701
+from app.db import _ensure_engine, init_db  # noqa: PLC2701
 from app.models.session_event import LiveEventRow
 from app.models.session_summary import SessionSummaryRow
 from app.services.jsonl_parser import iter_jsonl_files, parse_jsonl
@@ -28,7 +26,7 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
     repo_paths = settings.repo_paths
     cutoff = None
     if since_hours is not None:
-        cutoff = datetime.now(tz=timezone.utc) - timedelta(hours=since_hours)
+        cutoff = datetime.now(tz=UTC) - timedelta(hours=since_hours)
 
     new_count = 0
     updated_count = 0
@@ -48,7 +46,7 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
                 stat = path.stat()
             except OSError:
                 continue
-            if cutoff and datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc) < cutoff:
+            if cutoff and datetime.fromtimestamp(stat.st_mtime, tz=UTC) < cutoff:
                 skipped += 1
                 continue
 

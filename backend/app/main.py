@@ -10,7 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db import init_db
 
-
 logger = logging.getLogger(__name__)
 
 

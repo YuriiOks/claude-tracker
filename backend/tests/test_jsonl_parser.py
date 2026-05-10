@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from pathlib import Path
 
 
 def _write_jsonl(path: Path, lines: list[dict]) -> None:
-    path.write_text("\n".join(json.dumps(l) for l in lines) + "\n")
+    path.write_text("\n".join(json.dumps(line) for line in lines) + "\n")
 
 
 def test_parse_jsonl_basic(tmp_path: Path) -> None:

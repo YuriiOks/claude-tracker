@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import asyncio
-import json
+from datetime import UTC
 from pathlib import Path
 
 import pytest
@@ -10,15 +10,16 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_hub_broadcast_to_subscribers() -> None:
-    from app.services.live_stream import Hub
+    from datetime import datetime
+
     from app.services.jsonl_parser import ParsedEvent
-    from datetime import datetime, timezone
+    from app.services.live_stream import Hub
 
     hub = Hub()
     a = await hub.subscribe()
     b = await hub.subscribe()
 
-    ev = ParsedEvent(datetime.now(tz=timezone.utc), "demo", "tool", {"tool": "Read", "target": "x"})
+    ev = ParsedEvent(datetime.now(tz=UTC), "demo", "tool", {"tool": "Read", "target": "x"})
     await hub.broadcast(ev)
 
     assert (await asyncio.wait_for(a.get(), timeout=1.0)).kind == "tool"
