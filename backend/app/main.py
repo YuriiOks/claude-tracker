@@ -40,9 +40,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Routers — added in later phases.
-    from app.routers import health
+    # Routers
+    from app.routers import health, permissions, plugins, repos
     app.include_router(health.router, prefix="/api")
+    app.include_router(repos.router, prefix="/api")
+    app.include_router(permissions.router, prefix="/api")
+    app.include_router(plugins.router, prefix="/api")
 
     return app
 
