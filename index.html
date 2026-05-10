@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Code Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="bg-fill" aria-hidden="true"></div>
+  <canvas id="neuralBg" aria-hidden="true"></canvas>
+  <div id="staticGrid" style="display:none"></div>
+  <div id="staticScan" style="display:none"></div>
+  <div id="root"></div>
+
+  <script>
+    // Neural network background — adapted from yuriodev's CanvasBackground.tsx
+    (function () {
+      const canvas = document.getElementById('neuralBg');
+      const ctx = canvas.getContext('2d');
+      const mouse = { x: undefined, y: undefined };
+      const interactionRadius = 140;
+      const repulsionStrength = 0.65;
+      const dampingFactor = 0.985;
+      let nodes = [];
+      const numNodes = 64;
+      let raf;
+
+      function bounds(){
+        const cs = getComputedStyle(document.documentElement);
+        const sbw = parseFloat(cs.getPropertyValue('--sb-w')) || 0;
+        const topbar = 52;
+        return { w: Math.max(1, window.innerWidth - sbw), h: Math.max(1, window.innerHeight - topbar), left: sbw, top: topbar };
+      }
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const b = bounds();
+        canvas.width = Math.max(1, b.w * dpr);
+        canvas.height = Math.max(1, b.h * dpr);
+        canvas.style.width = b.w + 'px';
+        canvas.style.height = b.h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      function seed() {
+        nodes = [];
+        const b = bounds(); const w = b.w, h = b.h;
+        for (let i = 0; i < numNodes; i++) {
+          nodes.push({
+            x: Math.random() * w, y: Math.random() * h,
+            vx: (Math.random() - 0.5) * 0.7,
+            vy: (Math.random() - 0.5) * 0.7,
+            radius: Math.random() * 2 + 1.2,
+            glow: Math.random() * 0.5 + 0.5,
+            kind: Math.random() > 0.7 ? 'gold' : (Math.random() > 0.5 ? 'purple' : 'cyan'),
+          });
+        }
+      }
+      window.addEventListener('resize', () => { resize(); });
+      window.addEventListener('mousemove', e => { const b = bounds(); mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top; });
+      window.addEventListener('mouseout', () => { mouse.x = undefined; mouse.y = undefined; });
+
+      function hexToRgba(hex, a) {
+        hex = (hex || '').trim().replace('#', '');
+        if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+        const n = parseInt(hex, 16);
+        if (Number.isNaN(n)) return `rgba(6,182,212,${a})`;
+        return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+      }
+
+      function tick() {
+        const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+        const bgFade = isDark ? 0.18 : 0.16;
+        const b = bounds(); const w = b.w, h = b.h;
+        ctx.fillStyle = isDark ? `rgba(7,11,20,${bgFade})` : `rgba(255,247,237,${bgFade})`;
+        ctx.fillRect(0, 0, w, h);
+
+        const cs = getComputedStyle(document.body);
+        const cyan = cs.getPropertyValue('--cyan').trim() || '#06b6d4';
+        const gold = cs.getPropertyValue('--gold').trim() || '#FFC107';
+        const purple = cs.getPropertyValue('--purple').trim() || '#a78bfa';
+        const colors = { cyan, gold, purple };
+
+        nodes.forEach(n => {
+          if (mouse.x !== undefined) {
+            const dx = n.x - mouse.x, dy = n.y - mouse.y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < interactionRadius && d > 0.1) {
+              const fx = dx / d, fy = dy / d;
+              const f = (interactionRadius - d) / interactionRadius * repulsionStrength;
+              n.vx += fx * f; n.vy += fy * f;
+            }
+          }
+          n.x += n.vx; n.y += n.vy;
+          n.vx *= dampingFactor; n.vy *= dampingFactor;
+          if (Math.abs(n.vx) < 0.04 && Math.abs(n.vy) < 0.04) {
+            n.vx += (Math.random() - 0.5) * 0.1;
+            n.vy += (Math.random() - 0.5) * 0.1;
+          }
+          if (n.x - n.radius < 0) { n.x = n.radius; n.vx *= -0.8; }
+          else if (n.x + n.radius > w) { n.x = w - n.radius; n.vx *= -0.8; }
+          if (n.y - n.radius < 0) { n.y = n.radius; n.vy *= -0.8; }
+          else if (n.y + n.radius > h) { n.y = h - n.radius; n.vy *= -0.8; }
+
+          const c = colors[n.kind] || cyan;
+          const a = n.glow * (isDark ? 0.85 : 0.55);
+          ctx.beginPath();
+          ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+          ctx.fillStyle = hexToRgba(c, a);
+          ctx.shadowBlur = isDark ? 14 : 6;
+          ctx.shadowColor = c;
+          ctx.fill();
+          ctx.shadowBlur = 0;
+        });
+
+        const maxPer = 4;
+        for (let i = 0; i < nodes.length; i++) {
+          let count = 0;
+          for (let j = i + 1; j < nodes.length; j++) {
+            if (count >= maxPer) break;
+            const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+            const d = Math.sqrt(dx * dx + dy * dy);
+            if (d < 180) {
+              const opacity = (isDark ? 0.32 : 0.22) * (180 - d) / 180;
+              const c = d < 90 ? gold : cyan;
+              ctx.beginPath();
+              ctx.moveTo(nodes[i].x, nodes[i].y);
+              ctx.lineTo(nodes[j].x, nodes[j].y);
+              ctx.strokeStyle = hexToRgba(c, opacity);
+              ctx.lineWidth = 0.8;
+              ctx.stroke();
+              count++;
+            }
+          }
+        }
+        raf = requestAnimationFrame(tick);
+      }
+
+      window.__neuralBg = {
+        start() { if (!raf) { resize(); seed(); tick(); } },
+        stop() { cancelAnimationFrame(raf); raf = null; ctx.clearRect(0, 0, canvas.width, canvas.height); },
+      };
+      window.__neuralBg.start();
+    })();
+  </script>
+
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
