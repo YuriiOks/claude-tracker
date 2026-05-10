@@ -1,15 +1,48 @@
 import Icon from '../icons';
 import { Status } from './Common';
+import { useActiveAgents } from '../api';
 
-export const RepoCard = ({ repo, onOpen }) => (
+const LIVE_BADGE_STYLE = `
+@keyframes rb-pulse-fast {
+  0%, 100% { transform: scale(1);   opacity: 1;   }
+  50%      { transform: scale(1.7); opacity: .45; }
+}
+.rb-live {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .15rem .45rem; border-radius: 999px;
+  background: rgba(0, 255, 136, .12);
+  color: #00ff88;
+  font-size: .58rem; font-family: ui-monospace, monospace;
+  letter-spacing: .04em; text-transform: uppercase;
+}
+.rb-live .rb-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  animation: rb-pulse-fast .7s ease-in-out infinite;
+}
+.rb-now {
+  margin-top: .55rem;
+  font-size: .66rem;
+  color: var(--muted);
+  display: flex; align-items: center; gap: .35rem;
+  border-top: 1px dashed rgba(0,255,136,.18);
+  padding-top: .55rem;
+}
+.rb-now b { color: #00ff88; font-weight: 600; }
+.rb-now i { color: var(--txt-bright, #c8d0db); font-style: normal; }
+`;
+
+export const RepoCard = ({ repo, onOpen, liveAgent }) => (
   <div className="cd clickable" style={{ '--accent': repo.accent }} onClick={() => onOpen(repo.id)}>
+    <style>{LIVE_BADGE_STYLE}</style>
     <div className="cd-bar" style={{ background: `linear-gradient(90deg, ${repo.accent}, transparent)` }}></div>
     <div className="row between mb-2">
       <div className="row gap-sm">
         <span className="sb-repo-dot" style={{ '--accent': repo.isActive ? '#00ff88' : repo.accent }}></span>
         <h3 className="tb">{repo.name}</h3>
       </div>
-      {repo.isActive ? <Status kind="running" /> : <Status kind="idle" />}
+      {repo.isActive
+        ? <span className="rb-live"><span className="rb-dot"></span>live</span>
+        : <Status kind="idle" />}
     </div>
     <div className="row gap-sm mb-3" style={{ fontSize: '.66rem', color: 'var(--muted)' }}>
       <span><Icon name="branch" size={10} /> {repo.branch}</span>
@@ -42,6 +75,25 @@ export const RepoCard = ({ repo, onOpen }) => (
       <span className="bg bg-o">{repo.commands.length} cmds</span>
       <span className="bg bg-t">{repo.rules.length} rules</span>
     </div>
+
+    {liveAgent && (
+      <div className="rb-now" title={`session ${liveAgent.sessionId} · started ${liveAgent.elapsedSec}s ago`}>
+        <Icon name="bot" size={11} />
+        <b>{liveAgent.agent || 'main'}</b>
+        {liveAgent.currentTool && (
+          <>
+            <span>·</span>
+            <i>{liveAgent.currentTool}</i>
+            {liveAgent.currentTarget && (
+              <span style={{
+                whiteSpace: 'nowrap', overflow: 'hidden',
+                textOverflow: 'ellipsis', maxWidth: 180,
+              }}>{liveAgent.currentTarget}</span>
+            )}
+          </>
+        )}
+      </div>
+    )}
   </div>
 );
 
@@ -61,6 +113,15 @@ const RepoListRow = ({ repo, onOpen }) => (
 );
 
 export const ReposPage = ({ repos, onOpen, layout }) => {
+  // App.jsx already merges live activity into repo.isActive. We only need
+  // the per-repo agent record here for the "doing X" footer in card view.
+  const liveAgents = useActiveAgents();
+  const liveByRepo = {};
+  for (const a of liveAgents) {
+    if (!liveByRepo[a.repo]) liveByRepo[a.repo] = a;
+  }
+  const liveAgentFor = (r) => liveByRepo[r.name] || liveByRepo[r.id] || null;
+
   if (layout === 'list') {
     return (
       <div className="list">
@@ -106,7 +167,7 @@ export const ReposPage = ({ repos, onOpen, layout }) => {
     <div className="grid grid-auto">
       {repos.map((r, i) => (
         <div key={r.id} className="rv" style={{ animationDelay: `${i * 0.05}s` }}>
-          <RepoCard repo={r} onOpen={onOpen} />
+          <RepoCard repo={r} onOpen={onOpen} liveAgent={liveAgentFor(r)} />
         </div>
       ))}
     </div>

@@ -12,7 +12,7 @@ import RepoDetail from './components/RepoDetail';
 import AgentDetail from './components/AgentDetail';
 import { TweaksPanel, TweakSection, TweakRadio, TweakToggle, TweakSelect, useTweaks } from './components/TweaksPanel';
 
-import { useRepos, useGlobal, useSessions, useLiveEvents } from './api';
+import { useRepos, useGlobal, useSessions, useLiveEvents, useActiveAgents } from './api';
 
 const TWEAK_DEFAULTS = {
   theme: 'light',
@@ -51,9 +51,27 @@ function App() {
   const [route, setRoute] = useState({ page: 'dashboard' });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const liveEvents = useLiveEvents();
-  const { data: repos } = useRepos();
+  const { data: rawRepos } = useRepos();
   const { data: globalScope } = useGlobal();
   const { data: sessions } = useSessions(50);
+  const liveAgents = useActiveAgents();
+
+  // Merge live activity once at the top so the green dot / "live" badge
+  // light up everywhere repos are rendered (sidebar, dashboard, repos page).
+  const liveByRepo = useMemo(() => {
+    const m = {};
+    for (const a of liveAgents) {
+      if (!m[a.repo]) m[a.repo] = a; // freshest wins (snapshot is sorted)
+    }
+    return m;
+  }, [liveAgents]);
+
+  const repos = useMemo(
+    () => rawRepos.map(r =>
+      liveByRepo[r.name] || liveByRepo[r.id] ? { ...r, isActive: true } : r,
+    ),
+    [rawRepos, liveByRepo],
+  );
 
   useEffect(() => {
     document.documentElement.dataset.theme = tweaks.theme;
