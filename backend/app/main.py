@@ -47,7 +47,19 @@ def create_app() -> FastAPI:
     )
 
     # Routers
-    from app.routers import agents, cost, diffs, health, integrations, live, permissions, plugins, repos, sessions
+    from app.routers import (
+        agents,
+        cost,
+        diffs,
+        health,
+        integrations,
+        live,
+        live_agents,
+        permissions,
+        plugins,
+        repos,
+        sessions,
+    )
     app.include_router(health.router, prefix="/api")
     app.include_router(repos.router, prefix="/api")
     app.include_router(permissions.router, prefix="/api")
@@ -57,6 +69,7 @@ def create_app() -> FastAPI:
     app.include_router(cost.router, prefix="/api")
     app.include_router(diffs.router, prefix="/api")
     app.include_router(integrations.router, prefix="/api")
+    app.include_router(live_agents.router, prefix="/api")
     app.include_router(live.router)  # live.py declares full paths (/api + /ws)
 
     return app

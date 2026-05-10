@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, InlineSpark, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
+import LiveAgents from './LiveAgents';
 
 const Dashboard = ({ repos, sessions, liveEvents, onOpen }) => {
   const totals = repos.reduce((a, r) => ({
@@ -35,6 +36,10 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen }) => {
         <Metric label="tokens this week" value={(totals.tokens / 1e6).toFixed(2)} unit="M" delta="+2.1M" deltaLabel="projected eow" accent="gold" />
         <Metric label="spend this week" prefix="$" value={parseFloat(totals.cost.toFixed(2))} delta="-12%" deltaLabel="vs last week" accent="green" />
         <Metric label="active in editor" value={activeCount} delta={`${activeCount}`} deltaLabel="repos live now" accent="purple" />
+      </div>
+
+      <div className="mb-4">
+        <LiveAgents repos={repos} />
       </div>
 
       <div className="split mb-4">

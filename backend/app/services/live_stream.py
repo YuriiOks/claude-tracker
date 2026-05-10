@@ -124,16 +124,17 @@ def _tail_new_lines(path: Path) -> list[str]:
 
 
 async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
+    from app.services.live_agents import get_tracker
+
     settings = get_settings()
     repo_paths = settings.repo_paths
+    tracker = get_tracker()
     for path in changed:
         if path.suffix != ".jsonl" or not path.is_file():
             continue
         new_lines = _tail_new_lines(path)
         if not new_lines:
             continue
-        # parse_jsonl re-reads the whole file; for incremental we can build
-        # mini events ourselves.
         for raw in new_lines:
             try:
                 obj = json.loads(raw)
@@ -141,6 +142,14 @@ async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
                 continue
             ev = _line_to_event(obj, repo_paths)
             if ev is not None:
+                # Update active-agent map AND broadcast to WS subscribers.
+                await tracker.record(
+                    session_id=obj.get("sessionId"),
+                    repo=ev.repo,
+                    kind=ev.kind,
+                    payload=ev.payload,
+                    ts=ev.ts,
+                )
                 await hub.broadcast(ev)
 
 

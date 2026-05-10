@@ -93,6 +93,67 @@ export function useDiff() {
 }
 
 /**
+ * Currently-active agents — polls every 1.5s.
+ * Each row: { sessionId, repo, agent, currentTool, currentTarget, startedAt,
+ *             lastSeenAt, elapsedSec, secondsSinceLastEvent }
+ */
+export function useActiveAgents(intervalMs = 1500) {
+  const [agents, setAgents] = useState([]);
+
+  useEffect(() => {
+    if (USE_MOCKS) {
+      const cycle = () => {
+        const t = Date.now() % 6000;
+        setAgents([
+          {
+            sessionId: 'm1',
+            repo: 'jupus',
+            agent: 'ai-developer',
+            currentTool: ['Read', 'Edit', 'Bash'][Math.floor(t / 2000) % 3],
+            currentTarget: 'app/ai/services/chat/bedrock/stream_parser.py',
+            secondsSinceLastEvent: Math.floor((t % 2000) / 200),
+            elapsedSec: 124,
+            startedAt: new Date(Date.now() - 124000).toISOString(),
+          },
+          {
+            sessionId: 'm2',
+            repo: 'anita',
+            agent: 'rag-architect',
+            currentTool: 'Bash',
+            currentTarget: 'python eval_rag.py --model claude-haiku',
+            secondsSinceLastEvent: 4,
+            elapsedSec: 312,
+            startedAt: new Date(Date.now() - 312000).toISOString(),
+          },
+        ]);
+      };
+      cycle();
+      const id = setInterval(cycle, 1000);
+      return () => clearInterval(id);
+    }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/live/agents');
+        if (r.ok) {
+          const j = await r.json();
+          if (!cancelled) setAgents(Array.isArray(j) ? j : []);
+        }
+      } catch { /* ignore */ }
+      if (!cancelled) timer = setTimeout(tick, intervalMs);
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [intervalMs]);
+
+  return agents;
+}
+
+/**
  * Live events.
  * Cold-start with /api/live/recent, then upgrade to a WebSocket /ws/live.
  * Falls back to MOCK.LIVE_EVENTS_SEED + cycling LIVE_EVENTS_FUTURE when

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
+import LiveAgents from './LiveAgents';
 import { usePermissions } from '../api';
 
 export const SessionsPage = ({ sessions, repos }) => {
@@ -60,6 +61,11 @@ export const LivePage = ({ liveEvents, repos }) => (
       <Metric label="Tokens/min" value="42k" accent="gold" />
       <Metric label="Events buffered" value={liveEvents.length} accent="purple" />
     </div>
+
+    <div className="mb-4">
+      <LiveAgents repos={repos} />
+    </div>
+
     <div className="card-frame">
       <div className="card-frame-head">
         <h2 className="section-title"><Icon name="terminal" />Streaming</h2>
