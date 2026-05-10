@@ -30,7 +30,8 @@ def _ensure_engine() -> None:
 
 async def init_db() -> None:
     _ensure_engine()
-    assert _engine is not None
+    if _engine is None:
+        raise RuntimeError("DB engine not initialized — call await init_db() first")
     # Import models lazily so metadata is populated before create_all.
     # Safe before Phase A3 — the package may not yet contain modules.
     try:
@@ -44,6 +45,7 @@ async def init_db() -> None:
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     _ensure_engine()
-    assert _sessionmaker is not None
+    if _sessionmaker is None:
+        raise RuntimeError("DB sessionmaker not initialized — call await init_db() first")
     async with _sessionmaker() as session:
         yield session

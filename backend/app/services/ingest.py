@@ -34,7 +34,8 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
     event_count = 0
     started = time.perf_counter()
 
-    assert _sessionmaker is not None
+    if _sessionmaker is None:
+        raise RuntimeError("DB sessionmaker not initialized — call await init_db() first")
     async with _sessionmaker() as session:  # type: AsyncSession
         if rebuild:
             await session.execute(delete(LiveEventRow))
@@ -129,7 +130,8 @@ async def fetch_recent_summaries(repo: str | None = None, limit: int = 50) -> li
     _ensure_engine()
     from app.db import _sessionmaker
 
-    assert _sessionmaker is not None
+    if _sessionmaker is None:
+        raise RuntimeError('DB sessionmaker not initialized — call await init_db() first')
     async with _sessionmaker() as session:
         stmt = select(SessionSummaryRow).order_by(SessionSummaryRow.last_event_at.desc()).limit(limit)
         if repo:
@@ -142,7 +144,8 @@ async def fetch_recent_events(limit: int = 60) -> list[LiveEventRow]:
     _ensure_engine()
     from app.db import _sessionmaker
 
-    assert _sessionmaker is not None
+    if _sessionmaker is None:
+        raise RuntimeError('DB sessionmaker not initialized — call await init_db() first')
     async with _sessionmaker() as session:
         stmt = select(LiveEventRow).order_by(LiveEventRow.ts.desc()).limit(limit)
         result = await session.execute(stmt)

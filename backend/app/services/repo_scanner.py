@@ -115,6 +115,15 @@ def scan_all_repos() -> list[Repo]:
     return out
 
 
+def get_repo_by_id(repo_id: str) -> Repo | None:
+    """Targeted scan: only scan the repo whose directory name matches repo_id."""
+    settings = get_settings()
+    for i, repo_path in enumerate(settings.repo_paths):
+        if repo_path.name == repo_id:
+            return _scan_one(repo_path, ACCENTS[i % len(ACCENTS)])
+    return None
+
+
 def scan_global() -> GlobalEnvelope:
     settings = get_settings()
     claude_dir = settings.claude_dir
