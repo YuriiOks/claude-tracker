@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
-  "agent": "doc-author",
+  "agent": "tracker-orchestrator",
   "permissions": {
     "allow": [
       "Bash(npm run dev:*)",
@@ -29,30 +29,46 @@
       "Bash(git push:*)",
       "Bash(git branch -D:*)",
       "Bash(gh pr create:*)",
-      "Bash(gh pr merge:*)"
+      "Bash(gh pr merge:*)",
+      "Edit(src/data.js)",
+      "Write(src/data.js)",
+      "Edit(src/styles.css)",
+      "Write(src/styles.css)"
     ]
   },
   "hooks": {
     "SessionStart": [
       {
-        "id": "session-start:branch-banner",
-        "description": "Print branch + recent doc count at session start",
+        "id": "session-start:branch-and-stack-banner",
+        "description": "Print branch + dev-server status + recent docs at session start",
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}\" 2>/dev/null && BRANCH=$(git branch --show-current 2>/dev/null) && DOCS=$(ls docs/*.html 2>/dev/null | wc -l | tr -d \" \") && echo \"📊 claude-tracker | branch: $BRANCH | $DOCS HTML doc(s) in docs/\"'"
+            "command": "bash -c 'cd \"${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}\" 2>/dev/null && BRANCH=$(git branch --show-current 2>/dev/null) && DEV_UP=$(lsof -ti:5173 2>/dev/null | wc -l | tr -d \" \") && DOCS=$(ls docs/*.html 2>/dev/null | wc -l | tr -d \" \") && echo \"📊 claude-tracker | branch: $BRANCH | vite: $([ \"$DEV_UP\" -ge 1 ] && echo running || echo stopped) | $DOCS doc(s) in docs/\"'"
           }
         ]
       }
     ],
     "PostCompact": [
       {
-        "id": "post-compact:reminders",
-        "description": "Refresh project invariants after compaction",
+        "id": "post-compact:invariants",
+        "description": "Refresh invariants after compaction",
         "hooks": [
           {
             "type": "command",
-            "command": "echo '🔁 claude-tracker invariants: 1) HTML-first for substantive docs (skill: html-docs) 2) Vanilla CSS only — tokens in src/styles.css 3) data.js shape is the contract 4) No TypeScript yet 5) System fonts only in generated HTML (no CDN)'"
+            "command": "echo '🔁 claude-tracker invariants: 1) HTML-first docs (skill: html-docs) 2) Vanilla CSS, tokens-only (rules: vanilla-css, dual-theme) 3) data.js is the contract — grep before renaming (rules: data-shape-contract; agent: data-shape-keeper) 4) Both themes must work — light cyan == amber 5) No router lib, no state lib, no TS yet (agent: react-engineer) 6) Default agent: tracker-orchestrator — delegates to react-engineer / data-shape-keeper / doc-author'"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "id": "stop:pre-stop-checklist",
+        "description": "Pre-stop reminder",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '✋ Before stopping: did you run npm run lint? did you eyeball both themes? did you grep src/components/ for any data.js keys you renamed?'"
           }
         ]
       }
@@ -69,6 +85,23 @@
           }
         ]
       }
+    ]
+  },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Yurii is hopping between repos",
+      "Cyan is repurposing itself as amber",
+      "Mocking data.js one more shape",
+      "Counting permissions across the workspace",
+      "Lazy-loading the Graph",
+      "Tweaking the tweaks panel",
+      "Toggling data-theme in DevTools",
+      "Eyeballing both themes",
+      "Sliding window of 60 events",
+      "Grepping every consumer",
+      "Pretending the dashboard is real",
+      "Bora codar"
     ]
   }
 }
