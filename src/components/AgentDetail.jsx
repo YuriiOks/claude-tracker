@@ -1,8 +1,46 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
-import { useAgents } from '../api';
+import { useAgents, useRepoHtmlArtifacts } from '../api';
 import { AGENT_INVOCATIONS } from '../data';
+import MarkdownPanel from './MarkdownPanel';
+
+// Templates section — when a skill has a `templates/` subdir (e.g. html-docs),
+// list the .html templates so the user can preview them inline.
+const SkillTemplatesPanel = ({ repoId, skillName }) => {
+  const dir = `.claude/skills/${skillName}/templates`;
+  const { data: templates } = useRepoHtmlArtifacts(repoId, dir);
+  const [active, setActive] = useState(null);
+  if (!templates || templates.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h2 className="section-title mb-3"><Icon name="layers" />Templates ({templates.length})</h2>
+      <div className="row gap-sm wrap mb-3">
+        {templates.map(t => (
+          <button
+            key={t.path}
+            className={'chip' + (active === t.path ? ' active' : '')}
+            onClick={() => setActive(active === t.path ? null : t.path)}
+            title={`${t.path} · ${(t.size / 1024).toFixed(1)} KB`}
+          >
+            <Icon name="eye" size={10} />{t.name}
+          </button>
+        ))}
+      </div>
+      {active && (
+        <MarkdownPanel
+          key={active}
+          repoId={repoId}
+          relPath={active}
+          filePath={active}
+          defaultMode="html"
+          hideSourceToggle
+          emptyMessage="Template not readable"
+        />
+      )}
+    </div>
+  );
+};
 
 // Minimal detail view for commands and rules (no metadata schema yet).
 const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
@@ -29,13 +67,14 @@ const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
           {repo && <span className="bg bg-m">{repo.name}</span>}
         </>}
       />
-      <div className="cd" style={{ padding: 0, marginTop: '1rem' }}>
-        <div className="diff-header"><Icon name="file" size={12} /><span className="mono">{fileLabel}</span></div>
-        <div className="code" style={{ borderRadius: 0, border: 'none' }}>
-          <span className="cmt"># {name}</span><br />
-          <br />
-          <span className="cmt">{isCmd ? '# Slash-command body — replace with the .md contents once /api/files/{path} lands.' : '# Rule body — replace with the .md contents once /api/files/{path} lands.'}</span><br />
-        </div>
+      <div style={{ marginTop: '1rem' }}>
+        <MarkdownPanel
+          repoId={repo?.id}
+          relPath={fileLabel}
+          filePath={fileLabel}
+          defaultMode="code"
+          emptyMessage={isCmd ? 'Command file not found in repo.' : 'Rule file not found in repo.'}
+        />
       </div>
     </>
   );
@@ -60,7 +99,11 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
     avgTokens: 2400,
     delegates: [],
   };
-  const repo = repos.find(r => r.name === meta.repo) || repos[0];
+  // Prefer the URL's repoId (set by App.jsx when navigated via /repos/:id/...);
+  // fall back to the mock meta.repo only for top-level /agents/:name routes.
+  const repo = (repoId && repos.find(r => r.id === repoId))
+    || repos.find(r => r.name === meta.repo)
+    || repos[0];
   const isAgent = kind === 'agent';
 
   // F12: invocations sample sourced from data.js (was inline)
@@ -92,28 +135,15 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
       <div className="split">
         <div>
           <h2 className="section-title mb-3"><Icon name="file" />Definition</h2>
-          <div className="cd" style={{ padding: 0 }}>
-            <div className="diff-header"><Icon name="file" size={12} /><span className="mono">.claude/{isAgent ? 'agents' : 'skills'}/{name}{isAgent ? '.md' : '/SKILL.md'}</span></div>
-            <div className="code" style={{ borderRadius: 0, border: 'none' }}>
-              <span className="cmt">---</span><br />
-              <span className="kw">name:</span> <span className="str">{name}</span><br />
-              <span className="kw">description:</span> <span className="str">{meta.role.slice(0, 60)}…</span><br />
-              {isAgent && <><span className="kw">tools:</span> <span className="str">[{meta.tools.join(', ')}]</span><br /></>}
-              {isAgent && <><span className="kw">model:</span> <span className="str">sonnet-4.5</span><br /></>}
-              <span className="cmt">---</span><br />
-              <br />
-              <span className="cmt"># {name}</span><br />
-              <br />
-              You are a specialist {kind} that handles tasks in the{' '}
-              <span className="vr">{meta.repo}</span> codebase.<br />
-              <br />
-              <span className="cmt">## Responsibilities</span><br />
-              {(meta.tools || []).map((t, i) => <span key={i}>- Use <span className="fn">{t}</span> to accomplish your work.<br /></span>)}
-              <br />
-              <span className="cmt">## When to invoke</span><br />
-              Invoke this {kind} when the user asks about {name.split('-').slice(0, 2).join(' ')}…
-            </div>
-          </div>
+          <MarkdownPanel
+            repoId={repo?.id}
+            relPath={'.claude/' + (isAgent ? 'agents' : 'skills') + '/' + name + (isAgent ? '.md' : '/SKILL.md')}
+            filePath={'.claude/' + (isAgent ? 'agents' : 'skills') + '/' + name + (isAgent ? '.md' : '/SKILL.md')}
+            defaultMode="code"
+            emptyMessage={isAgent ? 'Agent file not found in this repo.' : 'Skill file not found in this repo.'}
+          />
+
+          {!isAgent && <SkillTemplatesPanel repoId={repo?.id} skillName={name} />}
 
           {isAgent && meta.delegates && meta.delegates.length > 0 && (
             <>

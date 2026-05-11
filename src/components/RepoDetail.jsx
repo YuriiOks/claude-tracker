@@ -1,8 +1,44 @@
+import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, Tabs, PageHead } from './Common';
+import MarkdownPanel from './MarkdownPanel';
+import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
 import { useAgents } from '../api';
+
+const HtmlArtifacts = ({ repo }) => {
+  const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
+  const [active, setActive] = useState(null);
+  if (!artifacts || artifacts.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h2 className="section-title mb-3"><Icon name="file" />Generated HTML artifacts</h2>
+      <div className="row gap-sm wrap mb-3">
+        {artifacts.map(a => (
+          <button
+            key={a.path}
+            className={'chip' + (active === a.path ? ' active' : '')}
+            onClick={() => setActive(active === a.path ? null : a.path)}
+            title={`${a.path} · ${(a.size / 1024).toFixed(1)} KB`}
+          >
+            <Icon name="eye" size={10} />{a.name}
+          </button>
+        ))}
+      </div>
+      {active && (
+        <MarkdownPanel
+          key={active}
+          repoId={repo.id}
+          relPath={active}
+          filePath={active}
+          defaultMode="html"
+          emptyMessage="Artifact not readable"
+        />
+      )}
+    </div>
+  );
+};
 
 const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
   <div className="split">
@@ -62,6 +98,8 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
       <div className="tag-row">
         {(repo.mcp || []).map(m => <span key={m} className="bg bg-c"><Icon name="cpu" size={10} />{m}</span>)}
       </div>
+
+      <HtmlArtifacts repo={repo} />
     </div>
   </div>
 );

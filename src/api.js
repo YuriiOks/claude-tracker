@@ -44,6 +44,11 @@ function useFetch(path, fallback) {
       setLoading(false);
       return;
     }
+    if (!path) {
+      // Caller disabled the fetch (e.g. useFile with empty args)
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     if (_readCache(path) === null) setLoading(true);
     fetch(path, { headers: { Accept: 'application/json' } })
@@ -145,6 +150,23 @@ export async function addRepo(hostPath) {
     throw new Error(detail.detail || `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+// List .html artifacts under a directory of a tracked repo. Defaults to docs/.
+export function useRepoHtmlArtifacts(repoId, dir) {
+  const qs = dir ? `?dir=${encodeURIComponent(dir)}` : '';
+  const url = repoId ? `/api/repos/${encodeURIComponent(repoId)}/artifacts/html${qs}` : null;
+  return useFetch(url, []);
+}
+
+// Fetch a .md/.html file from a tracked repo. Returns { content, path, size }
+// or null while loading / on failure. Path is relative to the repo root.
+export function useFile(repoId, relPath) {
+  const enabled = Boolean(repoId && relPath);
+  return useFetch(
+    enabled ? `/api/files/${encodeURIComponent(repoId)}/${relPath.split('/').map(encodeURIComponent).join('/')}` : null,
+    null,
+  );
 }
 
 // DELETE a repo from the runtime registry (env entries can't be removed).
