@@ -58,10 +58,17 @@ function useFetch(path, fallback) {
       })
       .then(j => {
         if (!cancelled) {
-          setData(j);
+          // Preserve the fallback when the backend returns null/undefined —
+          // that signals "feature not wired yet", and overwriting the mock
+          // makes the route read as if the page doesn't exist. Legitimate
+          // empty results ([], {}) are still passed through so consumers can
+          // distinguish "no data right now" from "no backend response".
+          if (j != null) {
+            setData(j);
+            _writeCache(path, j);
+          }
           setError(null);
           setLoading(false);
-          _writeCache(path, j);
         }
       })
       .catch(e => {
@@ -123,6 +130,42 @@ export function useDiff() {
 // F13: Recent-diff feed shown on DiffPage. Mock fallback until backend lands.
 export function useRecentDiffs() {
   return useFetch('/api/diffs/list', MOCK.RECENT_DIFFS);
+}
+
+// Drill into a specific file's current diff (click-to-load on DiffPage).
+// `repo` is the repo dir name, `path` is the path relative to repo root.
+// Returns null until both args are set so DiffPage can show the headline
+// diff (useDiff) by default and only load this on demand.
+export function useFileDiff(repo, path) {
+  const enabled = Boolean(repo && path);
+  const url = enabled ? `/api/diffs/file?repo=${encodeURIComponent(repo)}&path=${encodeURIComponent(path)}` : null;
+  return useFetch(url, null);
+}
+
+// Dashboard stats — totals + deltas + 24-bucket sparklines per metric.
+// Polls every 5s for a near-live feel.
+export function useDashboardStats(intervalMs = 5000) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (USE_MOCKS) { setLoading(false); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/stats/dashboard');
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) { setData(j); setLoading(false); }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+      if (!cancelled) timer = setTimeout(tick, intervalMs);
+    };
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [intervalMs]);
+  return { data, loading };
 }
 
 // Sidebar identity. Backend returns only what it can discover (claudeVersion);

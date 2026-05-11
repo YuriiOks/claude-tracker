@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -34,3 +35,20 @@ class Diff(BaseModel):
     agent: str = ""
     session: str = ""
     hunks: list[DiffHunk] = Field(default_factory=list)
+
+
+class RecentDiffItem(BaseModel):
+    """One row in the /diff page's "Recent diffs across repos" list.
+
+    Carries typed primitives (ISO timestamp + numeric line counts) rather
+    than pre-formatted strings so the frontend can re-render elapsed time
+    on each tick and so future sort/filter work doesn't need to re-parse
+    "+12 −2" or "2m".
+    """
+    ts: datetime
+    file: str
+    repo: str
+    adds: int = 0
+    dels: int = 0
+    agent: str = ""
+

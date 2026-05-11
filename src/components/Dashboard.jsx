@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useDashboardStats } from '../api';
 import Icon from '../icons';
 import { Metric, Status, InlineSpark, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
@@ -8,13 +9,47 @@ const AddRepoModal = lazy(() => import('./AddRepoModal'));
 
 const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute }) => {
   const [addRepoOpen, setAddRepoOpen] = useState(false);
-  const totals = repos.reduce((a, r) => ({
+  // Real-time aggregate stats (polled every 5s)
+  const { data: stats } = useDashboardStats();
+
+  // Repo-side fallback (used until /api/stats/dashboard responds)
+  const fallback = repos.reduce((a, r) => ({
     sessions: a.sessions + r.stats.sessionsToday,
     tokens: a.tokens + r.stats.tokensWeek,
     cost: a.cost + r.stats.costWeek,
     edits: a.edits + r.stats.filesEdited,
   }), { sessions: 0, tokens: 0, cost: 0, edits: 0 });
   const activeCount = repos.filter(r => r.isActive).length;
+
+  // Format the delta percent → arrow + sign; clip huge ratios as `+22x`
+  // so deltas like 5947% don't blow out the layout while still reading
+  // as obviously-big.
+  const fmtDelta = (pct) => {
+    if (pct == null) return null;
+    const abs = Math.abs(pct);
+    const sign = pct < 0 ? '-' : '+';
+    if (abs >= 1000) return `${sign}${(abs / 100).toFixed(0)}x`;
+    if (abs >= 100)  return `${sign}${abs.toFixed(0)}%`;
+    return `${sign}${abs.toFixed(1)}%`;
+  };
+  // Format a count into { value, unit } with B/M/k scale. Used for tokens
+  // where the headline value can be billions when cache_read is included.
+  const fmtCount = (n) => {
+    if (n == null) return { v: '—', u: '' };
+    if (n >= 1e9) return { v: (n / 1e9).toFixed(2), u: 'B' };
+    if (n >= 1e6) return { v: (n / 1e6).toFixed(2), u: 'M' };
+    if (n >= 1e3) return { v: (n / 1e3).toFixed(1), u: 'k' };
+    return { v: String(n), u: '' };
+  };
+
+  // Real values when /api/stats/dashboard has responded; else fallback
+  const sessionsToday = stats?.sessions.today ?? fallback.sessions;
+  const sessionsDelta = stats ? fmtDelta(stats.sessions.deltaPct) : null;
+  const tokensThisWeek = stats?.tokens.thisWeek ?? fallback.tokens;
+  const tokensDisplay  = fmtCount(tokensThisWeek);
+  const tokensDelta    = stats ? fmtDelta(stats.tokens.deltaPct) : null;
+  const costThisWeek = stats?.cost.thisWeek ?? fallback.cost;
+  const costDelta = stats ? fmtDelta(stats.cost.deltaPct) : null;
 
   const [feedFilter, setFeedFilter] = useState('all');
   const [feedPaused, setFeedPaused] = useState(false);
@@ -46,10 +81,40 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute }) => {
       />
 
       <div className="grid grid-cols-4 mb-4">
-        <Metric label="sessions today" value={totals.sessions} delta="+18%" deltaLabel="vs yesterday" accent="cyan" />
-        <Metric label="tokens this week" value={(totals.tokens / 1e6).toFixed(2)} unit="M" delta="+2.1M" deltaLabel="projected eow" accent="gold" />
-        <Metric label="spend this week" prefix="$" value={parseFloat(totals.cost.toFixed(2))} delta="-12%" deltaLabel="vs last week" accent="green" />
-        <Metric label="active in editor" value={activeCount} delta={`${activeCount}`} deltaLabel="repos live now" accent="purple" />
+        <Metric
+          label="sessions today"
+          value={sessionsToday}
+          delta={sessionsDelta}
+          deltaLabel="vs yesterday"
+          accent="cyan"
+          points={stats?.sessions.spark}
+        />
+        <Metric
+          label="tokens this week"
+          value={tokensDisplay.v}
+          unit={tokensDisplay.u}
+          delta={tokensDelta}
+          deltaLabel="vs last week"
+          accent="gold"
+          points={stats?.tokens.spark}
+        />
+        <Metric
+          label="spend this week"
+          prefix="$"
+          value={costThisWeek.toFixed(2)}
+          delta={costDelta}
+          deltaLabel="vs last week"
+          accent="green"
+          points={stats?.cost.spark}
+        />
+        <Metric
+          label="active in editor"
+          value={activeCount}
+          delta={`${activeCount}`}
+          deltaLabel="repos live now"
+          accent="purple"
+          points={stats?.active.spark}
+        />
       </div>
 
       <div className="mb-4">

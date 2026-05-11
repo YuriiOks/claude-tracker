@@ -184,13 +184,19 @@ def parse_jsonl(
                 out_tok = int(usage.get("output_tokens", 0) or 0)
                 cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
                 cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-                tokens += in_tok + out_tok + cache_write + cache_read
+                # Headline tokens = generation work (input + output + cache_creation).
+                # cache_read is excluded because long-lived sessions can re-read the same
+                # 80k-token cached system prompt thousands of times — a single 8h session
+                # can easily accumulate 670M cache_read tokens against just 1.3M output,
+                # inflating BOTH the token count and the cost by ~100x in a way that
+                # doesn't reflect actual generation effort. We exclude it from both so
+                # the dashboard tells a consistent story: tokens × avg-rate ≈ cost.
+                tokens += in_tok + out_tok + cache_write
                 input_price, output_price = _price(model_seen)
                 cost += (in_tok / 1_000_000) * input_price
                 cost += (out_tok / 1_000_000) * output_price
-                # Cache write is 25% more expensive; cache read is 90% cheaper.
+                # Cache write (one-time) is 25% more expensive than input.
                 cost += (cache_write / 1_000_000) * input_price * 1.25
-                cost += (cache_read / 1_000_000) * input_price * 0.10
 
                 content = msg.get("content", [])
                 if isinstance(content, list) and ts is not None:

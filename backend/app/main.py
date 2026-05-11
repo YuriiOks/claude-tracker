@@ -1,6 +1,7 @@
 """FastAPI factory."""
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -12,17 +13,51 @@ from app.db import init_db
 
 logger = logging.getLogger(__name__)
 
+# Re-ingest interval — keeps session_summary table fresh so /api/stats
+# and /api/repos return today's numbers without manual `tracker ingest`.
+INGEST_INTERVAL_SEC = 30
+
+
+async def _ingest_loop():
+    """Run incremental ingest every INGEST_INTERVAL_SEC. Logs and continues
+    on error so a transient parse failure doesn't kill the loop."""
+    from app.services.ingest import ingest_all
+    while True:
+        try:
+            r = await ingest_all(since_hours=24)
+            logger.info(
+                "ingest tick: new=%s updated=%s skipped=%s events=%s in %ss",
+                r.get("new_summaries"), r.get("updated_summaries"),
+                r.get("skipped"), r.get("events"), r.get("elapsed_s"),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("ingest tick failed: %s", e)
+        await asyncio.sleep(INGEST_INTERVAL_SEC)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
     from app.services.live_stream import start_watcher, stop_watcher
+    from app.services.ingest import ingest_all
+
+    # First-time bootstrap: full ingest so the dashboard has data on first paint.
+    try:
+        r = await ingest_all()
+        logger.info("bootstrap ingest: %s new, %s updated, %s events",
+                    r.get("new_summaries"), r.get("updated_summaries"), r.get("events"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bootstrap ingest failed: %s", e)
 
     await start_watcher()
+    ingest_task = asyncio.create_task(_ingest_loop())
     logger.info("claude-tracker backend started")
     try:
         yield
     finally:
+        ingest_task.cancel()
+        try: await ingest_task
+        except (asyncio.CancelledError, Exception): pass
         await stop_watcher()
         logger.info("claude-tracker backend stopped")
 
@@ -61,6 +96,7 @@ def create_app() -> FastAPI:
         sessions,
         user,
         files,
+        stats,
     )
     app.include_router(health.router, prefix="/api")
     app.include_router(repos.router, prefix="/api")
@@ -74,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(live_agents.router, prefix="/api")
     app.include_router(user.router, prefix="/api")
     app.include_router(files.router, prefix="/api")
+    app.include_router(stats.router, prefix="/api")
     app.include_router(live.router)  # live.py declares full paths (/api + /ws)
 
     return app

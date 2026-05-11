@@ -13,7 +13,6 @@
 // (`repoId` + `relPath` props → /api/files/:repo/:path).
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
-import { markedHighlight } from 'marked-highlight';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
@@ -58,14 +57,10 @@ hljs.registerLanguage('dockerfile', dockerfile);
 hljs.registerLanguage('docker', dockerfile);
 
 marked.setOptions({ gfm: true, breaks: false, headerIds: false, mangle: false });
-marked.use(markedHighlight({
-  langPrefix: 'hljs language-',
-  highlight(code, lang) {
-    const language = hljs.getLanguage(lang) ? lang : 'plaintext';
-    try { return hljs.highlight(code, { language, ignoreIllegals: true }).value; }
-    catch { return code; }
-  },
-}));
+// Note: we deliberately do NOT register markedHighlight here. The custom
+// renderer.code below is the sole highlighter — registering both makes the
+// code get highlighted twice and the second pass treats the first pass's
+// HTML as plain text → visible <span class="hljs-keyword"> escapes.
 
 // ──────────────────────── marked extensions (A2/A3/B1) ────────────────────────
 
@@ -106,6 +101,7 @@ function buildRenderer({ collectHeadings }) {
   };
 
   renderer.code = function ({ text, lang }) {
+    // text is the raw code (markedHighlight is intentionally NOT registered).
     const langLabel = (lang || '').trim();
     let highlighted;
     try {
@@ -114,13 +110,13 @@ function buildRenderer({ collectHeadings }) {
     } catch {
       highlighted = text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
     }
-    const escapedRaw = text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
-    const langChip = langLabel
-      ? `<span class="md-code-lang">${langLabel}</span>` : '';
     return `<div class="md-code-block">
-${langChip}<button class="md-code-copy" type="button" data-clipboard="${encodeURIComponent(text)}" title="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+<div class="md-code-bar">
+  <span class="md-code-lang">${langLabel || 'text'}</span>
+  <button class="md-code-copy" type="button" data-clipboard="${encodeURIComponent(text)}" title="Copy code" aria-label="Copy code"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+</div>
 <pre><code class="hljs language-${langLabel || 'plaintext'}">${highlighted}</code></pre>
-<noscript data-raw="${escapedRaw}"></noscript></div>\n`;
+</div>\n`;
   };
 
   renderer.blockquote = function ({ tokens }) {
@@ -317,8 +313,15 @@ function FrontmatterCard({ data }) {
 
 function TableOfContents({ headings, scrollContainer }) {
   const [activeId, setActiveId] = useState(headings[0]?.id || '');
+  // Persist collapsed state per-tab so it stays sane across navigations
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return sessionStorage.getItem('ct:toc-collapsed') === '1'; } catch { return false; }
+  });
   useEffect(() => {
-    if (!scrollContainer || headings.length === 0) return;
+    try { sessionStorage.setItem('ct:toc-collapsed', collapsed ? '1' : '0'); } catch { /* ignore */ }
+  }, [collapsed]);
+  useEffect(() => {
+    if (!scrollContainer || headings.length === 0 || collapsed) return;
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter(e => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
@@ -331,22 +334,36 @@ function TableOfContents({ headings, scrollContainer }) {
       if (el) observer.observe(el);
     });
     return () => observer.disconnect();
-  }, [headings, scrollContainer]);
+  }, [headings, scrollContainer, collapsed]);
   if (headings.length < 4) return null;
   const min = Math.min(...headings.map(h => h.level));
   return (
-    <nav className="md-toc" aria-label="Table of contents">
-      <div className="md-toc-title">On this page</div>
-      <ul>
-        {headings.map(h => (
-          <li
-            key={h.id}
-            className={`md-toc-l${h.level - min} ${activeId === h.id ? 'active' : ''}`}
-          >
-            <a href={'#' + h.id}>{h.text}</a>
-          </li>
-        ))}
-      </ul>
+    <nav className={'md-toc' + (collapsed ? ' collapsed' : '')} aria-label="Table of contents">
+      <div className="md-toc-head">
+        {!collapsed && <span className="md-toc-title">On this page</span>}
+        <button
+          className="md-toc-toggle"
+          onClick={() => setCollapsed(c => !c)}
+          title={collapsed ? 'Show table of contents' : 'Hide table of contents'}
+          aria-label={collapsed ? 'Show table of contents' : 'Hide table of contents'}
+        >
+          <Icon name={collapsed ? 'list' : 'x'} size={11} />
+        </button>
+      </div>
+      {!collapsed && (
+        <div className="md-toc-body">
+          <ul>
+            {headings.map(h => (
+              <li
+                key={h.id}
+                className={`md-toc-l${h.level - min} ${activeId === h.id ? 'active' : ''}`}
+              >
+                <a href={'#' + h.id}>{h.text}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </nav>
   );
 }

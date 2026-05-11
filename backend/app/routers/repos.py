@@ -12,6 +12,7 @@ from app.services.repo_registry import add_repo as registry_add
 from app.services.repo_registry import all_repo_paths
 from app.services.repo_registry import remove_repo as registry_remove
 from app.services.repo_scanner import get_repo_by_id, scan_all_repos, scan_global
+from app.services.repo_stats import fetch_real_stats
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["repos"])
@@ -19,7 +20,12 @@ router = APIRouter(prefix="", tags=["repos"])
 
 @router.get("/repos", response_model=list[Repo])
 async def list_repos() -> list[Repo]:
-    return scan_all_repos()
+    repos = scan_all_repos()
+    real = await fetch_real_stats()
+    for r in repos:
+        if r.name in real:
+            r.stats = real[r.name]
+    return repos
 
 
 @router.get("/repos/{repo_id}", response_model=Repo)
@@ -27,6 +33,9 @@ async def get_repo(repo_id: str) -> Repo:
     repo = get_repo_by_id(repo_id)
     if repo is None:
         raise HTTPException(status_code=404, detail=f"repo not found: {repo_id}")
+    real = await fetch_real_stats()
+    if repo.name in real:
+        repo.stats = real[repo.name]
     return repo
 
 

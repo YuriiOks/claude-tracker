@@ -50,7 +50,15 @@ function sparkPoints(seed, n = 14, vol = 0.6) {
 export { sparkPoints };
 
 export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent = 'cyan', kicker, points, sub }) => {
-  const pts = points || sparkPoints(label + String(value), 24, 0.45);
+  // Normalise real-data points into [0,1] so the SVG geometry stays the same
+  // shape regardless of metric magnitude. Falls back to the deterministic
+  // pseudo-random walk when no points provided.
+  const pts = (() => {
+    if (!points || points.length === 0) return sparkPoints(label + String(value), 24, 0.45);
+    const max = Math.max(...points, 1);
+    if (max === 0) return points.map(() => 0.05);
+    return points.map(v => Math.max(0.05, Math.min(0.95, v / max)));
+  })();
   const W = 118, H = 38;
   const step = W / (pts.length - 1);
   const ys = pts.map(p => H - p * (H - 2) - 1);
@@ -89,6 +97,17 @@ export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent =
           </defs>
           <path className="area" d={areaPath} style={{ fill: `url(#sparkFill-${accent})` }} />
           <path className="line" d={linePath} style={{ strokeDasharray: pathLen, strokeDashoffset: pathLen, '--pathLen': pathLen }} />
+          {/* Tracer dot — rides the full path start→end, repeats forever.
+              Synced with sparkDraw on first paint, then loops indefinitely. */}
+          <circle className="dot-tracer" r="2.4" fill={`var(--${accent})`}>
+            <animateMotion
+              dur="2.6s"
+              path={linePath}
+              repeatCount="indefinite"
+              rotate="0"
+              calcMode="linear"
+            />
+          </circle>
           <circle className="dot-pulse" cx={lastX} cy={lastY} r="2.2" />
           <circle className="dot" cx={lastX} cy={lastY} r="2.2" />
         </svg>

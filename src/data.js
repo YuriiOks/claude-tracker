@@ -420,15 +420,19 @@ export const AGENT_INVOCATIONS = [
 ];
 
 
-// F13: Recent diff feed shown on DiffPage. Backend can later expose
-// /api/diffs/recent-list or similar.
+// F13: Recent diff feed shown on DiffPage. Real data served by
+// /api/diffs/list — this array is the fallback when the backend hasn't
+// captured any tool events in the last hour. Timestamps are computed at
+// import time so mock "ages" stay current across page refreshes; the
+// DiffPage formats them via fmtAgo() so they tick up like real entries.
+const _agoIso = (mins) => new Date(Date.now() - mins * 60_000).toISOString();
 export const RECENT_DIFFS = [
-  { t: '2m',  file: 'app/ai/services/chat/bedrock/stream_parser.py',     repo: 'jupus',  a: '+12 −2', agent: 'ai-developer' },
-  { t: '8m',  file: 'spa-frontend/src/types/generated/types.gen.ts',     repo: 'jupus',  a: '+47 −3', agent: 'frontend-engineer' },
-  { t: '14m', file: 'src/embeddings/processor.py',                       repo: 'anita',  a: '+8 −5',  agent: 'rag-architect' },
-  { t: '22m', file: 'app/tests/conftest.py',                             repo: 'jupus',  a: '+3 −1',  agent: 'jupus-test-engineer' },
-  { t: '38m', file: 'app/ai/migrations/0058_seed_model_descriptions.py', repo: 'jupus',  a: '+24 −0', agent: 'backend-engineer' },
-  { t: '1h',  file: 'retell/handlers/polish_agent.py',                   repo: 'voice',  a: '+18 −4', agent: 'voice-engineer' },
+  { ts: _agoIso(2),  file: 'app/ai/services/chat/bedrock/stream_parser.py',     repo: 'jupus',  adds: 12, dels: 2, agent: 'ai-developer' },
+  { ts: _agoIso(8),  file: 'spa-frontend/src/types/generated/types.gen.ts',     repo: 'jupus',  adds: 47, dels: 3, agent: 'frontend-engineer' },
+  { ts: _agoIso(14), file: 'src/embeddings/processor.py',                       repo: 'anita',  adds: 8,  dels: 5, agent: 'rag-architect' },
+  { ts: _agoIso(22), file: 'app/tests/conftest.py',                             repo: 'jupus',  adds: 3,  dels: 1, agent: 'jupus-test-engineer' },
+  { ts: _agoIso(38), file: 'app/ai/migrations/0058_seed_model_descriptions.py', repo: 'jupus',  adds: 24, dels: 0, agent: 'backend-engineer' },
+  { ts: _agoIso(60), file: 'retell/handlers/polish_agent.py',                   repo: 'voice',  adds: 18, dels: 4, agent: 'voice-engineer' },
 ];
 
 export const MOCK_DATA = {

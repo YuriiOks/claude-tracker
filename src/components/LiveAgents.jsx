@@ -1,5 +1,6 @@
 import { useActiveAgents } from '../api';
 import Icon from '../icons';
+import { fmtSince } from '../utils/time';
 
 const ACCENT_BY_REPO = {};
 function dotColor(repo, accent) {
@@ -10,14 +11,6 @@ function dotColor(repo, accent) {
     ACCENT_BY_REPO[repo] = palette[idx];
   }
   return ACCENT_BY_REPO[repo];
-}
-
-function fmtSince(s) {
-  if (s == null) return '—';
-  if (s < 1) return 'now';
-  if (s < 60) return `${s}s ago`;
-  const m = Math.floor(s / 60);
-  return m < 60 ? `${m}m ago` : `${Math.floor(m / 60)}h ago`;
 }
 
 function fmtElapsed(s) {
