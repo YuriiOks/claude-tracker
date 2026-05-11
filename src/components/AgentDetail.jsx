@@ -4,9 +4,52 @@ import { Metric, Status, PageHead } from './Common';
 import { useAgents } from '../api';
 import { AGENT_INVOCATIONS } from '../data';
 
-const AgentDetail = ({ name, kind, repos, onBack }) => {
+// Minimal detail view for commands and rules (no metadata schema yet).
+const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
+  const isCmd = kind === 'command';
+  const fileLabel = isCmd
+    ? `.claude/commands/${name}.md`
+    : `.claude/rules/${name}.md`;
+  const accent = isCmd ? 'var(--green)' : 'var(--gold)';
+  const badge = isCmd ? 'bg-o' : 'bg-t';
+  const iconName = isCmd ? 'terminal' : 'book';
+  return (
+    <>
+      <button className="page-back" onClick={onBack}><Icon name="x" size={11} /><span>Back</span></button>
+      <PageHead
+        title={isCmd ? `/${name}` : name}
+        accent={accent}
+        sub={isCmd
+          ? 'Slash command — invoked from Claude Code with `/' + name + '` followed by arguments.'
+          : 'Rule — auto-applied based on file path globs declared in the rule frontmatter.'}
+        actions={<>
+          <span className={'bg ' + badge}>
+            <Icon name={iconName} size={10} />{kind}
+          </span>
+          {repo && <span className="bg bg-m">{repo.name}</span>}
+        </>}
+      />
+      <div className="cd" style={{ padding: 0, marginTop: '1rem' }}>
+        <div className="diff-header"><Icon name="file" size={12} /><span className="mono">{fileLabel}</span></div>
+        <div className="code" style={{ borderRadius: 0, border: 'none' }}>
+          <span className="cmt"># {name}</span><br />
+          <br />
+          <span className="cmt">{isCmd ? '# Slash-command body — replace with the .md contents once /api/files/{path} lands.' : '# Rule body — replace with the .md contents once /api/files/{path} lands.'}</span><br />
+        </div>
+      </div>
+    </>
+  );
+};
+
+const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
+  // Hooks must run unconditionally — call them first, then dispatch on kind.
   const { data: AGENT_META } = useAgents();
   const defaultCallsToday = useMemo(() => Math.floor(Math.random() * 18) + 2, [name]);
+  // For commands and rules we render a simpler view (no calls/tokens schema).
+  if (kind === 'command' || kind === 'rule') {
+    const repo = (repos || []).find(r => r.id === repoId) || (repos || []).find(r => r.id === 'global') || (repos || [])[0];
+    return <SimpleItemDetail name={name} kind={kind} repo={repo} onBack={onBack} />;
+  }
   const meta = (AGENT_META && AGENT_META[name]) || {
     role: kind === 'skill'
       ? 'Skill — encapsulated workflow knowledge that Claude loads when relevant files are touched.'

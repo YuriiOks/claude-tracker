@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, Tabs, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
@@ -102,10 +101,10 @@ const RepoAgents = ({ repo, onOpen }) => {
 );
 };
 
-const RepoSkills = ({ repo }) => (
+const RepoSkills = ({ repo, onOpen }) => (
   <div className="grid grid-auto">
     {repo.skills.map(s => (
-      <div key={s} className="cd clickable">
+      <div key={s} className="cd clickable" onClick={() => onOpen && onOpen(s, 'skill')}>
         <div className="row between mb-2">
           <div className="row gap-sm"><Icon name="sparkles" size={16} /><h3 className="tb">{s}</h3></div>
           <span className="bg bg-p">skill</span>
@@ -118,10 +117,10 @@ const RepoSkills = ({ repo }) => (
   </div>
 );
 
-const RepoCommands = ({ repo }) => (
+const RepoCommands = ({ repo, onOpen }) => (
   <div className="grid grid-cols-2">
     {repo.commands.map(c => (
-      <div key={c} className="cd">
+      <div key={c} className="cd clickable" onClick={() => onOpen && onOpen(c.replace(/^\//, ''), 'command')}>
         <div className="row between mb-2">
           <div className="row gap-sm"><Icon name="terminal" size={14} /><h3 className="tb mono">{c}</h3></div>
           <span className="bg bg-o">command</span>
@@ -135,10 +134,10 @@ const RepoCommands = ({ repo }) => (
   </div>
 );
 
-const RepoRules = ({ repo }) => (
+const RepoRules = ({ repo, onOpen }) => (
   <div className="col gap-sm">
     {(repo.rules || []).map(r => (
-      <div key={r} className="cd">
+      <div key={r} className="cd clickable" onClick={() => onOpen && onOpen(r, 'rule')}>
         <div className="row between mb-2">
           <div className="row gap-sm"><Icon name="book" size={14} /><h3 className="tb">{r}</h3></div>
           <span className="bg bg-t">rule</span>
@@ -152,8 +151,8 @@ const RepoRules = ({ repo }) => (
   </div>
 );
 
-const RepoDetail = ({ repo, sessions, liveEvents, onOpen }) => {
-  const [tab, setTab] = useState('overview');
+const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
+  const setTab = onTabChange || (() => {});
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
   const repoSessions = sessions.filter(s => s.repo === repo.id);
@@ -172,8 +171,22 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen }) => {
           {!isGlobal && (repo.isActive
             ? <span className="live-pill"><span className="dot"></span>session live</span>
             : <Status kind="idle" />)}
-          <button className="btn"><Icon name="eye" size={12} />Open in editor</button>
-          <button className="btn primary"><Icon name="terminal" size={12} />Tail session</button>
+          <button
+            className="btn"
+            title="Copy the repo path to clipboard so you can open it in your editor"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(repo.path);
+              } catch {
+                window.prompt('Repo path:', repo.path);
+              }
+            }}
+          ><Icon name="eye" size={12} />Copy path</button>
+          <button
+            className="btn primary"
+            title="Open the live activity feed (filtered to all repos for now)"
+            onClick={() => setRoute && setRoute({ page: 'live' })}
+          ><Icon name="terminal" size={12} />Tail session</button>
         </>}
       />
 
@@ -202,9 +215,9 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen }) => {
 
       {tab === 'overview' && <RepoOverview repo={repo} repoSessions={repoSessions} repoEvents={repoEvents} onOpen={onOpen} />}
       {tab === 'agents' && <RepoAgents repo={repo} onOpen={onOpen} />}
-      {tab === 'skills' && <RepoSkills repo={repo} />}
-      {tab === 'commands' && <RepoCommands repo={repo} />}
-      {tab === 'rules' && <RepoRules repo={repo} />}
+      {tab === 'skills' && <RepoSkills repo={repo} onOpen={onOpen} />}
+      {tab === 'commands' && <RepoCommands repo={repo} onOpen={onOpen} />}
+      {tab === 'rules' && <RepoRules repo={repo} onOpen={onOpen} />}
       {tab === 'permissions' && <PermissionsPanel scope={repo.name} />}
       {tab === 'plugins' && <PluginsPanel repo={repo} />}
     </>

@@ -106,7 +106,7 @@ export const ReposPage = ({ repos, onOpen, layout }) => {
     const cols = [
       { id: 'live', label: 'Live now', filter: r => r.isActive, accent: 'var(--green)' },
       { id: 'idle', label: 'Idle', filter: r => !r.isActive && r.stats.sessionsToday > 0, accent: 'var(--cyan)' },
-      { id: 'cold', label: 'No activity today', filter: r => r.stats.sessionsToday === 0, accent: 'var(--muted)' },
+      { id: 'cold', label: 'No activity today', filter: r => !r.isActive && r.stats.sessionsToday === 0, accent: 'var(--muted)' },
     ];
     return (
       <div className="grid grid-cols-3">

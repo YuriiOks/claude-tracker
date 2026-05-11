@@ -68,7 +68,7 @@ function App() {
   const [route, setRoute, goBack] = useRoute();  // URL routing — pushState + popstate
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const liveEvents = useLiveEvents();
-  const { data: rawRepos } = useRepos();
+  const { data: rawRepos, loading: reposLoading } = useRepos();
   const { data: globalScope } = useGlobal();
   const { data: sessions } = useSessions(50);
   const liveAgents = useActiveAgents();
@@ -169,7 +169,7 @@ function App() {
   const renderPage = () => {
     switch (route.page) {
       case 'dashboard':
-        return <Dashboard repos={repos} sessions={sessions} liveEvents={liveEvents} onOpen={openRepo} />;
+        return <Dashboard repos={repos} sessions={sessions} liveEvents={liveEvents} onOpen={openRepo} setRoute={setRoute} />;
       case 'repos':
         return <ReposView repos={repos} onOpen={openRepo} layout={tweaks.reposLayout} />;
       case 'live':
@@ -192,12 +192,32 @@ function App() {
       case 'diff':
         return <DiffPage />;
       case 'repo': {
-        const r = allRepos.find(r => r.id === route.repoId);
-        if (!r) return <div className="empty">Repo not found</div>;
-        return <RepoDetail repo={r} sessions={sessions} liveEvents={liveEvents} onOpen={openAgent} />;
+        const r = allRepos.find(rr => rr.id === route.repoId);
+        if (!r) {
+          return reposLoading
+            ? <div className="empty">Loading repo…</div>
+            : <div className="empty">Repo not found</div>;
+        }
+        return (
+          <RepoDetail
+            repo={r}
+            sessions={sessions}
+            liveEvents={liveEvents}
+            tab={route.tab || 'overview'}
+            onTabChange={(tab) => setRoute({ page: 'repo', repoId: r.id, tab })}
+            // In-repo drill-in carries repoId so URL is /repos/:id/<tab>/:name
+            onOpen={(name, kind) => setRoute({ page: 'agent', name, kind: kind || 'agent', repoId: r.id })}
+          />
+        );
       }
-      case 'agent':
-        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} onBack={() => goBack({ page: 'agents' })} />;
+      case 'agent': {
+        // Back target: in-repo → repo's matching tab; global → /agents
+        const KIND_TAB = { agent: 'agents', skill: 'skills', command: 'commands', rule: 'rules' };
+        const back = route.repoId
+          ? { page: 'repo', repoId: route.repoId, tab: KIND_TAB[route.kind] || 'agents' }
+          : { page: 'agents' };
+        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} repoId={route.repoId} onBack={() => goBack(back)} />;
+      }
       default:
         return <div>404</div>;
     }

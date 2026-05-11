@@ -10,10 +10,33 @@ import * as MOCK from './data';
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === '1';
 
+// sessionStorage cache key per path. Persists real data across reloads so the
+// UI hydrates with the LAST seen real response — no mock-fallback flash.
+const CACHE_PREFIX = 'ct:fetch:';
+
+function _readCache(path) {
+  if (typeof sessionStorage === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(CACHE_PREFIX + path);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+function _writeCache(path, value) {
+  if (typeof sessionStorage === 'undefined') return;
+  try { sessionStorage.setItem(CACHE_PREFIX + path, JSON.stringify(value)); } catch { /* quota or private mode */ }
+}
+
 function useFetch(path, fallback) {
-  const [data, setData] = useState(fallback);
+  // Initial value priority:
+  //  1. sessionStorage cached real response (no flash on reload)
+  //  2. fallback (mock data — keeps the UI shape so components don't crash on null)
+  // Components that care about "is this real data?" can read `loading`.
+  const cached = _readCache(path);
+  const [data, setData] = useState(cached !== null ? cached : fallback);
   const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(!USE_MOCKS);
+  const [loading, setLoading] = useState(!USE_MOCKS && cached === null);
 
   useEffect(() => {
     if (USE_MOCKS) {
@@ -22,7 +45,7 @@ function useFetch(path, fallback) {
       return;
     }
     let cancelled = false;
-    setLoading(true);
+    if (_readCache(path) === null) setLoading(true);
     fetch(path, { headers: { Accept: 'application/json' } })
       .then(r => {
         if (!r.ok) throw new Error(`${r.status} ${path}`);
@@ -33,14 +56,14 @@ function useFetch(path, fallback) {
           setData(j);
           setError(null);
           setLoading(false);
+          _writeCache(path, j);
         }
       })
       .catch(e => {
         if (!cancelled) {
-          // Fall back to mock so the UI is never empty.
-           
-          console.warn('[api] falling back to mock for', path, e?.message);
-          setData(fallback);
+          // eslint-disable-next-line no-console
+          console.warn('[api] fetch failed for', path, e?.message);
+          // Keep whatever we already had (cache or initial fallback).
           setError(e);
           setLoading(false);
         }
@@ -97,9 +120,41 @@ export function useRecentDiffs() {
   return useFetch('/api/diffs/list', MOCK.RECENT_DIFFS);
 }
 
-// Sidebar identity. Falls back to mock USER until /api/user is wired up.
+// Sidebar identity. Backend returns only what it can discover (claudeVersion);
+// the rest (name, email, initials) comes from MOCK.USER as defaults.
 export function useUser() {
-  return useFetch('/api/user', MOCK.USER);
+  const r = useFetch('/api/user', MOCK.USER);
+  const merged = { ...MOCK.USER, ...(r.data || {}) };
+  return { ...r, data: merged };
+}
+
+// Discovery of candidate repos (folders with .claude/ that aren't tracked yet).
+export function useRepoCandidates() {
+  return useFetch('/api/repos/candidates/list', []);
+}
+
+// POST a new repo path to the runtime registry. Throws on error.
+export async function addRepo(hostPath) {
+  const res = await fetch('/api/repos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path: hostPath }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(detail.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// DELETE a repo from the runtime registry (env entries can't be removed).
+export async function removeRepo(repoId) {
+  const res = await fetch(`/api/repos/${encodeURIComponent(repoId)}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(detail.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 /**

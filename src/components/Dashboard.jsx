@@ -3,8 +3,11 @@ import Icon from '../icons';
 import { Metric, Status, InlineSpark, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
+import { lazy, Suspense } from 'react';
+const AddRepoModal = lazy(() => import('./AddRepoModal'));
 
-const Dashboard = ({ repos, sessions, liveEvents, onOpen }) => {
+const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute }) => {
+  const [addRepoOpen, setAddRepoOpen] = useState(false);
   const totals = repos.reduce((a, r) => ({
     sessions: a.sessions + r.stats.sessionsToday,
     tokens: a.tokens + r.stats.tokensWeek,
@@ -26,8 +29,19 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen }) => {
         title="Workspace"
         sub="Live snapshot of every repo Claude Code is working in. Last refreshed just now."
         actions={<>
-          <button className="btn btn-ghost"><Icon name="plug" size={12} />Add repo</button>
-          <button className="btn primary"><Icon name="terminal" size={12} />Open live feed</button>
+          <button
+            className="btn btn-ghost"
+            title="Discover and add a repo with a .claude/ folder"
+            onClick={() => setAddRepoOpen(true)}
+          >
+            <Icon name="plug" size={12} />Add repo
+          </button>
+          <button
+            className="btn primary"
+            onClick={() => setRoute({ page: 'live' })}
+          >
+            <Icon name="terminal" size={12} />Open live feed
+          </button>
         </>}
       />
 
@@ -112,6 +126,18 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen }) => {
           </div>
         </div>
       </div>
+    {addRepoOpen && (
+        <Suspense fallback={null}>
+          <AddRepoModal
+            onClose={() => setAddRepoOpen(false)}
+            onAdded={() => {
+              // Close + refresh — the next useRepos poll picks up the addition
+              setAddRepoOpen(false);
+              window.location.reload();
+            }}
+          />
+        </Suspense>
+      )}
     </>
   );
 };

@@ -101,6 +101,13 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
             </button>
           )}
         </div>
+        {!collapsed && user.claudeVersion && (
+          <div className="sb-cli" title={`Claude Code v${user.claudeVersion}`}>
+            <span className="sb-cli-prompt">$</span>
+            <span className="sb-cli-cmd">claude-code</span>
+            <span className="sb-cli-ver">v{user.claudeVersion}</span>
+          </div>
+        )}
       </div>
     </aside>
   );

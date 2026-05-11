@@ -375,6 +375,7 @@ export const USER = {
   name: 'Yurii Oksamytnyi',
   email: 'yurii.oksamytnyi@gmail.com',
   initials: 'YO',
+  claudeVersion: null,  // backend fills with real version from JSONL transcripts
 };
 
 
