@@ -72,7 +72,9 @@ def _ts(obj: dict) -> datetime | None:
 def _repo_from_cwd(cwd: str | None, repo_paths: list[Path]) -> str:
     if not cwd:
         return "unknown"
-    cwd_p = Path(cwd)
+    # Translate host paths → container paths so docker users get matches.
+    from app.config import get_settings
+    cwd_p = get_settings().translate_host_path(cwd)
     for rp in repo_paths:
         try:
             cwd_p.relative_to(rp)
@@ -80,7 +82,7 @@ def _repo_from_cwd(cwd: str | None, repo_paths: list[Path]) -> str:
         except ValueError:
             continue
     # Fall back to the leaf folder name.
-    return cwd_p.name
+    return Path(cwd).name
 
 
 def _content_text(content) -> str:  # noqa: ANN001

@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
         plugins,
         repos,
         sessions,
+        user,
     )
     app.include_router(health.router, prefix="/api")
     app.include_router(repos.router, prefix="/api")
@@ -70,6 +71,7 @@ def create_app() -> FastAPI:
     app.include_router(diffs.router, prefix="/api")
     app.include_router(integrations.router, prefix="/api")
     app.include_router(live_agents.router, prefix="/api")
+    app.include_router(user.router, prefix="/api")
     app.include_router(live.router)  # live.py declares full paths (/api + /ws)
 
     return app

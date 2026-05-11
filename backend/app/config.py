@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     port: int = 8765
     frontend_origin: str = "http://localhost:5173"
     log_level: str = "INFO"
+    # Host's home directory. Used to translate JSONL host paths
+    # (e.g. /Users/yurii_jupus/...) → container paths (/host/home/...)
+    # so repo matching works across the docker boundary. Bare-metal: empty.
+    host_home: str = ""
 
     @field_validator("claude_dir", "db_path", mode="before")
     @classmethod
@@ -35,6 +39,19 @@ class Settings(BaseSettings):
     @property
     def repo_paths(self) -> list[Path]:
         return [Path(p.strip()).expanduser() for p in self.repo_roots.split(",") if p.strip()]
+
+    def translate_host_path(self, host_path: str | Path) -> Path:
+        """Translate a host filesystem path → equivalent container path.
+
+        Example with HOST_HOME=/Users/yurii_jupus and the host mount at /host/home:
+            /Users/yurii_jupus/Documents/foo → /host/home/Documents/foo
+
+        Bare-metal (no HOST_HOME): returns the path unchanged.
+        """
+        p = str(host_path)
+        if self.host_home and p.startswith(self.host_home):
+            return Path("/host/home" + p[len(self.host_home):])
+        return Path(p)
 
     @property
     def projects_dir(self) -> Path:

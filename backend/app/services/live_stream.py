@@ -160,13 +160,28 @@ def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
     t = obj.get("type", "")
     cwd = obj.get("cwd")
     repo = "unknown"
-    for rp in repo_paths:
-        try:
-            if cwd and Path(cwd).is_relative_to(rp):
-                repo = rp.name
-                break
-        except (TypeError, ValueError):
-            continue
+    if cwd:
+        from app.config import get_settings
+        settings = get_settings()
+        # JSONL events record HOST paths; REPO_ROOTS is CONTAINER paths.
+        # Translate before matching so docker users don't see "unknown".
+        cwd_translated = settings.translate_host_path(cwd)
+        for rp in repo_paths:
+            try:
+                if cwd_translated.is_relative_to(rp):
+                    repo = rp.name
+                    break
+            except (TypeError, ValueError):
+                continue
+        # Fallback: if no tracked repo matched, surface the leaf folder name
+        # instead of "unknown" so the UI is still readable.
+        if repo == "unknown":
+            try:
+                leaf = Path(cwd).name
+                if leaf:
+                    repo = leaf
+            except Exception:
+                pass
     raw_ts = obj.get("timestamp")
     ts = None
     if raw_ts:

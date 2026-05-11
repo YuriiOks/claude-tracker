@@ -106,9 +106,9 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
 
 
 def scan_all_repos() -> list[Repo]:
-    settings = get_settings()
+    from app.services.repo_registry import all_repo_paths
     out: list[Repo] = []
-    for i, repo_path in enumerate(settings.repo_paths):
+    for i, repo_path in enumerate(all_repo_paths()):
         repo = _scan_one(repo_path, ACCENTS[i % len(ACCENTS)])
         if repo is not None:
             out.append(repo)
@@ -117,8 +117,8 @@ def scan_all_repos() -> list[Repo]:
 
 def get_repo_by_id(repo_id: str) -> Repo | None:
     """Targeted scan: only scan the repo whose directory name matches repo_id."""
-    settings = get_settings()
-    for i, repo_path in enumerate(settings.repo_paths):
+    from app.services.repo_registry import all_repo_paths
+    for i, repo_path in enumerate(all_repo_paths()):
         if repo_path.name == repo_id:
             return _scan_one(repo_path, ACCENTS[i % len(ACCENTS)])
     return None

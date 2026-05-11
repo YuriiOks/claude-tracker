@@ -28,6 +28,10 @@ services:
       PORT: "8765"
       FRONTEND_ORIGIN: http://localhost:47820
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Host path translation — events record host paths (e.g. /Users/...)
+      # but REPO_ROOTS is container paths (e.g. /host/home/...). Backend
+      # translates by replacing HOST_HOME prefix with /host/home.
+      HOST_HOME: ${REPO_PARENT_HOST:-${HOME}}
     ports:
       - "127.0.0.1:47821:8765"
     volumes:
