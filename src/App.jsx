@@ -173,7 +173,7 @@ function App() {
       case 'repos':
         return <ReposView repos={repos} onOpen={openRepo} layout={tweaks.reposLayout} />;
       case 'live':
-        return <LivePage liveEvents={liveEvents} repos={repos} />;
+        return <LivePage liveEvents={liveEvents} repos={repos} onOpen={openRepo} />;
       case 'sessions':
         return <SessionsPage sessions={sessions} repos={repos} />;
       case 'agents':

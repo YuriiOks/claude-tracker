@@ -118,7 +118,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute }) => {
       </div>
 
       <div className="mb-4">
-        <LiveAgents repos={repos} />
+        <LiveAgents repos={repos} onOpen={onOpen} />
       </div>
 
       <div className="split mb-4">

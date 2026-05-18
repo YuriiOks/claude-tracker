@@ -40,6 +40,69 @@ const HtmlArtifacts = ({ repo }) => {
   );
 };
 
+const ClaudeTree = ({ repo, onOpen }) => {
+  // Each folder starts collapsed; clicking the row toggles. Single-shot file
+  // viewer for settings*.json (the only leaves that aren't agents/skills/commands/rules).
+  const [open, setOpen] = useState({ agents: false, skills: false, commands: false, rules: false });
+  const [viewFile, setViewFile] = useState(null);
+  const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
+  const folder = (k, label, items, kind, accent) => (
+    <>
+      <div className="ct-row ct-folder" onClick={() => toggle(k)}>
+        <span className={'ct-chev' + (open[k] ? ' ct-chev-open' : '')}><Icon name="chevronRight" size={9} /></span>
+        <span className="ct-emoji">📁</span>
+        <span>{label}/</span>
+        <span className="tm ct-count">({items.length})</span>
+      </div>
+      {open[k] && items.map(name => {
+        const cleaned = kind === 'command' ? name.replace(/^\//, '') : name;
+        const suffix = kind === 'skill' ? '/SKILL.md' : '.md';
+        const display = kind === 'command' ? '/' + cleaned + '.md' : cleaned + suffix;
+        return (
+          <div key={name} className="ct-row ct-leaf" onClick={() => onOpen && onOpen(cleaned, kind)}>
+            <span className={'ct-arrow ' + accent}>→</span>
+            <span>{display}</span>
+          </div>
+        );
+      })}
+      {open[k] && items.length === 0 && (
+        <div className="ct-row ct-empty"><span className="ct-arrow">·</span><span>empty</span></div>
+      )}
+    </>
+  );
+  return (
+    <>
+      <div className="cd ct-card">
+        <div className="mono ct-tree">
+          <div className="ct-row ct-root"><span className="ct-emoji tc">📁</span> .claude/</div>
+          <div className={'ct-row ct-file' + (viewFile === 'settings.json' ? ' ct-file-active' : '')} onClick={() => setViewFile(viewFile === 'settings.json' ? null : 'settings.json')}>
+            <span className="ct-emoji to">📄</span> settings.json
+          </div>
+          <div className={'ct-row ct-file' + (viewFile === 'settings.local.json' ? ' ct-file-active' : '')} onClick={() => setViewFile(viewFile === 'settings.local.json' ? null : 'settings.local.json')}>
+            <span className="ct-emoji to">📄</span> settings.local.json
+          </div>
+          {folder('agents', 'agents', repo.agents || [], 'agent', 'tg')}
+          {folder('skills', 'skills', repo.skills || [], 'skill', 'tp')}
+          {folder('commands', 'commands', repo.commands || [], 'command', 'to')}
+          {folder('rules', 'rules', repo.rules || [], 'rule', 'tt')}
+        </div>
+      </div>
+      {viewFile && (
+        <div className="mt-3">
+          <MarkdownPanel
+            key={viewFile}
+            repoId={repo.id}
+            relPath={'.claude/' + viewFile}
+            filePath={'.claude/' + viewFile}
+            defaultMode="code"
+            emptyMessage={'File not found: .claude/' + viewFile}
+          />
+        </div>
+      )}
+    </>
+  );
+};
+
 const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
   <div className="split">
     <div>
@@ -65,29 +128,7 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
 
     <div>
       <h2 className="section-title mb-3"><Icon name="layers" />.claude/ structure</h2>
-      <div className="cd" style={{ padding: '.85rem 1rem' }}>
-        <div className="mono" style={{ fontSize: '.7rem', lineHeight: 1.85, color: 'var(--txt)' }}>
-          <div><span className="tc">📁</span> .claude/</div>
-          <div style={{ paddingLeft: '1rem' }}><span className="to">📄</span> settings.json</div>
-          <div style={{ paddingLeft: '1rem' }}><span className="to">📄</span> settings.local.json</div>
-          <div style={{ paddingLeft: '1rem' }}>📁 agents/ <span className="tm">({repo.agents.length})</span></div>
-          {repo.agents.slice(0, 4).map(a => (
-            <div key={a} style={{ paddingLeft: '2rem', cursor: 'pointer' }} onClick={() => onOpen && onOpen(a, 'agent')}>
-              <span className="tg">→</span> {a}.md
-            </div>
-          ))}
-          {repo.agents.length > 4 && <div style={{ paddingLeft: '2rem', color: 'var(--muted)' }}>… +{repo.agents.length - 4} more</div>}
-          <div style={{ paddingLeft: '1rem' }}>📁 skills/ <span className="tm">({repo.skills.length})</span></div>
-          {repo.skills.slice(0, 3).map(s => (
-            <div key={s} style={{ paddingLeft: '2rem' }}><span className="tp">→</span> {s}/SKILL.md</div>
-          ))}
-          <div style={{ paddingLeft: '1rem' }}>📁 commands/ <span className="tm">({repo.commands.length})</span></div>
-          {repo.commands.slice(0, 3).map(c => (
-            <div key={c} style={{ paddingLeft: '2rem' }}><span className="to">→</span> {c.replace('/', '')}.md</div>
-          ))}
-          {(repo.rules || []).length > 0 && <div style={{ paddingLeft: '1rem' }}>📁 rules/ <span className="tm">({repo.rules.length})</span></div>}
-        </div>
-      </div>
+      <ClaudeTree repo={repo} onOpen={onOpen} />
 
       <h2 className="section-title mt-4 mb-3"><Icon name="plug" />Plugins enabled</h2>
       <div className="tag-row">

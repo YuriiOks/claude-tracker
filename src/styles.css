@@ -2398,6 +2398,19 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   pointer-events: none;
 }
 .la-row.is-stale { opacity: .55; }
+.la-row.la-clickable {
+  cursor: pointer;
+  transition: border-color .12s, background .12s, transform .08s;
+}
+.la-row.la-clickable:hover {
+  border-color: var(--cyan);
+  background: color-mix(in srgb, var(--cyan) 5%, transparent);
+}
+.la-row.la-clickable:active { transform: translateY(1px); }
+.la-row.la-clickable:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+}
 
 .la-dot {
   width: 8px; height: 8px; border-radius: 50%;
@@ -3243,4 +3256,50 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .md-toggle-btn.md-open-tab:hover{
   color:var(--cyan);
   border-color:color-mix(in srgb, var(--cyan) 35%, var(--brd2));
+}
+
+/* ============== CLAUDE TREE (.claude/ structure widget) ============== */
+.ct-card{ padding:.85rem 1rem; }
+.ct-tree{ font-size:.7rem; line-height:1.85; color:var(--txt); }
+.ct-row{
+  display:flex; align-items:center; gap:.25rem;
+  padding:.05rem .4rem;
+  border-radius:4px;
+  transition:background .12s;
+}
+.ct-root{ font-weight:500; }
+.ct-file,
+.ct-folder,
+.ct-leaf{
+  cursor:pointer;
+  user-select:none;
+}
+.ct-file{ padding-left:1rem; }
+.ct-folder{ padding-left:.4rem; }
+.ct-leaf{ padding-left:2rem; }
+.ct-empty{ padding-left:2rem; color:var(--muted); font-style:italic; }
+.ct-file:hover,
+.ct-folder:hover,
+.ct-leaf:hover{
+  background:color-mix(in srgb, var(--cyan) 7%, transparent);
+  color:var(--txt-bright);
+}
+.ct-file-active{
+  background:color-mix(in srgb, var(--cyan) 12%, transparent);
+  color:var(--txt-bright);
+}
+.ct-chev{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:.9rem; height:.9rem;
+  color:var(--muted);
+  transition:transform .15s;
+}
+.ct-chev-open{ transform:rotate(90deg); }
+.ct-emoji{ flex-shrink:0; }
+.ct-count{ font-size:.62rem; opacity:.7; }
+.ct-arrow{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:.9rem;
+  font-weight:600;
+  flex-shrink:0;
 }

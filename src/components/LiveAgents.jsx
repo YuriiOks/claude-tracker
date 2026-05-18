@@ -23,7 +23,7 @@ function fmtElapsed(s) {
   return `${h}h ${m % 60}m`;
 }
 
-export default function LiveAgents({ repos = [] }) {
+export default function LiveAgents({ repos = [], onOpen }) {
   const agents = useActiveAgents();
 
   const repoMap = Object.fromEntries(repos.map(r => [r.id || r.name, r]));
@@ -49,16 +49,25 @@ export default function LiveAgents({ repos = [] }) {
             const color = dotColor(a.repo, repoMeta?.accent);
             const dotClass = since <= 2 ? 'live-fast' : since <= 10 ? 'live-slow' : '';
 
+            const tracked = repoMeta;
+            const displayName = tracked?.name || a.repo;
+            const clickable = !!(tracked && onOpen);
             return (
               <div
                 key={a.sessionId}
-                className={`la-row ${isFresh ? 'is-fresh' : ''} ${isStale ? 'is-stale' : ''}`}
-                title={`session ${a.sessionId} · started ${fmtElapsed(a.elapsedSec)} ago`}
+                className={`la-row ${isFresh ? 'is-fresh' : ''} ${isStale ? 'is-stale' : ''} ${clickable ? 'la-clickable' : ''}`}
+                title={clickable
+                  ? `session ${a.sessionId} · started ${fmtElapsed(a.elapsedSec)} ago · click to open ${displayName}`
+                  : `session ${a.sessionId} · started ${fmtElapsed(a.elapsedSec)} ago · repo not tracked`}
+                onClick={clickable ? () => onOpen(tracked.id) : undefined}
+                role={clickable ? 'button' : undefined}
+                tabIndex={clickable ? 0 : undefined}
+                onKeyDown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(tracked.id); } } : undefined}
               >
                 <span className="la-dot-wrap" style={{ color }}>
                   <span className={`la-dot ${dotClass}`}></span>
                 </span>
-                <span className="la-repo">{a.repo}</span>
+                <span className="la-repo">{displayName}</span>
                 <span className="la-agent">
                   <Icon name="bot" size={11} />&nbsp;{a.agent || 'main'}
                 </span>

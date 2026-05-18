@@ -53,7 +53,7 @@ export const SessionsPage = ({ sessions, repos }) => {
   );
 };
 
-export const LivePage = ({ liveEvents, repos }) => {
+export const LivePage = ({ liveEvents, repos, onOpen }) => {
   // F9: compute live metrics from the actual event stream instead of fake constants.
   // Events carry `t` as a delta in seconds from now (negative = past).
   const last60 = liveEvents.filter(e => e.t >= -60);
@@ -70,7 +70,7 @@ export const LivePage = ({ liveEvents, repos }) => {
     </div>
 
     <div className="mb-4">
-      <LiveAgents repos={repos} />
+      <LiveAgents repos={repos} onOpen={onOpen} />
     </div>
 
     <div className="card-frame">

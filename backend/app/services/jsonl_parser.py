@@ -81,7 +81,21 @@ def _repo_from_cwd(cwd: str | None, repo_paths: list[Path]) -> str:
             return rp.name
         except ValueError:
             continue
-    # Fall back to the leaf folder name.
+    # cwd is not in a registered repo. Walk up to find the nearest .git
+    # ancestor and use its folder name — this is the project name, not the
+    # leaf folder where claude happened to be invoked (e.g. "frontend"
+    # inside a project called "my-app" → returns "my-app").
+    try:
+        cur = cwd_p if cwd_p.is_dir() else cwd_p.parent
+        for _ in range(20):
+            if (cur / ".git").is_dir():
+                return cur.name
+            if cur == cur.parent:
+                break
+            cur = cur.parent
+    except OSError:
+        pass
+    # Last resort: leaf folder name.
     return Path(cwd).name
 
 
