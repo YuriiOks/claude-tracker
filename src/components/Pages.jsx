@@ -173,15 +173,20 @@ export const PluginsPanel = ({ repo }) => {
         </div>
         <div className="grid grid-cols-2" style={{ padding: '.85rem' }}>
           {(repo?.plugins || []).map(p => {
-            const info = pluginInfo[p] || { desc: 'Plugin', accent: 'c' };
+            // Plugin names from the backend look like "name@marketplace"
+            // (e.g. "Notion@claude-plugins-official"). Split for display so
+            // the title stays clean and the meta line shows the source —
+            // without this the hardcoded suffix below would duplicate it.
+            const [name, source = 'local'] = String(p).split('@');
+            const info = pluginInfo[name] || pluginInfo[p] || { desc: 'Installed plugin', accent: 'c' };
             return (
               <div key={p} className="cd">
                 <div className="row between mb-2">
-                  <div className="row gap-sm"><Icon name="pkg" size={14} /><h3 className="tb">{p}</h3></div>
+                  <div className="row gap-sm"><Icon name="pkg" size={14} /><h3 className="tb">{name}</h3></div>
                   <span className={'bg bg-' + info.accent}>plugin</span>
                 </div>
                 <p style={{ fontSize: '.72rem', color: 'var(--txt)' }}>{info.desc}</p>
-                <div className="mono mt-2" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{p}@claude-plugins-official</div>
+                <div className="mono mt-2" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{source}</div>
               </div>
             );
           })}

@@ -2649,24 +2649,20 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   font-feature-settings:"ss01","cv11","cv13";  /* Inter stylistic sets — tighter alternates */
   letter-spacing:-0.005em;
 }
-.md-panel-html .md-h{
-  /* Headings use a serif display stack — editorial, distinctive, "interesting".
-     ui-serif resolves to New York on macOS / Cambria on Windows. */
-  font-family:ui-serif, "New York", "Iowan Old Style", "Apple Garamond",
-    Georgia, "Times New Roman", serif;
-  font-weight:700;
-  letter-spacing:-0.015em;
-}
 /* Body paragraph + list copy stays sans (Inter) — easy to read at small sizes */
 .md-panel-html p, .md-panel-html li, .md-panel-html td, .md-panel-html th{
   font-family:inherit;
 }
 /* ============== HEADINGS (A2) ============== */
+/* Serif display stack — editorial, distinctive. ui-serif resolves to
+   New York on macOS / Cambria on Windows; Georgia is a safe last resort. */
 .md-panel-html .md-h{
   color:var(--txt-bright);
-  font-family:var(--font-ui);
+  font-family:ui-serif, "New York", "Iowan Old Style", "Apple Garamond",
+    Georgia, "Times New Roman", serif;
   font-weight:700;
   line-height:1.25;
+  letter-spacing:-0.015em;
   position:relative;
   scroll-margin-top:.5rem;
 }
@@ -2795,7 +2791,10 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 /* ============== LISTS (A4 — grid layout for clean wrap alignment) ============== */
 .md-panel-html ul, .md-panel-html ol{
   list-style:none;
-  padding-left:0;
+  /* Modest left indent so top-level lists read as lists, not flush-left
+     prose. Nested lists override this to 0 (see `li > ul/ol` below) so
+     they only carry the grid offset from their parent's content column. */
+  padding-left:.6em;
   margin:.7em 0;
   counter-reset:md-li;
 }
@@ -2836,10 +2835,12 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   justify-self:center;
   margin-top:.65em;
 }
-/* Nested lists tighten up */
+/* Nested lists: reset the top-level indent (the parent's column-2 already
+   provides offset via the grid) and slot into the content column. */
 .md-panel-html li > ul,
 .md-panel-html li > ol{
   grid-column:2;
+  padding-left:0;
   margin:.25em 0 .15em;
 }
 
@@ -3144,15 +3145,12 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 }
 .md-fm-val{
   padding:0 .9rem;
-}
-.md-fm-icon{ display:none; }   /* drop the colored icon boxes; key text is the label */
-.md-fm-key-label{ }
-.md-fm-val{
   color:var(--txt-bright);
   word-break:break-word;
   line-height:1.5;
   font-size:.78rem;
 }
+.md-fm-icon{ display:none; }   /* drop the colored icon boxes; key text is the label */
 .md-fm-desc{
   color:var(--txt);
   line-height:1.55;

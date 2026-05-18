@@ -124,6 +124,36 @@ def get_repo_by_id(repo_id: str) -> Repo | None:
     return None
 
 
+def _read_claude_json_mcp(path: Path) -> set[str]:
+    """Return the set of MCP server names from a .claude.json at `path`.
+
+    Claude Code stores its long-lived mcpServers config at the top level
+    of ~/.claude.json (not in ~/.claude/settings.json). Caller passes the
+    resolved path so this works for both bare-metal (~/.claude.json) and
+    Docker (/host/home/.claude.json via the home bind mount). Missing or
+    malformed file falls back to an empty set so /api/global never 500s.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return set()
+    mcp = data.get("mcpServers", {}) or {}
+    return set(mcp.keys()) if isinstance(mcp, dict) else set()
+
+
+def _claude_json_path() -> Path:
+    """Resolve the path to .claude.json reachable from this process.
+
+    Under Docker, the host's ~/.claude.json is mounted into /host/home —
+    `settings.translate_host_path` rewrites the host path accordingly.
+    Bare-metal: returns ~/.claude.json directly.
+    """
+    settings = get_settings()
+    if settings.host_home:
+        return settings.translate_host_path(Path(settings.host_home) / ".claude.json")
+    return Path.home() / ".claude.json"
+
+
 def scan_global() -> GlobalEnvelope:
     settings = get_settings()
     claude_dir = settings.claude_dir
@@ -135,6 +165,18 @@ def scan_global() -> GlobalEnvelope:
     for p in _list_skills(claude_dir / "skills"):
         skills_names.append(p.parent.name if p.name == "SKILL.md" else p.stem)
 
+    # Plugins: sourced from ~/.claude/plugins/installed_plugins.json
+    # (managed by the /plugin CLI), not settings.json — the latter is
+    # almost always empty even when many plugins are installed.
+    plugin_names = collect_plugins_dict().get("names", [])
+
+    # MCP: union of ~/.claude.json (canonical legacy location used by
+    # Claude Code) + ~/.claude/settings.json mcpServers (newer override).
+    # Dedupe + sort so the rendered list is stable.
+    mcp_names = sorted(
+        set(s["mcpServers"].keys()) | _read_claude_json_mcp(_claude_json_path())
+    )
+
     return GlobalEnvelope(
         id="global",
         name="~/.claude (global)",
@@ -143,8 +185,8 @@ def scan_global() -> GlobalEnvelope:
         agents=list(fs.agents.keys()),
         skills=skills_names,
         commands=list(fs.commands.keys()),
-        plugins=sorted(s["plugins"].keys()),
-        mcp=sorted(s["mcpServers"].keys()),
+        plugins=plugin_names,
+        mcp=mcp_names,
         permissions=Permissions(
             allow=len(perms["allow"]),
             deny=len(perms["deny"]),

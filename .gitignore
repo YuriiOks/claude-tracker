@@ -34,3 +34,6 @@ backend/**/__pycache__
 *.njsproj
 *.sln
 *.sw?
+
+# Master plan working documents (not source)
+docs/*_MASTER_PLAN.md
