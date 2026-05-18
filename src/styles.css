@@ -2800,21 +2800,25 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 }
 .md-panel-html li > p{ margin:.2em 0; }
 
-/* Two-column grid per item: marker | content. Wrapped text always
-   stays in the content column — no fragile padding-left guesswork. */
+/* position:absolute marker + padding-left on <li>.
+   The old display:grid approach blockified every inline child (text nodes,
+   <code>, <strong>) into separate grid items — odd-numbered items landed
+   in the 1.7em marker column and wrapped one word per line.
+   padding-left:1.7em creates the gutter; wrapped lines stay inside it. */
 .md-panel-html ul > li,
 .md-panel-html ol > li{
-  display:grid;
-  grid-template-columns:1.7em 1fr;
-  gap:.55em;
-  align-items:baseline;
+  display:block;
+  position:relative;
+  padding-left:1.7em;
   margin:.35em 0;
 }
 .md-panel-html ol > li{ counter-increment:md-li; }
 
 .md-panel-html ol > li::before{
   content:counter(md-li);
-  width:1.55em; height:1.55em;
+  position:absolute;
+  left:.05em; top:.1em;
+  width:1.45em; height:1.45em;
   display:inline-flex; align-items:center; justify-content:center;
   border-radius:50%;
   background:color-mix(in srgb, var(--cyan) 14%, transparent);
@@ -2822,24 +2826,19 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   font-family:var(--font);
   font-size:.72em; font-weight:700;
   border:1px solid color-mix(in srgb, var(--cyan) 35%, transparent);
-  align-self:start;
-  justify-self:start;
-  margin-top:.05em;
 }
 .md-panel-html ul > li::before{
   content:'';
+  position:absolute;
+  left:.5em; top:.62em;
   width:5px; height:5px;
   border-radius:50%;
   background:var(--gold);
-  align-self:start;
-  justify-self:center;
-  margin-top:.65em;
 }
-/* Nested lists: reset the top-level indent (the parent's column-2 already
-   provides offset via the grid) and slot into the content column. */
+/* Nested lists: no extra container indent — each nested <li>'s own
+   padding-left:1.7em already provides the stagger. */
 .md-panel-html li > ul,
 .md-panel-html li > ol{
-  grid-column:2;
   padding-left:0;
   margin:.25em 0 .15em;
 }
@@ -2927,7 +2926,7 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .md-panel-html li input[type="checkbox"]{
   appearance:none;
   width:14px; height:14px;
-  margin:0 .4em 0 -1.4em;
+  margin:0 .4em 0 0;
   border:1.5px solid var(--brd);
   border-radius:3px;
   background:var(--code-bg);
