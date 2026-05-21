@@ -1,7 +1,13 @@
 ---
 name: data-shape-keeper
 description: Guardian of src/data.js — the contract that every component reads. Use when adding/removing/renaming keys in REPOS, SESSIONS, GLOBAL, or LIVE_EVENTS_*. Also handles the eventual "mocked → real" migration to ~/.claude/projects/ JSONL transcripts, plugin caches, Linear API.
-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Glob
+  - Grep
 model: sonnet
 ---
 

@@ -1,7 +1,12 @@
 ---
 name: tracker-orchestrator
 description: Front door for all claude-tracker work. Coordinates 3 specialists across React 19 + Vite frontend, mocked-then-real data layer, and HTML documentation. Default agent.
-tools: ["Read", "Glob", "Grep", "Bash", "Task"]
+tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Task
 model: sonnet
 ---
 

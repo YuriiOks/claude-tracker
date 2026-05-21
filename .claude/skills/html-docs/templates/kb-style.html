@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    /* === INLINE the contents of _tokens.css here when generating === */
+    @import url("./_tokens.css");
+
+    /* per-doc overrides go here */
+  </style>
+</head>
+<body>
+<div class="stack">
+
+  <!-- ── HEADER ──────────────────────────────────────────── -->
+  <header class="hd">
+    <div>
+      <h1>{{TITLE_LEFT}} <em>{{TITLE_EMPH}}</em>{{TITLE_RIGHT}}.</h1>
+      <p class="lede" style="margin-top: 12px;">
+        {{LEDE — one or two sentences framing the doc. Use
+        <span class="underline-word">underline-word</span> spans for the words
+        that matter, and <code>code</code> for paths/identifiers.}}
+      </p>
+    </div>
+    <div class="badge-row">
+      <span class="pill"><span class="hdot"></span>{{Phase / version}}</span>
+      <span class="pill"><span class="hdot"></span>{{N items}}</span>
+      <span class="pill"><span class="hdot"></span>{{Status / mode}}</span>
+    </div>
+  </header>
+
+  <!-- ── SUMMARY ─────────────────────────────────────────── -->
+  <section class="summary">
+    <div class="glass">
+      <div class="lab">{{KPI 1 label}}</div>
+      <div class="num">{{value}}</div>
+      <div class="sub">{{sub}}</div>
+    </div>
+    <div class="glass">
+      <div class="lab">{{KPI 2 label}}</div>
+      <div class="num">{{value}}</div>
+      <div class="sub">{{sub}}</div>
+    </div>
+    <div class="glass">
+      <div class="lab">{{KPI 3 label}}</div>
+      <div class="num">{{value}}</div>
+      <div class="sub">{{sub}}</div>
+    </div>
+    <div class="glass">
+      <div class="lab">{{KPI 4 label}}</div>
+      <div class="num">{{value}}</div>
+      <div class="sub">{{sub}}</div>
+    </div>
+  </section>
+
+  <p class="meta-strip">
+    {{Approach summary · key decisions · constraints, one line. Use <code>code</code> for paths.}}
+  </p>
+
+  <!-- ── SECTION 1 (glass card with table) ───────────────── -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>{{1. Section title}} <em>· {{subtitle / range / mode}}</em></h2>
+      <span class="meta">{{n items · meta}}</span>
+    </div>
+    <p>{{Paragraph framing this section. <strong>Bold</strong> the few key claims; everything else stays in <code>--text-2</code>.}}</p>
+
+    <table class="kb">
+      <thead>
+        <tr>
+          <th>old / from</th><th></th><th>new / to</th><th>target</th><th>refinement notes</th><th class="sign">approve</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="old">{{from}}</td>
+          <td class="arrow">→</td>
+          <td class="new">{{to}}</td>
+          <td><span class="pill both"><span class="hdot"></span>DB + MD</span></td>
+          <td class="notes">{{One-line note on the change.}}</td>
+          <td class="sign"><input type="checkbox" name="r1"></td>
+        </tr>
+        <tr>
+          <td class="old">{{from}}</td>
+          <td class="arrow">→</td>
+          <td class="new">{{to}}</td>
+          <td><span class="pill md"><span class="hdot"></span>MD</span></td>
+          <td class="notes">{{Note.}}</td>
+          <td class="sign"><input type="checkbox" name="r2"></td>
+        </tr>
+        <tr>
+          <td class="old">{{from}}</td>
+          <td class="arrow">→</td>
+          <td class="new">{{to}}</td>
+          <td><span class="pill defer"><span class="hdot"></span>Defer</span></td>
+          <td class="notes">{{Note.}}</td>
+          <td class="sign"><input type="checkbox" name="r3"></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ── SECTION 2 (glass card with list + code) ─────────── -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>{{2. Another section}} <em>· {{subtitle}}</em></h2>
+      <span class="meta">{{meta}}</span>
+    </div>
+    <p>{{Framing paragraph.}}</p>
+
+    <ul>
+      <li>{{Bullet — succinct, action-oriented.}}</li>
+      <li>{{Bullet with <code>code</code>.}}</li>
+      <li>{{Bullet.}}</li>
+    </ul>
+
+<pre><code><span class="tok-c">// example code block — token classes apply</span>
+<span class="tok-k">async function</span> <span class="tok-fn">demo</span>() {
+  <span class="tok-k">return</span> <span class="tok-s">"ok"</span>;
+}</code></pre>
+  </section>
+
+  <!-- ── SECTION 3 (proposed tree) ───────────────────────── -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>{{Proposed structure}} <em>· {{subtitle}}</em></h2>
+      <span class="meta">{{meta}}</span>
+    </div>
+    <div class="tree">
+project/
+├── <b>area-1/</b>
+│   ├── thing.md            <span style="color: var(--text-3)"># note</span>
+│   ├── other.md
+│   └── ...
+│
+├── <span class="deferred">deferred-area/</span>     <span style="color: var(--coral)"># DEFERRED — schema PR follows</span>
+│   ├── <span class="deferred">item.md</span>
+│   └── <span class="deferred">item.md</span>
+│
+└── <b>area-2/</b>
+    ├── thing.md           <span style="color: var(--accent)"># important</span>
+    └── other.md
+    </div>
+  </section>
+
+  <!-- ── DECISIONS / OPEN QUESTIONS ─────────────────────── -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>Decisions &amp; open questions</h2>
+      <span class="meta">Locked &amp; flagged</span>
+    </div>
+    <h3 style="margin-top: 8px;">Locked (from prior session)</h3>
+    <ul style="margin: 8px 0 0 24px;">
+      <li>{{Decision locked at: short rationale.}}</li>
+      <li>{{Another locked decision.}}</li>
+    </ul>
+
+    <h3 style="margin-top: 18px;">Open — please flag before {{next phase}}</h3>
+    <ul style="margin: 8px 0 0 24px;">
+      <li><strong>{{Question 1 short title}}</strong> — {{one-line context + ask}}</li>
+      <li><strong>{{Question 2 short title}}</strong> — {{one-line context + ask}}</li>
+    </ul>
+  </section>
+
+  <!-- ── SIGNOFF (accent gradient CTA) ──────────────────── -->
+  <section class="signoff">
+    <h3>{{Sign-off heading}}</h3>
+    <p style="margin-top: 8px;">
+      {{Body of the CTA. Tell the user exactly what to say or do next.
+      Reference commands in <code>code</code>.}}
+    </p>
+    <p style="margin-top: 8px;">{{One-line reassurance / scope guard.}}</p>
+  </section>
+
+  <p class="meta-strip" style="text-align: center; margin-top: 12px;">
+    {{path/to/this/file.html · {{when}} · open me in a browser{{ — to tick row checkboxes if applicable}}}}
+  </p>
+
+</div>
+</body>
+</html>

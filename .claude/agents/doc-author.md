@@ -1,7 +1,14 @@
 ---
 name: doc-author
 description: HTML documentation specialist. Use PROACTIVELY when the user asks for a spec, design doc, runbook, gotchas page, comparison, design tokens panel, or any documentation that benefits from structure beyond linear prose. Generates a single self-contained HTML file using the html-docs skill templates (Thariq's HTML-over-Markdown pattern).
-tools: ["Read", "Write", "Edit", "Bash", "Grep", "Glob", "WebFetch"]
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Grep
+  - Glob
+  - WebFetch
 model: sonnet
 color: clay
 ---

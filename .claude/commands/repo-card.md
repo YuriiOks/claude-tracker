@@ -1,4 +1,5 @@
 ---
+argument-hint: <repo-name>
 description: Add a new repo to the dashboard's REPOS array in src/data.js, with sensible defaults and the full shape filled in. Saves the manual cargo-cult of copying an existing entry.
 ---
 

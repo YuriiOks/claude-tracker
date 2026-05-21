@@ -1,4 +1,5 @@
 ---
+argument-hint: <screen-name>
 description: Scaffold a new dashboard screen — create the component, wire the route, add to Sidebar, register crumbs, and remind to test both themes.
 ---
 

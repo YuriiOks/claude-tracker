@@ -83,3 +83,17 @@ Open generated docs: `open docs/<slug>.html` — they're self-contained, no serv
 - Adding a CSS framework — the existing tokens system is the source of truth.
 - Over-engineering routing — the current `useState({page, …})` switch is fine until proven otherwise.
 - Generating long markdown when HTML would communicate better (see HTML-first section above).
+
+---
+
+## How to work in this repo
+
+- **Simplicity first.** Minimum code that solves the problem. No abstractions for single-use code. No "flexibility" or "configurability" that wasn't requested. No state-management library, no routing library, no TypeScript yet (see invariant #5). If you wrote 200 lines and it could be 50, rewrite it. Self-test: *"would a senior React+Vite engineer say this is overcomplicated?"* — if yes, simplify.
+- **Scope discipline.** Only modify files, functions, and lines directly tied to the current task. No drive-by refactors, no extracting a component while fixing a style, no "I noticed and improved." Spot something worth fixing elsewhere — mention it in one closing line, don't touch it.
+- **Flag uncertainty before acting.** Not sure whether a `data.js` change ripples to Graph + Repos + Dashboard, whether a new key needs a default in light theme too, or whether a CSS token already exists with a different name? Say so before writing code.
+- **Goal-driven execution.** For any task with more than 2 steps, state success criteria first as something a `npm` command or a visible UI behavior can verify — then outline a plan with explicit checks, and loop until each one passes. Don't accept "make it work"; turn it into "make `<command>` pass" or "make the UI do `<observable thing>` in both themes". Examples:
+  - "Add a new dashboard card" → renders in dark + light → `npm run lint && npm run build` clean
+  - "Rename a `data.js` key" → grep every consumer first → update all → `npm run dev` and click through Repos / Dashboard / Graph
+  - "Refactor a component" → component still mounts → both themes still look right (eyeball + screenshot diff)
+  - "Add a route" → keep `useState({page})` switch unless >3 routes share state (invariant #6); verify back/forward works
+- **`ERRORS.md`** at the repo root logs approaches that didn't work for this repo (Tailwind rejected, TS-migration premature, light-theme color repurpose, etc.). Read before suggesting fixes for structural changes; append after any approach took more than 2 attempts. Format and rules in `.claude/rules/errors-log.md`. Gitignored.

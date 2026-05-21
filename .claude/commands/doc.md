@@ -1,4 +1,5 @@
 ---
+argument-hint: <topic>
 description: Generate a standalone HTML documentation page for a topic, using the html-docs skill templates (Thariq's HTML-over-Markdown pattern). Output goes to docs/<slug>.html.
 ---
 

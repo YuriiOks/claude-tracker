@@ -37,3 +37,7 @@ backend/**/__pycache__
 
 # Master plan working documents (not source)
 docs/*_MASTER_PLAN.md
+
+# Local failed-approach log (working doc, not shared)
+ERRORS.md
+ERRORS.md.draft

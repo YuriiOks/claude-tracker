@@ -71,6 +71,16 @@
             "command": "echo '✋ Before stopping: did you run npm run lint? did you eyeball both themes? did you grep src/components/ for any data.js keys you renamed?'"
           }
         ]
+      },
+      {
+        "id": "stop:draft-errors",
+        "description": "If this session had Bash commands that failed 2+ times with the same prefix, draft an ERRORS.md.draft for /log-error promote review.",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-draft-errors.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -82,6 +92,17 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"
+          }
+        ]
+      },
+      {
+        "id": "post:bash:track-failures",
+        "description": "Silently record non-zero Bash exits for /log-error auto-draft at session stop.",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-track-failures.sh"
           }
         ]
       }

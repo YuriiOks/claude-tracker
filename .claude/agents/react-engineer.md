@@ -1,7 +1,13 @@
 ---
 name: react-engineer
 description: React 19 + Vite 8 frontend specialist for claude-tracker. Handles new screens, component refactors, JSX patterns, lazy-loading, and the single-file App.jsx router. Delegates styling questions to itself plus consults dual-theme rule.
-tools: ["Read", "Write", "Edit", "Bash", "Glob", "Grep"]
+tools:
+  - Read
+  - Write
+  - Edit
+  - Bash
+  - Glob
+  - Grep
 model: sonnet
 ---
 
