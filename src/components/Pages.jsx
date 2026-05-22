@@ -4,6 +4,7 @@ import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
 import { usePermissions } from '../api';
+import PermissionsKanban from "./PermissionsKanban";
 import { PLUGIN_REGISTRY, MCP_REGISTRY } from '../data';
 
 export const SessionsPage = ({ sessions, repos }) => {
@@ -125,7 +126,8 @@ export const AgentsPage = ({ repos, onOpen }) => {
   );
 };
 
-export const PermissionsPanel = ({ scope = 'all repos' }) => {
+// Read-only aggregated view (cross-repo).
+export const PermissionsPanelReadOnly = ({ scope = "all repos" }) => {
   const { data: D } = usePermissions();
   const Section = ({ title, items, badge, color }) => (
     <div className="card-frame">
@@ -158,6 +160,14 @@ export const PermissionsPanel = ({ scope = 'all repos' }) => {
       </div>
     </>
   );
+};
+
+// Default PermissionsPanel — the interactive kanban editor. Tabs in
+// RepoDetail call this; RepoDetail passes the repo id as `scope` so
+// the editor lands on that repo's .claude/settings*.json.
+export const PermissionsPanel = ({ scope }) => {
+  const initial = (scope && scope !== "all repos") ? scope : "global";
+  return <PermissionsKanban defaultScope={initial} />;
 };
 
 export const PluginsPanel = ({ repo }) => {

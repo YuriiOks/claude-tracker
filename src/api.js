@@ -114,6 +114,37 @@ export function usePermissions() {
   return useFetch('/api/permissions', MOCK.PERMISSIONS_DETAIL);
 }
 
+// Scoped permissions editor — reads from one specific settings file
+// (committed settings.json OR gitignored settings.local.json) and
+// returns the file metadata too (path, exists, mtime) so the UI can
+// detect external edits when the user saves.
+export function useScopedPermissions(scope = "global", target = "settings_local") {
+  const fallback = { scope, target, filePath: "", fileExists: false, mtime: 0, permissions: { allow: [], deny: [], ask: [] } };
+  const qs = new URLSearchParams({ scope, target }).toString();
+  return useFetch(`/api/permissions/scoped?${qs}`, fallback);
+}
+
+// One-shot PUT that replaces a single settings file's permissions block.
+// Returns a promise that resolves to { filePath, mtime, backupPath }.
+// Throws an Error with .stale=true on 409 so the caller can refresh.
+export async function updateScopedPermissions({ scope, target, permissions, ifUnchangedSince }) {
+  const r = await fetch("/api/permissions/scoped", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope, target, permissions, ifUnchangedSince }),
+  });
+  if (r.status === 409) {
+    const err = new Error("settings file changed on disk");
+    err.stale = true;
+    throw err;
+  }
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(`save failed: ${r.status} ${text}`);
+  }
+  return r.json();
+}
+
 export function usePlugins() {
   return useFetch('/api/plugins', { plugins: {}, names: [] });
 }
