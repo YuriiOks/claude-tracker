@@ -1,17 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../icons';
 import { useRepos, useScopedPermissions, updateScopedPermissions } from '../api';
 
-// 3-column drag-and-drop board for the permissions block of a single
-// settings.json file. Loads BOTH settings.json and settings.local.json
-// in parallel and auto-picks the one with rules so we don't show a
-// blank board when rules live in the other file.
+// 3-column drag-and-drop board for one settings.json file's permissions.
+//
+// Auto-save mode (default ON): every mutation debounces 400ms then PUTs.
+// Diff modal is skipped — for inspecting changes, click "Show diff".
+// Failure disables auto-save and surfaces the error so the user can
+// review the on-disk state.
+//
+// Manual mode: Save button reveals a diff modal, confirm to write.
 
 const BUCKETS = [
   { key: 'allow', label: 'Allow',  hint: 'auto-approved',        accent: 'gr', icon: 'check' },
   { key: 'ask',   label: 'Ask',    hint: 'confirm before run',   accent: 'g',  icon: 'eye' },
   { key: 'deny',  label: 'Deny',   hint: 'always blocked',       accent: 'r',  icon: 'x' },
 ];
+const AUTOSAVE_DEBOUNCE_MS = 400;
 
 const emptyPerms = () => ({ allow: [], deny: [], ask: [] });
 
@@ -147,13 +152,13 @@ const Column = ({ bucket, items, onAdd, onDrop, onRuleEdit, onRuleDelete, onDrag
   );
 };
 
-const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy }) => {
+const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy, readOnly }) => {
   const isEmpty = ['allow', 'deny', 'ask'].every(k => d.added[k].length === 0 && d.removed[k].length === 0);
   return (
     <div className="pk-modal-backdrop" onClick={onCancel}>
       <div className="pk-modal" onClick={(e) => e.stopPropagation()}>
         <div className="pk-modal-head">
-          <h3>Confirm save</h3>
+          <h3>{readOnly ? 'Pending changes' : 'Confirm save'}</h3>
           <button className="pk-modal-x" onClick={onCancel} aria-label="Close">×</button>
         </div>
         <div className="pk-modal-meta">
@@ -173,10 +178,12 @@ const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy }) => {
           ))}
         </div>
         <div className="pk-modal-actions">
-          <button className="btn" onClick={onCancel}>Cancel</button>
-          <button className="btn primary" onClick={onConfirm} disabled={isEmpty || busy}>
-            {busy ? 'Saving…' : 'Confirm save'}
-          </button>
+          <button className="btn" onClick={onCancel}>{readOnly ? 'Close' : 'Cancel'}</button>
+          {!readOnly && (
+            <button className="btn primary" onClick={onConfirm} disabled={isEmpty || busy}>
+              {busy ? 'Saving…' : 'Confirm save'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -186,22 +193,15 @@ const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy }) => {
 const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const { data: repos } = useRepos();
   const [scope, setScope] = useState(defaultScope);
-  // `target` starts as null → auto-pick once both file fetches return.
-  // Once the user clicks a segment, manualPick flips and locks the target.
   const [target, setTarget] = useState(null);
   const [manualPick, setManualPick] = useState(false);
 
-  // Fetch both files in parallel — counts feed both auto-pick and the segment labels.
   const { data: localServer } = useScopedPermissions(scope, 'settings_local');
   const { data: commitServer } = useScopedPermissions(scope, 'settings');
   const activeServer = target === 'settings' ? commitServer : localServer;
 
-  // Reset auto-pick whenever the scope changes — the new repo may have rules
-  // in a different file.
   useEffect(() => { setManualPick(false); setTarget(null); }, [scope]);
 
-  // Auto-pick: whichever file has more rules wins. Tie → settings_local
-  // (the safer default for new edits).
   useEffect(() => {
     if (manualPick) return;
     if (!localServer || !commitServer) return;
@@ -212,21 +212,37 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
 
   const pickTarget = (t) => { setManualPick(true); setTarget(t); };
 
-  // Working state — what the user is editing, before save.
+  // Working state.
   const [working, setWorking] = useState(emptyPerms());
   const [original, setOriginal] = useState(emptyPerms());
   const [serverMtime, setServerMtime] = useState(0);
+  // serverMtimeRef tracks the freshest mtime for the debounced auto-save,
+  // which captures `serverMtime` in a closure at schedule time. Without
+  // the ref, a rapid second drag would PUT with a stale ifUnchangedSince
+  // and get a 409 from its own first save.
+  const serverMtimeRef = useRef(0);
+  useEffect(() => { serverMtimeRef.current = serverMtime; }, [serverMtime]);
 
   const [dragOverKey, setDragOverKey] = useState(null);
   const [draggedFrom, setDraggedFrom] = useState(null);
   const [draggedRule, setDraggedRule] = useState(null);
 
+  const [autoSave, setAutoSave] = useState(true);
+  const [autoStatus, setAutoStatus] = useState(''); // '', 'saving', 'saved', 'error'
+  const autoSaveTimerRef = useRef(null);
+  const inFlightRef = useRef(false);
+
   const [showDiff, setShowDiff] = useState(false);
+  const [diffReadOnly, setDiffReadOnly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
 
-  // Sync the active server response into working state.
+  // Sync server -> working. This is the ONLY way `working` should equal
+  // a server snapshot — every user mutation flows through mutate() and
+  // is therefore detectable as `dirty`. The sync sets original==working
+  // so dirty is false right after sync, which keeps auto-save quiet
+  // until the user actually does something.
   useEffect(() => {
     if (!activeServer || !activeServer.permissions) return;
     const snap = {
@@ -238,11 +254,62 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
     setWorking({ allow: [...snap.allow], deny: [...snap.deny], ask: [...snap.ask] });
     setServerMtime(activeServer.mtime || 0);
     setError('');
+    setAutoStatus('');
   }, [activeServer?.scope, activeServer?.target, activeServer?.mtime, activeServer?.fileExists]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(() => !permsEqual(working, original), [working, original]);
   const d = useMemo(() => diff(original, working), [original, working]);
 
+  // The actual save call. Shared between manual and auto paths.
+  const performSave = async () => {
+    if (!target) return;
+    inFlightRef.current = true;
+    try {
+      const result = await updateScopedPermissions({
+        scope, target,
+        permissions: working,
+        ifUnchangedSince: serverMtimeRef.current || null,
+      });
+      setOriginal({ allow: [...working.allow], deny: [...working.deny], ask: [...working.ask] });
+      setServerMtime(result.mtime);
+      return { ok: true, result };
+    } catch (e) {
+      return { ok: false, err: e };
+    } finally {
+      inFlightRef.current = false;
+    }
+  };
+
+  // Auto-save: debounced effect that fires whenever working changes
+  // AND working != original. The sync-from-server effect above sets
+  // working = original, so it doesn't trigger this.
+  useEffect(() => {
+    if (!autoSave) return;
+    if (!target) return;
+    if (!dirty) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    setAutoStatus('saving');
+    autoSaveTimerRef.current = setTimeout(async () => {
+      const { ok, err } = await performSave();
+      if (ok) {
+        setAutoStatus('saved');
+        setTimeout(() => setAutoStatus(''), 1500);
+      } else {
+        setAutoStatus('error');
+        if (err?.stale) {
+          setError('File changed on disk. Refresh to merge external edits.');
+        } else {
+          setError(err?.message || String(err));
+        }
+        setAutoSave(false); // safety: stop auto-save until user re-enables
+      }
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [working, dirty, autoSave, target]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); }, []);
+
+  // Mutations.
   const mutate = (fn) => setWorking((cur) => {
     const next = { allow: [...cur.allow], deny: [...cur.deny], ask: [...cur.ask] };
     fn(next);
@@ -275,35 +342,26 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
     setDraggedFrom(null);
   };
 
-  const handleSave = async () => {
-    if (!target) return;
+  const handleManualSave = async () => {
     setSaving(true);
     setError('');
-    try {
-      const result = await updateScopedPermissions({
-        scope, target,
-        permissions: working,
-        ifUnchangedSince: serverMtime || null,
-      });
-      setOriginal({ allow: [...working.allow], deny: [...working.deny], ask: [...working.ask] });
-      setServerMtime(result.mtime);
+    const { ok, err, result } = await performSave();
+    setSaving(false);
+    if (ok) {
       setShowDiff(false);
       setToast(result.backupPath ? `Saved. Backup: ${result.backupPath.split('/').pop()}` : 'Saved.');
       setTimeout(() => setToast(''), 3000);
-    } catch (e) {
-      if (e.stale) {
-        setError('File changed on disk. Discard local changes and reload to continue.');
-      } else {
-        setError(e.message || String(e));
-      }
-    } finally {
-      setSaving(false);
+    } else if (err?.stale) {
+      setError('File changed on disk. Refresh to merge external edits.');
+    } else {
+      setError(err?.message || String(err));
     }
   };
 
   const handleReset = () => {
     setWorking({ allow: [...original.allow], deny: [...original.deny], ask: [...original.ask] });
     setError('');
+    setAutoStatus('');
   };
 
   const repoOptions = useMemo(() => {
@@ -345,13 +403,42 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
             </button>
           </div>
         </div>
+
+        {/* Auto-save toggle */}
+        <label className="pk-autosave" title="When ON, every drag/edit auto-saves to disk after a brief debounce.">
+          <input type="checkbox" checked={autoSave} onChange={(e) => setAutoSave(e.target.checked)} />
+          <span>Auto-save</span>
+          {autoSave && autoStatus === 'saving' && <span className="pk-status pk-status-saving">saving…</span>}
+          {autoSave && autoStatus === 'saved'  && <span className="pk-status pk-status-saved">saved ✓</span>}
+          {autoStatus === 'error'              && <span className="pk-status pk-status-err">error</span>}
+        </label>
+
         <div className="pk-toolbar-spacer" />
-        <button className="btn" onClick={handleReset} disabled={!dirty || saving}>
-          <Icon name="x" size={11} /> Reset
-        </button>
-        <button className="btn primary" onClick={() => setShowDiff(true)} disabled={!dirty || saving || !target}>
-          <Icon name="check" size={11} /> Save{totalChanges > 0 ? ` (${totalChanges})` : ''}
-        </button>
+
+        {autoSave ? (
+          // In auto-save mode, the modal becomes a read-only diff viewer
+          <button
+            className="btn"
+            onClick={() => { setDiffReadOnly(true); setShowDiff(true); }}
+            disabled={totalChanges === 0}
+            title="View the diff against the last saved state"
+          >
+            <Icon name="eye" size={11} /> Diff{totalChanges > 0 ? ` (${totalChanges})` : ''}
+          </button>
+        ) : (
+          <>
+            <button className="btn" onClick={handleReset} disabled={!dirty || saving}>
+              <Icon name="x" size={11} /> Reset
+            </button>
+            <button
+              className="btn primary"
+              onClick={() => { setDiffReadOnly(false); setShowDiff(true); }}
+              disabled={!dirty || saving || !target}
+            >
+              <Icon name="check" size={11} /> Save{totalChanges > 0 ? ` (${totalChanges})` : ''}
+            </button>
+          </>
+        )}
       </div>
 
       <div className="pk-meta mono">
@@ -391,8 +478,9 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
           scope={scope}
           target={target}
           busy={saving}
+          readOnly={diffReadOnly}
           onCancel={() => setShowDiff(false)}
-          onConfirm={handleSave}
+          onConfirm={handleManualSave}
         />
       )}
     </div>

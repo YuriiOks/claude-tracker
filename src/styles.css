@@ -3440,3 +3440,21 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 @media (max-width: 880px) {
   .pk-board { grid-template-columns:1fr; }
 }
+
+/* Auto-save toggle in the kanban toolbar */
+.pk-autosave {
+  display:inline-flex; align-items:center; gap:.35rem;
+  font-family:var(--font); font-size:.65rem; color:var(--txt);
+  user-select:none; cursor:pointer;
+  padding:.25rem .45rem; border:1px solid var(--brd2); border-radius:5px;
+  background:var(--bg2);
+}
+.pk-autosave input { margin:0; cursor:pointer; accent-color:var(--cyan); }
+.pk-status {
+  font-size:.6rem; padding:.05rem .35rem; border-radius:3px;
+  font-family:var(--font); letter-spacing:.02em;
+  transition:opacity .2s;
+}
+.pk-status-saving { color:var(--gold); background:color-mix(in srgb, var(--gold) 14%, transparent); }
+.pk-status-saved  { color:var(--add);  background:var(--add-bg); }
+.pk-status-err    { color:var(--del);  background:var(--del-bg); }

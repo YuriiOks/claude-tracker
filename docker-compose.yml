@@ -35,10 +35,12 @@ services:
     ports:
       - "127.0.0.1:47821:8765"
     volumes:
-      # Read-only mount of the host's Claude data directory
-      - ${CLAUDE_DIR_HOST:-${HOME}/.claude}:/host/.claude:ro
-      # Read-only mount of the parent directory containing your tracked repos
-      - ${REPO_PARENT_HOST:-${HOME}}:/host/home:ro
+      # Host Claude data directory — writable so the permissions editor
+      # can mutate settings.json / settings.local.json. Only the
+      # backend container has this access; frontend mounts are still :ro.
+      - ${CLAUDE_DIR_HOST:-${HOME}/.claude}:/host/.claude:rw
+      # Repo parent — writable so per-repo settings.json edits land.
+      - ${REPO_PARENT_HOST:-${HOME}}:/host/home:rw
       # Persistent SQLite cache
       - tracker-cache:/app/.cache
     healthcheck:
