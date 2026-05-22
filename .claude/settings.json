@@ -4,6 +4,11 @@
   "env": {
     "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP": "4"
   },
+  "statusLine": {
+    "type": "command",
+    "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/status-line.sh"],
+    "refreshInterval": 3000
+  },
   "permissions": {
     "allow": [
       "Bash(npm run dev:*)",
