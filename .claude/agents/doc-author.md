@@ -9,6 +9,7 @@ tools:
   - Grep
   - Glob
   - WebFetch
+maxTurns: 12
 model: sonnet
 color: clay
 ---

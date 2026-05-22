@@ -7,6 +7,7 @@ tools:
   - Grep
   - Bash
   - Task
+effort: medium
 model: sonnet
 ---
 

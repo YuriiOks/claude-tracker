@@ -8,6 +8,10 @@ tools:
   - Bash
   - Glob
   - Grep
+disallowedTools:
+  - "Bash(npm run *)"
+  - "Bash(pnpm run *)"
+  - "Bash(make *)"
 model: sonnet
 ---
 

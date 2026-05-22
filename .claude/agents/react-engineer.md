@@ -8,6 +8,7 @@ tools:
   - Bash
   - Glob
   - Grep
+effort: medium
 model: sonnet
 ---
 
