@@ -14,6 +14,16 @@ logger = logging.getLogger(__name__)
 
 ACCENTS = ["#d97757", "#5a8dee", "#a78bfa", "#10b981", "#f59e0b", "#ef4444"]
 
+# Project-root files Claude Code reads at session start, plus repo
+# conventions we surface in the dashboard. Order = display order.
+ROOT_FILES = (
+    "CLAUDE.md",
+    ".mcp.json",
+    ".worktreeinclude",
+    "ERRORS.md",
+    "MASTER_PLAN.md",
+)
+
 
 def _read_settings_json(claude_dir: Path) -> dict:
     merged: dict = {
@@ -51,6 +61,17 @@ def _list_skills(skills_dir: Path) -> list[Path]:
     return out
 
 
+def _list_agent_memory(mem_dir: Path) -> list[Path]:
+    """agent-memory/<agent-name>/MEMORY.md — one entry per agent that has memory."""
+    if not mem_dir.is_dir():
+        return []
+    out: list[Path] = []
+    for child in sorted(mem_dir.iterdir()):
+        if child.is_dir() and (child / "MEMORY.md").is_file():
+            out.append(child / "MEMORY.md")
+    return out
+
+
 def _file_sizes(claude_dir: Path) -> FileSizes:
     fs = FileSizes()
     for p in list_md_files(claude_dir / "agents"):
@@ -64,7 +85,19 @@ def _file_sizes(claude_dir: Path) -> FileSizes:
         fs.rules[p.stem] = p.stat().st_size
     for p in list_files(claude_dir / "hooks", (".sh", ".py", ".js")):
         fs.hooks[p.name] = p.stat().st_size
+    for p in list_md_files(claude_dir / "output-styles"):
+        fs.output_styles[p.stem] = p.stat().st_size
+    for p in _list_agent_memory(claude_dir / "agent-memory"):
+        # Display the agent name, not the MEMORY.md leaf.
+        fs.agent_memory[p.parent.name] = p.stat().st_size
+    for p in list_md_files(claude_dir / "contexts"):
+        fs.contexts[p.stem] = p.stat().st_size
     return fs
+
+
+def _scan_root_files(repo_path: Path) -> list[str]:
+    """Return the subset of ROOT_FILES that actually exist at repo root."""
+    return [name for name in ROOT_FILES if (repo_path / name).exists()]
 
 
 def _scan_one(repo_path: Path, accent: str) -> Repo | None:
@@ -95,8 +128,13 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
         skills=skills_names,
         commands=list(fs.commands.keys()),
         rules=list(fs.rules.keys()),
+        hooks=list(fs.hooks.keys()),
+        output_styles=list(fs.output_styles.keys()),
+        agent_memory=list(fs.agent_memory.keys()),
+        contexts=list(fs.contexts.keys()),
         plugins=sorted(settings["plugins"].keys()),
         mcp=sorted(settings["mcpServers"].keys()),
+        root_files=_scan_root_files(repo_path),
         permissions=Permissions(
             allow=len(perms["allow"]),
             deny=len(perms["deny"]),
@@ -185,6 +223,10 @@ def scan_global() -> GlobalEnvelope:
         agents=list(fs.agents.keys()),
         skills=skills_names,
         commands=list(fs.commands.keys()),
+        rules=list(fs.rules.keys()),
+        hooks=list(fs.hooks.keys()),
+        output_styles=list(fs.output_styles.keys()),
+        agent_memory=list(fs.agent_memory.keys()),
         plugins=plugin_names,
         mcp=mcp_names,
         permissions=Permissions(

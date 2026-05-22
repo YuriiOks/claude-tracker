@@ -40,9 +40,9 @@ const HtmlArtifacts = ({ repo }) => {
   );
 };
 
-// Small inline tree icons that pick up color from the .ct-fico-* CSS classes.
-// Same shape as the official Claude Code docs page (code.claude.com/docs/en/claude-directory)
-// so the colors read as identity cues, not decoration.
+// Small inline tree icons. Color comes from the .ct-fico-* CSS classes.
+// Same shape as code.claude.com/docs/en/claude-directory so folder identity
+// reads at a glance.
 const TreeFolderIcon = ({ tone }) => (
   <svg
     className={'ct-fico ct-fico-' + tone}
@@ -62,9 +62,27 @@ const TreeFolderIcon = ({ tone }) => (
   </svg>
 );
 
-const TreeJsonIcon = () => (
+// Generic .md-style document icon (lined paper). Used for CLAUDE.md, ERRORS.md,
+// MASTER_PLAN.md, .worktreeinclude in the root-files panel.
+const TreeDocIcon = ({ tone }) => (
   <svg
-    className="ct-fico ct-fico-mute"
+    className={'ct-fico ct-fico-' + tone}
+    width="14"
+    height="14"
+    viewBox="0 0 14 14"
+    fill="none"
+    aria-hidden="true"
+  >
+    <rect x="2" y="1.5" width="10" height="11" rx="1.5" fill="currentColor" fillOpacity="0.15" stroke="currentColor" strokeWidth="1" />
+    <line x1="4.5" y1="5" x2="9.5" y2="5" stroke="currentColor" strokeWidth="1" />
+    <line x1="4.5" y1="7" x2="9.5" y2="7" stroke="currentColor" strokeWidth="1" />
+    <line x1="4.5" y1="9" x2="8" y2="9" stroke="currentColor" strokeWidth="1" />
+  </svg>
+);
+
+const TreeJsonIcon = ({ tone = 'mute' }) => (
+  <svg
+    className={'ct-fico ct-fico-' + tone}
     width="14"
     height="14"
     viewBox="0 0 14 14"
@@ -76,15 +94,70 @@ const TreeJsonIcon = () => (
   </svg>
 );
 
+// Mapping from a root-file name to its identity tone (matches the colors
+// shown on code.claude.com/docs/en/claude-directory).
+const ROOT_FILE_TONES = {
+  'CLAUDE.md': 'doc',
+  '.mcp.json': 'rules',
+  '.worktreeinclude': 'hooks',
+  'ERRORS.md': 'doc',
+  'MASTER_PLAN.md': 'doc',
+};
+
+const ClaudeRootFiles = ({ repo }) => {
+  const files = repo.rootFiles || [];
+  const [active, setActive] = useState(null);
+  if (files.length === 0) return null;
+  return (
+    <>
+      <div className="cd ct-card mb-3">
+        <div className="mono ct-tree">
+          {files.map(name => {
+            const tone = ROOT_FILE_TONES[name] || 'mute';
+            const isJson = name.endsWith('.json');
+            const isActive = active === name;
+            return (
+              <div
+                key={name}
+                className={'ct-row ct-file' + (isActive ? ' ct-file-active' : '')}
+                onClick={() => setActive(isActive ? null : name)}
+              >
+                {isJson ? <TreeJsonIcon tone={tone} /> : <TreeDocIcon tone={tone} />}
+                <span>{name}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {active && (
+        <div className="mb-3">
+          <MarkdownPanel
+            key={active}
+            repoId={repo.id}
+            relPath={active}
+            filePath={active}
+            defaultMode={active.endsWith('.json') ? 'code' : 'markdown'}
+            emptyMessage={'File not found: ' + active}
+          />
+        </div>
+      )}
+    </>
+  );
+};
+
 const ClaudeTree = ({ repo, onOpen }) => {
   // Each folder starts collapsed; clicking the row toggles. Single-shot file
   // viewer for settings*.json (the only leaves that aren't agents/skills/commands/rules).
-  const [open, setOpen] = useState({ agents: false, skills: false, commands: false, rules: false });
+  const [open, setOpen] = useState({
+    agents: false, skills: false, commands: false, rules: false,
+    hooks: false, outputStyles: false, agentMemory: false, contexts: false,
+  });
   const [viewFile, setViewFile] = useState(null);
   const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
-  // `tone` is the identity color key (agents/skills/commands/rules) — drives the
-  // folder icon and the leaf arrow via .ct-fico-<tone> / .ct-arrow-<tone> classes.
-  const folder = (k, label, items, kind, tone) => (
+  // `tone` is the identity color key — drives the folder icon and leaf arrow
+  // via .ct-fico-<tone> / .ct-arrow-<tone> classes.
+  // `display` overrides the displayed leaf name (e.g. "<agent>/MEMORY.md").
+  const folder = (k, label, items, kind, tone, leafFmt) => (
     <>
       <div className="ct-row ct-folder" onClick={() => toggle(k)}>
         <span className={'ct-chev' + (open[k] ? ' ct-chev-open' : '')}><Icon name="chevronRight" size={9} /></span>
@@ -94,8 +167,11 @@ const ClaudeTree = ({ repo, onOpen }) => {
       </div>
       {open[k] && items.map(name => {
         const cleaned = kind === 'command' ? name.replace(/^\//, '') : name;
-        const suffix = kind === 'skill' ? '/SKILL.md' : '.md';
-        const display = kind === 'command' ? '/' + cleaned + '.md' : cleaned + suffix;
+        const display = leafFmt ? leafFmt(cleaned) : (
+          kind === 'command' ? '/' + cleaned + '.md' :
+          kind === 'skill'   ? cleaned + '/SKILL.md' :
+          cleaned + '.md'
+        );
         return (
           <div key={name} className="ct-row ct-leaf" onClick={() => onOpen && onOpen(cleaned, kind)}>
             <span className={'ct-arrow ct-arrow-' + tone}>→</span>
@@ -108,6 +184,7 @@ const ClaudeTree = ({ repo, onOpen }) => {
       )}
     </>
   );
+  const contexts = repo.contexts || [];
   return (
     <>
       <div className="cd ct-card">
@@ -122,10 +199,16 @@ const ClaudeTree = ({ repo, onOpen }) => {
           <div className={'ct-row ct-file' + (viewFile === 'settings.local.json' ? ' ct-file-active' : '')} onClick={() => setViewFile(viewFile === 'settings.local.json' ? null : 'settings.local.json')}>
             <TreeJsonIcon /><span>settings.local.json</span>
           </div>
-          {folder('agents', 'agents', repo.agents || [], 'agent', 'agents')}
-          {folder('skills', 'skills', repo.skills || [], 'skill', 'skills')}
-          {folder('commands', 'commands', repo.commands || [], 'command', 'commands')}
-          {folder('rules', 'rules', repo.rules || [], 'rule', 'rules')}
+          {folder('agents',       'agents',        repo.agents || [],       'agent',   'agents')}
+          {folder('skills',       'skills',        repo.skills || [],       'skill',   'skills')}
+          {folder('commands',     'commands',      repo.commands || [],     'command', 'commands')}
+          {folder('rules',        'rules',         repo.rules || [],        'rule',    'rules')}
+          {folder('hooks',        'hooks',         repo.hooks || [],        'hook',    'hooks',
+            (n) => n /* hooks display verbatim (with extension) */)}
+          {folder('outputStyles', 'output-styles', repo.outputStyles || [], 'output',  'output')}
+          {folder('agentMemory',  'agent-memory',  repo.agentMemory || [],  'memory',  'memory',
+            (n) => n + '/MEMORY.md')}
+          {contexts.length > 0 && folder('contexts', 'contexts', contexts, 'context', 'contexts')}
         </div>
       </div>
       {viewFile && (
@@ -168,6 +251,13 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
     </div>
 
     <div>
+      {(repo.rootFiles || []).length > 0 && (
+        <>
+          <h2 className="section-title mb-3"><Icon name="file" />Project-root Claude files</h2>
+          <ClaudeRootFiles repo={repo} />
+        </>
+      )}
+
       <h2 className="section-title mb-3"><Icon name="layers" />.claude/ structure</h2>
       <ClaudeTree repo={repo} onOpen={onOpen} />
 

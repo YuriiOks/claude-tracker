@@ -11,6 +11,12 @@ class FileSizes(BaseModel):
     commands: dict[str, int] = Field(default_factory=dict)
     rules: dict[str, int] = Field(default_factory=dict)
     hooks: dict[str, int] = Field(default_factory=dict)
+    # Additive: matches the official Claude Code .claude/ layout (since v2)
+    # plus our project's custom contexts/. Empty for most projects -- still
+    # surfaced so the tree shows what slots exist.
+    output_styles: dict[str, int] = Field(default_factory=dict, alias="outputStyles")
+    agent_memory: dict[str, int] = Field(default_factory=dict, alias="agentMemory")
+    contexts: dict[str, int] = Field(default_factory=dict)
 
 
 class PermissionsDetail(BaseModel):
