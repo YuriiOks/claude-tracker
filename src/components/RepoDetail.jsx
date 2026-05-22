@@ -5,7 +5,7 @@ import MarkdownPanel from './MarkdownPanel';
 import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
-import { useAgents } from '../api';
+import { useAgents, useRepoEvents } from "../api";
 
 const HtmlArtifacts = ({ repo }) => {
   const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
@@ -227,15 +227,20 @@ const ClaudeTree = ({ repo, onOpen }) => {
   );
 };
 
-const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
+const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => {
+  // Repo-scoped recent events from the backend (polled every 5s).
+  // Falls back to the parent-supplied filter when repo.id is missing.
+  const liveForRepo = useRepoEvents(repo?.id, 60);
+  const events = liveForRepo.length > 0 ? liveForRepo : repoEvents;
+  return (
   <div className="split">
     <div>
       <h2 className="section-title mb-3"><Icon name="terminal" />Recent activity</h2>
-      <LiveTerminal events={repoEvents.slice(-18)} height={300} />
+      <LiveTerminal events={events.slice(-18)} height={300} />
 
       <h2 className="section-title mt-5 mb-3"><Icon name="clock" />Sessions in this repo</h2>
       <div className="list">
-        {repoSessions.length > 0 ? repoSessions.map(s => (
+        {repoSessions.length > 0 ? repoSessions.slice(0, 10).map(s => (
           <div key={s.id} className="list-row" style={{ gridTemplateColumns: '60px 1fr 100px 70px 60px' }}>
             <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{s.started}</span>
             <div>
@@ -275,6 +280,7 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => (
     </div>
   </div>
 );
+};
 
 const RepoAgents = ({ repo, onOpen }) => {
   const { data: AGENT_META } = useAgents();

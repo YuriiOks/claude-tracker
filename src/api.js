@@ -320,6 +320,33 @@ export function useActiveAgents(intervalMs = 1500) {
  * Falls back to MOCK.LIVE_EVENTS_SEED + cycling LIVE_EVENTS_FUTURE when
  * VITE_USE_MOCKS=1 or both REST + WS fail.
  */
+// Repo-scoped recent events (one-shot REST, no WS — used by RepoOverview).
+// Polls every 5s so newly-arrived sessions surface without a full refresh.
+export function useRepoEvents(repoId, n = 60, intervalMs = 5000) {
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    if (!repoId) { setEvents([]); return; }
+    if (USE_MOCKS) { setEvents(MOCK.LIVE_EVENTS_SEED.filter(e => e.repo === repoId)); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/live/recent?n=${n}&repo=${encodeURIComponent(repoId)}`);
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) setEvents(j);
+      } catch {
+        /* network blip — keep last good snapshot */
+      } finally {
+        if (!cancelled) timer = setTimeout(tick, intervalMs);
+      }
+    };
+    tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [repoId, n, intervalMs]);
+  return events;
+}
+
 export function useLiveEvents() {
   const [events, setEvents] = useState(USE_MOCKS ? MOCK.LIVE_EVENTS_SEED.map(e => ({ ...e })) : []);
   const tickRef = useRef(0);

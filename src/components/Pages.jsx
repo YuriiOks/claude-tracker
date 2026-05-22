@@ -3,7 +3,7 @@ import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
-import { usePermissions } from '../api';
+import { usePermissions, useGlobal } from "../api";
 import PermissionsKanban from "./PermissionsKanban";
 import { PLUGIN_REGISTRY, MCP_REGISTRY } from '../data';
 
@@ -171,18 +171,28 @@ export const PermissionsPanel = ({ scope }) => {
 };
 
 export const PluginsPanel = ({ repo }) => {
-  // F8: descriptions sourced from data.js registries (was hardcoded inline)
   const pluginInfo = PLUGIN_REGISTRY;
   const mcpInfo = MCP_REGISTRY;
+  // Per-repo plugins/MCP are usually empty in real installs — Claude Code
+  // stores plugins globally in ~/.claude/plugins/installed_plugins.json and
+  // MCP servers in ~/.claude.json, not in <repo>/.claude/settings.json. Fall
+  // back to GLOBAL so the user sees what is actually available in this repo.
+  const { data: G } = useGlobal();
+  const repoPlugins = repo?.plugins || [];
+  const repoMcp = repo?.mcp || [];
+  const plugins = repoPlugins.length > 0 ? repoPlugins : (G?.plugins || []);
+  const mcp = repoMcp.length > 0 ? repoMcp : (G?.mcp || []);
+  const pluginsFromGlobal = repoPlugins.length === 0 && plugins.length > 0;
+  const mcpFromGlobal = repoMcp.length === 0 && mcp.length > 0;
   return (
     <>
       <div className="card-frame">
         <div className="card-frame-head">
           <h2 className="section-title"><Icon name="pkg" />Plugins enabled</h2>
-          <span className="frame-meta">{(repo?.plugins || []).length} active</span>
+          <span className="frame-meta">{plugins.length} active{pluginsFromGlobal ? " (global)" : ""}</span>
         </div>
         <div className="grid grid-cols-2" style={{ padding: '.85rem' }}>
-          {(repo?.plugins || []).map(p => {
+          {plugins.map(p => {
             // Plugin names from the backend look like "name@marketplace"
             // (e.g. "Notion@claude-plugins-official"). Split for display so
             // the title stays clean and the meta line shows the source —
@@ -205,10 +215,10 @@ export const PluginsPanel = ({ repo }) => {
       <div className="card-frame mt-4">
         <div className="card-frame-head">
           <h2 className="section-title"><Icon name="cpu" />MCP servers</h2>
-          <span className="frame-meta">{(repo?.mcp || []).length} connected</span>
+          <span className="frame-meta">{mcp.length} connected{mcpFromGlobal ? " (global)" : ""}</span>
         </div>
         <div className="grid grid-cols-2" style={{ padding: '.85rem' }}>
-          {(repo?.mcp || []).map(m => {
+          {mcp.map(m => {
             const info = mcpInfo[m] || { desc: 'MCP server' };
             return (
               <div key={m} className="cd">

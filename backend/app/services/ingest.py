@@ -140,7 +140,7 @@ async def fetch_recent_summaries(repo: str | None = None, limit: int = 50) -> li
         return list(result.scalars().all())
 
 
-async def fetch_recent_events(limit: int = 60) -> list[LiveEventRow]:
+async def fetch_recent_events(limit: int = 60, repo: str | None = None) -> list[LiveEventRow]:
     _ensure_engine()
     from app.db import _sessionmaker
 
@@ -148,5 +148,7 @@ async def fetch_recent_events(limit: int = 60) -> list[LiveEventRow]:
         raise RuntimeError('DB sessionmaker not initialized — call await init_db() first')
     async with _sessionmaker() as session:
         stmt = select(LiveEventRow).order_by(LiveEventRow.ts.desc()).limit(limit)
+        if repo:
+            stmt = select(LiveEventRow).where(LiveEventRow.repo == repo).order_by(LiveEventRow.ts.desc()).limit(limit)
         result = await session.execute(stmt)
         return list(reversed(list(result.scalars().all())))

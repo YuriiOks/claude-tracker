@@ -159,8 +159,12 @@ function App() {
       const r = allRepos.find(rr => rr.id === route.repoId);
       return ['Workspace', ROUTE_BY_ID.repos.label, r?.name || route.repoId];
     }
-    if (route.page === 'agent') {
-      return ['Workspace', ROUTE_BY_ID.agents.label, route.name];
+    if (route.page === "agent") {
+      if (route.repoId) {
+        const r = allRepos.find(rr => rr.id === route.repoId);
+        return ["Workspace", ROUTE_BY_ID.repos.label, r?.name || route.repoId, route.name];
+      }
+      return ["Workspace", ROUTE_BY_ID.agents.label, route.name];
     }
     const r = ROUTE_BY_ID[route.page];
     return r ? ['Workspace', r.label] : ['Workspace'];
@@ -216,7 +220,7 @@ function App() {
         const back = route.repoId
           ? { page: 'repo', repoId: route.repoId, tab: KIND_TAB[route.kind] || 'agents' }
           : { page: 'agents' };
-        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} repoId={route.repoId} onBack={() => goBack(back)} />;
+        return <AgentDetail name={route.name} kind={route.kind} repos={allRepos} repoId={route.repoId} onBack={() => goBack(back)} setRoute={setRoute} />;
       }
       default:
         return <div>404</div>;

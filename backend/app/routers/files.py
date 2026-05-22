@@ -102,8 +102,8 @@ async def get_file(repo_id: str, rel_path: str) -> dict:
         raise HTTPException(status_code=404, detail=f"file not found: {rel_path}")
 
     # Whitelist text formats we render
-    if target.suffix.lower() not in {".md", ".html", ".htm"}:
-        raise HTTPException(status_code=415, detail="only .md/.html files are served")
+    if target.suffix.lower() not in {".md", ".html", ".htm", ".json", ".sh", ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".css", ".txt", ".yaml", ".yml", ".toml"}:
+        raise HTTPException(status_code=415, detail=f"unsupported file type: {target.suffix}")
 
     size = target.stat().st_size
     if size > MAX_BYTES:

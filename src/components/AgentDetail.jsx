@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
-import { useAgents, useRepoHtmlArtifacts } from '../api';
-import { AGENT_INVOCATIONS } from '../data';
+import { useAgents, useRepoHtmlArtifacts, useSessions } from '../api';
 import MarkdownPanel from './MarkdownPanel';
 
 // Templates section — when a skill has a `templates/` subdir (e.g. html-docs),
@@ -79,34 +78,79 @@ const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
   );
 };
 
-const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
-  // Hooks must run unconditionally — call them first, then dispatch on kind.
+// Format "2m ago" / "1h ago" / "3d ago" from an ISO timestamp.
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const t = new Date(iso).getTime();
+  if (!t) return '—';
+  const dt = Math.max(0, (Date.now() - t) / 1000);
+  if (dt < 60) return `${Math.round(dt)}s ago`;
+  if (dt < 3600) return `${Math.round(dt / 60)}m ago`;
+  if (dt < 86400) return `${Math.round(dt / 3600)}h ago`;
+  return `${Math.round(dt / 86400)}d ago`;
+}
+
+const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
+  // Hooks must run unconditionally — call them ALL first, then dispatch on kind.
   const { data: AGENT_META } = useAgents();
-  const defaultCallsToday = useMemo(() => Math.floor(Math.random() * 18) + 2, [name]);
-  // For commands and rules we render a simpler view (no calls/tokens schema).
-  if (kind === 'command' || kind === 'rule') {
-    const repo = (repos || []).find(r => r.id === repoId) || (repos || []).find(r => r.id === 'global') || (repos || [])[0];
+  const { data: sessions } = useSessions(500);
+
+  // Resolve repo first so the memos below can reference it. command/rule
+  // kinds use a slightly different fallback chain but we share resolution.
+  const repo = (repoId && (repos || []).find(r => r.id === repoId))
+    || (repos || []).find(r => r.id === "global")
+    || (repos || [])[0];
+
+  const repoIdFinal = repo?.id ?? null;
+
+  // Derive real "Recent invocations" from sessions filtered by agent name.
+  const invocations = useMemo(() => {
+    const all = (sessions || []).filter(s => s && s.agent === name);
+    const scoped = repoIdFinal ? all.filter(s => s.repo === repoIdFinal) : all;
+    return scoped.slice(0, 8);
+  }, [sessions, name, repoIdFinal]);
+
+  const todayCount = useMemo(() => {
+    if (!sessions) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const cutoff = today.getTime();
+    return sessions.filter(s => {
+      if (!s || s.agent !== name) return false;
+      const t = s.started ? new Date(s.started).getTime() : 0;
+      return t >= cutoff;
+    }).length;
+  }, [sessions, name]);
+
+  const weekCount = useMemo(() => {
+    if (!sessions) return null;
+    const cutoff = Date.now() - 7 * 86400 * 1000;
+    return sessions.filter(s => {
+      if (!s || s.agent !== name) return false;
+      const t = s.started ? new Date(s.started).getTime() : 0;
+      return t >= cutoff;
+    }).length;
+  }, [sessions, name]);
+
+  // Now safe to dispatch on kind — every hook has run.
+  if (kind === "command" || kind === "rule") {
     return <SimpleItemDetail name={name} kind={kind} repo={repo} onBack={onBack} />;
   }
+
+  // Real metadata if backend has it; otherwise an honest empty shell.
   const meta = (AGENT_META && AGENT_META[name]) || {
-    role: kind === 'skill'
-      ? 'Skill — encapsulated workflow knowledge that Claude loads when relevant files are touched.'
-      : 'Specialist agent — defined in .claude/agents/' + name + '.md.',
-    repo: 'global',
-    tools: ['Read', 'Edit', 'Bash', 'Grep'],
-    callsToday: defaultCallsToday,
-    avgTokens: 2400,
+    role: kind === "skill"
+      ? "Skill — encapsulated workflow knowledge that Claude loads when relevant files are touched."
+      : "Specialist agent — defined in .claude/agents/" + name + ".md.",
+    repo: repoId || null,
+    tools: ["Read", "Edit", "Bash", "Grep"],
+    callsToday: null,
+    avgTokens: null,
     delegates: [],
   };
-  // Prefer the URL's repoId (set by App.jsx when navigated via /repos/:id/...);
-  // fall back to the mock meta.repo only for top-level /agents/:name routes.
-  const repo = (repoId && repos.find(r => r.id === repoId))
-    || repos.find(r => r.name === meta.repo)
-    || repos[0];
-  const isAgent = kind === 'agent';
+  const isAgent = kind === "agent";
 
-  // F12: invocations sample sourced from data.js (was inline)
-  const invocations = AGENT_INVOCATIONS.map(inv => ({ ...inv, repo: meta.repo }));
+  // No reliable token data on sessions yet — display "—" when missing.
+  const avgTokensK = meta.avgTokens ? (meta.avgTokens / 1000).toFixed(1) : null;
 
   return (
     <>
@@ -120,15 +164,15 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
           <span className={isAgent ? 'bg bg-c' : 'bg bg-p'}>
             <Icon name={isAgent ? 'bot' : 'sparkles'} size={10} />{kind}
           </span>
-          <span className="bg bg-m">{meta.repo}</span>
+          {repo && <span className="bg bg-m">{repo.name}</span>}
         </>}
       />
 
       <div className="grid grid-cols-4 mb-4">
-        <Metric label="Calls today" value={meta.callsToday} accent="cyan" />
-        <Metric label="Avg tokens" value={(meta.avgTokens / 1000).toFixed(1)} unit="k" accent="gold" />
-        <Metric label="Total this week" value={meta.callsToday * 7} accent="purple" />
-        <Metric label="Est. cost / wk" value={`$${((meta.callsToday * 7 * meta.avgTokens / 1e6) * 8).toFixed(2)}`} accent="green" />
+        <Metric label="Calls today" value={todayCount == null ? '—' : todayCount} accent="cyan" />
+        <Metric label="Avg tokens" value={avgTokensK == null ? '—' : avgTokensK} unit={avgTokensK == null ? '' : 'k'} accent="gold" />
+        <Metric label="Calls this week" value={weekCount == null ? '—' : weekCount} accent="purple" />
+        <Metric label="Invocations" value={invocations.length} accent="green" />
       </div>
 
       <div className="split">
@@ -156,15 +200,16 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
         <div>
           <h2 className="section-title mb-3"><Icon name="zap" />Recent invocations</h2>
           <div className="list">
-            {invocations.map((inv, i) => (
-              <div key={i} className="list-row" style={{ gridTemplateColumns: '50px 1fr 70px 80px' }}>
-                <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{inv.t} ago</span>
+            {invocations.length === 0 && <div className="empty">No invocations yet.</div>}
+            {invocations.map((inv) => (
+              <div key={inv.id} className="list-row" style={{ gridTemplateColumns: '60px 1fr 80px 60px' }}>
+                <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{timeAgo(inv.started)}</span>
                 <div>
                   <div style={{ fontSize: '.72rem', color: 'var(--txt-bright)' }}>{inv.task}</div>
                   <div style={{ fontSize: '.6rem', color: 'var(--muted)' }}>{inv.repo}</div>
                 </div>
                 <Status kind={inv.status} />
-                <span className="tg" style={{ fontSize: '.7rem' }}>{(inv.tokens / 1000).toFixed(1)}k</span>
+                <span className="tg" style={{ fontSize: '.7rem' }}>${(inv.cost || 0).toFixed(2)}</span>
               </div>
             ))}
           </div>
@@ -181,15 +226,24 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
           )}
 
           <h2 className="section-title mt-4 mb-3"><Icon name="zap" />Used in</h2>
-          <div className="cd" style={{ padding: '.7rem .9rem' }}>
-            <div className="row between">
-              <div className="row gap-sm">
-                <span className="sb-repo-dot" style={{ '--accent': repo?.accent || 'var(--cyan)' }}></span>
-                <span className="tb">{meta.repo}</span>
+          {repo ? (
+            <div
+              className="cd clickable"
+              style={{ padding: '.7rem .9rem' }}
+              onClick={() => setRoute && setRoute({ page: 'repo', repoId: repo.id, tab: isAgent ? 'agents' : 'skills' })}
+              title={`Open ${repo.name}`}
+            >
+              <div className="row between">
+                <div className="row gap-sm">
+                  <span className="sb-repo-dot" style={{ '--accent': repo.accent || 'var(--cyan)' }}></span>
+                  <span className="tb">{repo.name}</span>
+                </div>
+                <span className="bg bg-m">{weekCount == null ? '—' : `${weekCount} this week`}</span>
               </div>
-              <span className="bg bg-m">{meta.callsToday * 7} invocations</span>
             </div>
-          </div>
+          ) : (
+            <div className="empty">No tracked repo associated.</div>
+          )}
         </div>
       </div>
     </>

@@ -18,8 +18,8 @@ router = APIRouter(tags=["live"])
 
 
 @router.get("/api/live/recent", response_model=list[LiveEvent])
-async def recent(n: int = 60) -> list[LiveEvent]:
-    rows = await fetch_recent_events(limit=n)
+async def recent(n: int = 60, repo: str | None = None) -> list[LiveEvent]:
+    rows = await fetch_recent_events(limit=n, repo=repo)
     if not rows:
         return []
     now = datetime.now(tz=UTC)
