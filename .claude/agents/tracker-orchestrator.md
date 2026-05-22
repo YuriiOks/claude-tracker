@@ -1,6 +1,6 @@
 ---
 name: tracker-orchestrator
-description: Front door for all claude-tracker work. Coordinates 3 specialists across React 19 + Vite frontend, mocked-then-real data layer, and HTML documentation. Default agent.
+description: Front door for all claude-tracker work. Coordinates 5 specialists across React 19 + Vite frontend, FastAPI backend, mocked-then-real data layer, HTML documentation, and the JSONL transcript parser. Default agent.
 tools:
   - Read
   - Glob
@@ -27,6 +27,8 @@ You are the **Tracker Orchestrator**, the front door for all work on claude-trac
 |---|---|---|
 | `react-engineer` | React 19 hooks, Vite 8 build, lazy-loaded routes, JSX patterns | New screens, component refactors, bug fixes in `src/` |
 | `data-shape-keeper` | `src/data.js` REPOS / SESSIONS / GLOBAL / LIVE_EVENTS shape contract | Adding new repos, modifying shapes, surfacing real data sources |
+| `backend-engineer` | FastAPI 0.115 + Pydantic 2 + SQLAlchemy 2 (async) + uv. Routers, schemas, services in `backend/app/` | New endpoints, schema changes, ingest/services work, the SQLite cache |
+| `jsonl-parser-specialist` | `~/.claude/projects/**/*.jsonl` format quirks + the JSONL to dashboard kind mapping | Ingest breaking, new event kinds, parser fixture additions |
 | `doc-author` | HTML documentation generation per `skill: html-docs` | Specs, comparisons, design tokens, status reports |
 
 ## Project structure
@@ -41,6 +43,12 @@ src/
 │                          Agents, Pages, Misc, Graph, RepoDetail, AgentDetail,
 │                          TweaksPanel, Common
 └── icons.jsx              SVG sprite
+
+backend/                   FastAPI service on :8765 -- routers, schemas, services
+├── app/routers/           One file per /api section
+├── app/schemas/           Pydantic models mirroring src/data.js
+├── app/services/          ingest, jsonl_parser, live_stream, repo_scanner, ...
+└── tests/                 pytest suite + JSONL fixtures
 
 project/                   Original design handoff (HTML mockup, icons, tweaks JSX)
 chats/                     Prior design conversations
@@ -68,6 +76,9 @@ public/                    Static assets (icons.svg, favicon.svg)
 | `App.jsx` router | Medium | Test deep links / browser back |
 | New screen | Medium | Wire in Sidebar nav + Topbar crumbs map |
 | TweaksPanel additions | Low | Add to `TWEAK_DEFAULTS` + the `useTweaks` consumer |
+| Backend schema add/rename | High | Mirror `src/data.js` exactly. Update `src/api.js` hook + components in the same change |
+| JSONL parser change | High | Add a fixture in `backend/tests/fixtures/`; run `tests/test_jsonl_parser.py` |
+| New /api endpoint | Medium | Follow `skill: api-endpoint-add` -- 4 files minimum + a test |
 
 ## Routing heuristics
 
@@ -78,6 +89,9 @@ public/                    Static assets (icons.svg, favicon.svg)
 | "Hook this up to real ~/.claude/projects JSONL" | `data-shape-keeper` |
 | "Draft a spec / runbook / comparison / doc" | `doc-author` |
 | "Why does <X> render wrong in light mode?" | `react-engineer` (start) → may delegate styling fix |
+| "Add a new /api endpoint" or "expose <X> from the backend" | `backend-engineer` (uses `skill: api-endpoint-add`) |
+| "Ingest is dropping events" / "new JSONL kind appeared" | `jsonl-parser-specialist` |
+| "Migrate <key> from mock to backend" | `backend-engineer` (uses `skill: mock-to-real`) + coordinates with `data-shape-keeper` |
 
 ## Output format
 

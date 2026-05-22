@@ -2,7 +2,7 @@
 
 Personal dashboard for visualizing Claude Code activity across all my repos. Shows live sessions, repo summaries, agent/skill/command inventories, plugin & MCP usage, permissions audit, cost & tokens, delegation graph, recent diffs.
 
-**Stack**: React 19 + Vite 8 + ESLint flat config. Vanilla CSS (no Tailwind, no styled-components). Fira Code mono + Inter sans. Dark cyan/gold default + light amber/orange theme. No tests yet.
+**Stack**: React 19 + Vite 8 + ESLint flat config (frontend) · FastAPI + SQLAlchemy + uv (backend, `backend/`, on `:8765`) · Vanilla CSS (no Tailwind, no styled-components). Fira Code mono + Inter sans. Dark cyan/gold default + light amber/orange theme. Backend has `pytest`; frontend has no tests yet. Node `>=22 <23` (pinned in `package.json#engines`).
 
 ---
 
@@ -21,7 +21,7 @@ Repos to surface (from data.js): jupus, voice, anita-legal, …
 3. **Two themes coexist** (`data-theme="dark"` and `data-theme="light"`). Every styled element must work in both. Light mode repurposes `--cyan` → amber, not blue.
 4. **Mock data is real to the UI** — `data.js` shape is the contract. If you change a key, update every component that reads it.
 5. **Don't introduce TypeScript yet.** This is intentionally JS+JSX while the design solidifies.
-6. **Keep `App.jsx` legible.** It's a single-file router right now; defer extraction until ≥3 routes share state.
+6. **Keep `App.jsx` thin.** Routing now lives in `src/routes.js` (route table) + `src/useRoute.js` (HTML5 History API hook); `App.jsx` does layout, theme/density tweaks, lazy-loaded route mounting, and live-stream wiring. Don't bring in `react-router` — `useRoute` is enough.
 
 ---
 
@@ -59,18 +59,36 @@ Override with explicit "in markdown" if I want plain MD.
 | `chats/` | Prior design conversations (chat1.md, chat2.md) |
 | `docs/` | Generated HTML documentation lives here |
 | `public/icons.svg` | SVG sprite |
-| `vite.config.js` | Vite config (mostly defaults) |
+| `vite.config.js` | Vite config + proxy `/api` and `/ws` → `:8765` |
+| `src/routes.js` | Single route table — Sidebar + breadcrumbs consume it |
+| `src/useRoute.js` | History API router (`parsePath` / `buildPath` / `useRoute` / `goBack`) |
+| `src/api.js` | Client-side fetch + WS hooks (`useRepos`, `useGlobal`, `useLiveEvents`, …) — the single network layer |
+| `backend/` | Local FastAPI service on `:8765` reading `~/.claude/projects/**/*.jsonl`, plugin caches, per-repo `.claude/` folders. Schema mirrors `src/data.js` 1:1. Managed by `uv`. See `backend/README.md` and `MASTER_PLAN.md`. |
+| `Makefile` | Primary entry point — wraps `uv`/`npm`/`docker compose`. Run `make help`. |
+| `docker-compose.yml` | Backend + frontend stack on ports `47820`/`47821`. Uses `.env.docker`. |
 
 ---
 
 ## Common operations
 
 ```bash
-pnpm install          # or npm install — package.json declares no specific PM
-npm run dev           # vite dev server, default port 5173
+make install          # uv sync (backend) + npm install (frontend)
+make dev              # backend :8765 + frontend :5173 (Ctrl-C stops both)
+make ingest           # walk ~/.claude/projects/ JSONL → SQLite cache
+make rebuild          # drop cache and re-ingest
+make test             # backend pytest (frontend has no tests yet)
+make lint             # ruff (backend) + eslint (frontend)
+make build            # vite production bundle → dist/
+
+# Docker (ports 47820/47821 — copy .env.docker.example → .env.docker first):
+make docker-up        # build & start backend + frontend
+make docker-down      # stop stack (keeps cache volume)
+make docker-ingest    # run ingest inside the backend container
+
+# Frontend-only iteration (API calls fail until backend is also up):
+npm run dev           # :5173
 npm run build         # vite build
 npm run lint          # eslint .
-npm run preview       # vite preview built app
 ```
 
 Open generated docs: `open docs/<slug>.html` — they're self-contained, no server needed.
@@ -83,6 +101,7 @@ Open generated docs: `open docs/<slug>.html` — they're self-contained, no serv
 - Adding a CSS framework — the existing tokens system is the source of truth.
 - Over-engineering routing — the current `useState({page, …})` switch is fine until proven otherwise.
 - Generating long markdown when HTML would communicate better (see HTML-first section above).
+- Calling backend APIs from components directly — go through `src/api.js`. It's the single fetch/WS layer; adding a new endpoint usage means adding a hook there first.
 
 ---
 
