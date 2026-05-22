@@ -5,6 +5,11 @@
 #
 # Falls back silently if eslint isn't available; never fails the tool call.
 #
+# v2.1.133 effort gating:
+#   When CLAUDE_EFFORT=low, pass --quiet to eslint so it reports errors
+#   only (no warnings). At medium/high, lint everything. This keeps
+#   low-effort sessions snappy without losing real failures.
+#
 # v2.1.141-style terminalSequence:
 #   On lint failure (non-zero exit code from eslint itself), flash the
 #   terminal via a /dev/tty bell + OSC window-title. /dev/tty bypasses
@@ -14,6 +19,7 @@ set -u
 
 FILE="${CLAUDE_TOOL_USE_INPUT_FILE_PATH:-}"
 PROJECT="${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}"
+EFFORT="${CLAUDE_EFFORT:-medium}"
 
 # Safety net: skip if the file isn't inside the project (e.g. sibling-repo edits).
 # The `if:` matcher in settings.json should already filter, but defense in depth.
@@ -24,18 +30,26 @@ esac
 
 cd "$PROJECT" || exit 0
 
+# Build per-effort flag list. Low effort skips warnings; everything else
+# runs the default ruleset.
+EXTRA_FLAGS=()
+case "$EFFORT" in
+  low) EXTRA_FLAGS+=("--quiet") ;;
+  *) ;;
+esac
+
 # Run eslint with the appropriate runner. Capture exit code so we can
 # decide whether to flash the terminal.
 LINT_EXIT=0
 LINT_OUT=""
 if [ -x "node_modules/.bin/eslint" ]; then
-  LINT_OUT=$(node_modules/.bin/eslint --fix --no-eslintrc -c eslint.config.js "$FILE" 2>&1)
+  LINT_OUT=$(node_modules/.bin/eslint --fix --no-eslintrc -c eslint.config.js "${EXTRA_FLAGS[@]}" "$FILE" 2>&1)
   LINT_EXIT=$?
 elif command -v pnpm >/dev/null 2>&1 && [ -f "package.json" ]; then
-  LINT_OUT=$(pnpm exec eslint --fix "$FILE" 2>&1)
+  LINT_OUT=$(pnpm exec eslint --fix "${EXTRA_FLAGS[@]}" "$FILE" 2>&1)
   LINT_EXIT=$?
 elif command -v npx >/dev/null 2>&1; then
-  LINT_OUT=$(npx --no-install eslint --fix "$FILE" 2>&1)
+  LINT_OUT=$(npx --no-install eslint --fix "${EXTRA_FLAGS[@]}" "$FILE" 2>&1)
   LINT_EXIT=$?
 fi
 
