@@ -3,9 +3,9 @@ import Icon from '../icons';
 import { useRepos, useScopedPermissions, updateScopedPermissions } from '../api';
 
 // 3-column drag-and-drop board for the permissions block of a single
-// settings.json file. Reads via useScopedPermissions(scope, target),
-// writes via updateScopedPermissions(). Includes an explicit diff-preview
-// modal on save and a conflict warning if the file changed on disk.
+// settings.json file. Loads BOTH settings.json and settings.local.json
+// in parallel and auto-picks the one with rules so we don't show a
+// blank board when rules live in the other file.
 
 const BUCKETS = [
   { key: 'allow', label: 'Allow',  hint: 'auto-approved',        accent: 'gr', icon: 'check' },
@@ -24,9 +24,10 @@ function arraysEqual(a, b) {
 function permsEqual(a, b) {
   return arraysEqual(a.allow, b.allow) && arraysEqual(a.deny, b.deny) && arraysEqual(a.ask, b.ask);
 }
+function totalCount(p) {
+  return (p?.allow?.length || 0) + (p?.deny?.length || 0) + (p?.ask?.length || 0);
+}
 
-// Compute a tiny add/remove diff between two buckets so the confirm
-// modal can show the user exactly what's about to land on disk.
 function diff(original, working) {
   const out = { added: { allow: [], deny: [], ask: [] }, removed: { allow: [], deny: [], ask: [] } };
   for (const k of ['allow', 'deny', 'ask']) {
@@ -185,14 +186,35 @@ const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy }) => {
 const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const { data: repos } = useRepos();
   const [scope, setScope] = useState(defaultScope);
-  const [target, setTarget] = useState('settings_local');
-  const { data: server, loading } = useScopedPermissions(scope, target);
+  // `target` starts as null → auto-pick once both file fetches return.
+  // Once the user clicks a segment, manualPick flips and locks the target.
+  const [target, setTarget] = useState(null);
+  const [manualPick, setManualPick] = useState(false);
+
+  // Fetch both files in parallel — counts feed both auto-pick and the segment labels.
+  const { data: localServer } = useScopedPermissions(scope, 'settings_local');
+  const { data: commitServer } = useScopedPermissions(scope, 'settings');
+  const activeServer = target === 'settings' ? commitServer : localServer;
+
+  // Reset auto-pick whenever the scope changes — the new repo may have rules
+  // in a different file.
+  useEffect(() => { setManualPick(false); setTarget(null); }, [scope]);
+
+  // Auto-pick: whichever file has more rules wins. Tie → settings_local
+  // (the safer default for new edits).
+  useEffect(() => {
+    if (manualPick) return;
+    if (!localServer || !commitServer) return;
+    const localN = totalCount(localServer.permissions);
+    const commitN = totalCount(commitServer.permissions);
+    setTarget(commitN > localN ? 'settings' : 'settings_local');
+  }, [manualPick, localServer?.mtime, commitServer?.mtime, localServer?.fileExists, commitServer?.fileExists]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pickTarget = (t) => { setManualPick(true); setTarget(t); };
 
   // Working state — what the user is editing, before save.
   const [working, setWorking] = useState(emptyPerms());
-  // Original (last server snapshot) — for diff + dirty detection.
   const [original, setOriginal] = useState(emptyPerms());
-  // Track mtime so PUT can use If-Unchanged-Since.
   const [serverMtime, setServerMtime] = useState(0);
 
   const [dragOverKey, setDragOverKey] = useState(null);
@@ -204,24 +226,23 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
 
-  // Sync from server response into working state (on first load / scope change).
+  // Sync the active server response into working state.
   useEffect(() => {
-    if (!server || !server.permissions) return;
+    if (!activeServer || !activeServer.permissions) return;
     const snap = {
-      allow: [...server.permissions.allow],
-      deny:  [...server.permissions.deny],
-      ask:   [...server.permissions.ask],
+      allow: [...activeServer.permissions.allow],
+      deny:  [...activeServer.permissions.deny],
+      ask:   [...activeServer.permissions.ask],
     };
     setOriginal(snap);
     setWorking({ allow: [...snap.allow], deny: [...snap.deny], ask: [...snap.ask] });
-    setServerMtime(server.mtime || 0);
+    setServerMtime(activeServer.mtime || 0);
     setError('');
-  }, [server?.scope, server?.target, server?.mtime, server?.fileExists]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeServer?.scope, activeServer?.target, activeServer?.mtime, activeServer?.fileExists]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = useMemo(() => !permsEqual(working, original), [working, original]);
   const d = useMemo(() => diff(original, working), [original, working]);
 
-  // Mutations on working state (no fetch yet).
   const mutate = (fn) => setWorking((cur) => {
     const next = { allow: [...cur.allow], deny: [...cur.deny], ask: [...cur.ask] };
     fn(next);
@@ -237,7 +258,6 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
     const idx = w[bucket].indexOf(oldRule);
     if (idx >= 0) {
       if (w[bucket].includes(newRule) && newRule !== oldRule) {
-        // Avoid duplicates — drop the old in favor of the existing new
         w[bucket].splice(idx, 1);
       } else {
         w[bucket][idx] = newRule;
@@ -256,6 +276,7 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
   };
 
   const handleSave = async () => {
+    if (!target) return;
     setSaving(true);
     setError('');
     try {
@@ -290,6 +311,12 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
     return [{ id: 'global', name: 'Global (~/.claude)' }, ...rs];
   }, [repos]);
 
+  const localCount = totalCount(localServer?.permissions);
+  const commitCount = totalCount(commitServer?.permissions);
+  const totalChanges = ['allow', 'deny', 'ask'].reduce((n, k) => n + d.added[k].length + d.removed[k].length, 0);
+  const activeFilePath = activeServer?.filePath || '';
+  const activeFileExists = !!activeServer?.fileExists;
+
   return (
     <div className="pk-root">
       <div className="pk-toolbar">
@@ -304,31 +331,37 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
           <div className="pk-segmented">
             <button
               className={'pk-segment' + (target === 'settings_local' ? ' active' : '')}
-              onClick={() => setTarget('settings_local')}
+              onClick={() => pickTarget('settings_local')}
               title="Edits go to the gitignored settings.local.json (safer)"
-            >settings.local.json</button>
+            >
+              settings.local.json{localCount > 0 ? ` (${localCount})` : ''}
+            </button>
             <button
               className={'pk-segment' + (target === 'settings' ? ' active' : '')}
-              onClick={() => setTarget('settings')}
+              onClick={() => pickTarget('settings')}
               title="Edits go to the committed settings.json"
-            >settings.json</button>
+            >
+              settings.json{commitCount > 0 ? ` (${commitCount})` : ''}
+            </button>
           </div>
         </div>
         <div className="pk-toolbar-spacer" />
         <button className="btn" onClick={handleReset} disabled={!dirty || saving}>
           <Icon name="x" size={11} /> Reset
         </button>
-        <button className="btn primary" onClick={() => setShowDiff(true)} disabled={!dirty || saving}>
-          <Icon name="check" size={11} /> Save{dirty ? ' (' + (d.added.allow.length + d.added.deny.length + d.added.ask.length + d.removed.allow.length + d.removed.deny.length + d.removed.ask.length) + ')' : ''}
+        <button className="btn primary" onClick={() => setShowDiff(true)} disabled={!dirty || saving || !target}>
+          <Icon name="check" size={11} /> Save{totalChanges > 0 ? ` (${totalChanges})` : ''}
         </button>
       </div>
 
       <div className="pk-meta mono">
-        {loading
-          ? 'Loading…'
-          : server?.fileExists
-            ? <>File: <span className="tc">{server.filePath}</span></>
-            : <>File doesn't exist yet — will be created on first save: <span className="tm">{server.filePath || '(unresolved)'}</span></>}
+        {target == null
+          ? 'Resolving…'
+          : activeFileExists
+            ? <>File: <span className="tc">{activeFilePath}</span></>
+            : activeFilePath
+              ? <>File doesn't exist yet — will be created on first save: <span className="tm">{activeFilePath}</span></>
+              : <>Scope <span className="tm">{scope}</span> not recognized by the backend. Restart the backend so it picks up the new /api/permissions/scoped route.</>}
       </div>
 
       {error && <div className="pk-error mono">{error}</div>}
