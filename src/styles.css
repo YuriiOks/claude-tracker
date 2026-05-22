@@ -19,6 +19,7 @@
   --glow-c:0 0 12px rgba(6,182,212,.22);
   --glow-c-strong:0 0 16px rgba(6,182,212,.4);
   --inv:#070b14;
+  --ct-agents:#C46686; --ct-skills:#D4A843; --ct-commands:#788C5D; --ct-rules:#9B7BC4;
   --add:#10b981; --add-bg:rgba(16,185,129,.08); --del:#f472b6; --del-bg:rgba(244,114,182,.08);
   --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
 }
@@ -47,6 +48,7 @@
   --glow-c:0 1px 3px rgba(217,119,6,.20);
   --glow-c-strong:0 2px 8px rgba(217,119,6,.32);
   --inv:#fff;
+  --ct-agents:#C46686; --ct-skills:#D4A843; --ct-commands:#788C5D; --ct-rules:#9B7BC4;
   --add:#059669; --add-bg:rgba(5,150,105,.08); --del:#db2777; --del-bg:rgba(219,39,119,.08);
   --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
 }
@@ -3303,3 +3305,12 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   font-weight:600;
   flex-shrink:0;
 }
+
+/* CLAUDE TREE — folder identity colors per code.claude.com/docs/en/claude-directory */
+.ct-fico{ flex-shrink:0; display:inline-flex; align-items:center; vertical-align:middle; }
+.ct-fico-root{ color:var(--cyan); }
+.ct-fico-agents,   .ct-arrow-agents   { color:var(--ct-agents); }
+.ct-fico-skills,   .ct-arrow-skills   { color:var(--ct-skills); }
+.ct-fico-commands, .ct-arrow-commands { color:var(--ct-commands); }
+.ct-fico-rules,    .ct-arrow-rules    { color:var(--ct-rules); }
+.ct-fico-mute      { color:var(--muted); }

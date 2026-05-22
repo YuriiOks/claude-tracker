@@ -40,17 +40,55 @@ const HtmlArtifacts = ({ repo }) => {
   );
 };
 
+// Small inline tree icons that pick up color from the .ct-fico-* CSS classes.
+// Same shape as the official Claude Code docs page (code.claude.com/docs/en/claude-directory)
+// so the colors read as identity cues, not decoration.
+const TreeFolderIcon = ({ tone }) => (
+  <svg
+    className={'ct-fico ct-fico-' + tone}
+    width="14"
+    height="14"
+    viewBox="0 0 14 14"
+    fill="none"
+    aria-hidden="true"
+  >
+    <path
+      d="M1.5 3.5a1 1 0 0 1 1-1h2.6l1 1.2h5.4a1 1 0 0 1 1 1v5.8a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1V3.5z"
+      fill="currentColor"
+      fillOpacity="0.15"
+      stroke="currentColor"
+      strokeWidth="1"
+    />
+  </svg>
+);
+
+const TreeJsonIcon = () => (
+  <svg
+    className="ct-fico ct-fico-mute"
+    width="14"
+    height="14"
+    viewBox="0 0 14 14"
+    fill="none"
+    aria-hidden="true"
+  >
+    <rect x="2" y="1.5" width="10" height="11" rx="1.5" fill="currentColor" fillOpacity="0.12" stroke="currentColor" strokeWidth="1" />
+    <text x="7" y="9" fontSize="6" fontFamily="ui-monospace, monospace" fill="currentColor" textAnchor="middle" fontWeight="700">{'{}'}</text>
+  </svg>
+);
+
 const ClaudeTree = ({ repo, onOpen }) => {
   // Each folder starts collapsed; clicking the row toggles. Single-shot file
   // viewer for settings*.json (the only leaves that aren't agents/skills/commands/rules).
   const [open, setOpen] = useState({ agents: false, skills: false, commands: false, rules: false });
   const [viewFile, setViewFile] = useState(null);
   const toggle = (k) => setOpen(o => ({ ...o, [k]: !o[k] }));
-  const folder = (k, label, items, kind, accent) => (
+  // `tone` is the identity color key (agents/skills/commands/rules) — drives the
+  // folder icon and the leaf arrow via .ct-fico-<tone> / .ct-arrow-<tone> classes.
+  const folder = (k, label, items, kind, tone) => (
     <>
       <div className="ct-row ct-folder" onClick={() => toggle(k)}>
         <span className={'ct-chev' + (open[k] ? ' ct-chev-open' : '')}><Icon name="chevronRight" size={9} /></span>
-        <span className="ct-emoji">📁</span>
+        <TreeFolderIcon tone={tone} />
         <span>{label}/</span>
         <span className="tm ct-count">({items.length})</span>
       </div>
@@ -60,7 +98,7 @@ const ClaudeTree = ({ repo, onOpen }) => {
         const display = kind === 'command' ? '/' + cleaned + '.md' : cleaned + suffix;
         return (
           <div key={name} className="ct-row ct-leaf" onClick={() => onOpen && onOpen(cleaned, kind)}>
-            <span className={'ct-arrow ' + accent}>→</span>
+            <span className={'ct-arrow ct-arrow-' + tone}>→</span>
             <span>{display}</span>
           </div>
         );
@@ -74,17 +112,20 @@ const ClaudeTree = ({ repo, onOpen }) => {
     <>
       <div className="cd ct-card">
         <div className="mono ct-tree">
-          <div className="ct-row ct-root"><span className="ct-emoji tc">📁</span> .claude/</div>
+          <div className="ct-row ct-root">
+            <TreeFolderIcon tone="root" />
+            <span>.claude/</span>
+          </div>
           <div className={'ct-row ct-file' + (viewFile === 'settings.json' ? ' ct-file-active' : '')} onClick={() => setViewFile(viewFile === 'settings.json' ? null : 'settings.json')}>
-            <span className="ct-emoji to">📄</span> settings.json
+            <TreeJsonIcon /><span>settings.json</span>
           </div>
           <div className={'ct-row ct-file' + (viewFile === 'settings.local.json' ? ' ct-file-active' : '')} onClick={() => setViewFile(viewFile === 'settings.local.json' ? null : 'settings.local.json')}>
-            <span className="ct-emoji to">📄</span> settings.local.json
+            <TreeJsonIcon /><span>settings.local.json</span>
           </div>
-          {folder('agents', 'agents', repo.agents || [], 'agent', 'tg')}
-          {folder('skills', 'skills', repo.skills || [], 'skill', 'tp')}
-          {folder('commands', 'commands', repo.commands || [], 'command', 'to')}
-          {folder('rules', 'rules', repo.rules || [], 'rule', 'tt')}
+          {folder('agents', 'agents', repo.agents || [], 'agent', 'agents')}
+          {folder('skills', 'skills', repo.skills || [], 'skill', 'skills')}
+          {folder('commands', 'commands', repo.commands || [], 'command', 'commands')}
+          {folder('rules', 'rules', repo.rules || [], 'rule', 'rules')}
         </div>
       </div>
       {viewFile && (
