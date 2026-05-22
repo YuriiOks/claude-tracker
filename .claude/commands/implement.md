@@ -1,14 +1,27 @@
 ---
 name: implement
-argument-hint: <spec-file-or-ticket-or-description> [--html]
+argument-hint: [quick] <spec-file-or-ticket-or-description> [--html]
 description: Implements a spec while maintaining a running implementation-notes.md (or .html with --html) that captures design decisions, intentional deviations, tradeoffs considered, and open questions for the user. Use when implementing anything non-trivial — feature work, RFC implementation, Linear ticket execution — especially after `/project-onboard` or `/master-plan` produced a spec. Keeps you in the loop on ambiguities the spec didn't cover. Pattern from @trq212 (Thariq).
+effort: medium
 ---
 
 # /implement
 
 **Spec:** $ARGUMENTS
 
-## Pre-flight (do this first)
+## Mode detection — `quick` vs full
+
+If `$ARGUMENTS` begins with `quick` (whitespace-separated, case-insensitive), strip the keyword from the spec and run in **Quick mode**:
+
+- **Skip the notes file entirely.** No implementation-notes.md is created or updated.
+- Open questions still surface, but **inline in the chat reply only** — no scaffolding, no sectioned doc.
+- Design-decision entries are not logged. Use sparingly: only for tiny scoped changes that don't deserve a notes file.
+
+Otherwise, run the full mode (default — described below).
+
+---
+
+## Pre-flight (do this first — full mode)
 
 1. **Identify the spec source.** Parse `$ARGUMENTS`:
    - File path (e.g., `docs/projects/acm/PLAN.md`, `specs/feature-x.md`) → read it
@@ -131,7 +144,8 @@ If the notes file already exists:
 - Doesn't replace `/master-plan` — use that to generate the PLAN first; `/implement` consumes it
 - Doesn't push commits or open PRs — implementation only
 - Doesn't auto-resolve open questions — surfaces them to the user instead
-- Doesn't write source code without keeping notes — the notes are non-optional for any change that qualifies as "non-trivial"
+- Doesn't write source code without keeping notes — the notes are non-optional for any change that qualifies as "non-trivial" (full mode)
+- `quick` mode is explicitly the exception — use it when the work is too small for notes
 
 ## Why this exists
 

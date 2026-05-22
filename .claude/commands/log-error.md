@@ -1,6 +1,7 @@
 ---
-argument-hint: [promote|review]
-description: Log a failed-approach entry to ERRORS.md. Usage — `/log-error` for an interactive entry, `/log-error promote` to review the auto-generated draft.
+argument-hint: [promote|review|quick]
+description: Log a failed-approach entry to ERRORS.md. Usage — `/log-error` for an interactive entry, `/log-error promote` to review the auto-generated draft, `/log-error quick` for a title-only stub.
+effort: low
 ---
 
 # /log-error
@@ -33,9 +34,29 @@ If `$ARGUMENTS` contains `promote` or `review`:
 
 ---
 
+## Mode: `quick` — title-only entry
+
+If `$ARGUMENTS` is exactly `quick` (or `quick` followed by a title):
+
+1. Ask the user (one inline prompt) for a **Title** if not provided in the args.
+2. Format the entry as a stub — title + today's date + placeholder body:
+   ```
+   ## YYYY-MM-DD — <title>
+   **Task type:** _(fill in later)_
+   **What didn't work:** _(fill in later)_
+   **What worked:** _(fill in later)_
+   **Note for next time:** _(fill in later)_
+   ```
+3. Insert into `ERRORS.md` at the top (after the `---` separator).
+4. Confirm: *"Stub logged: <title> — fill in via /log-error later."*
+
+Use this when you want to bookmark a failure quickly mid-session; come back to it later with `/log-error` (interactive) to flesh out.
+
+---
+
 ## Mode: interactive (no args)
 
-If `$ARGUMENTS` is empty (or anything other than `promote`/`review`):
+If `$ARGUMENTS` is empty (or anything other than `promote`/`review`/`quick`):
 
 1. Ask the user, one question at a time (use `AskUserQuestion` where the answer is a short choice; inline prompt otherwise):
    - **Title** (short, e.g., `"Pydantic models across Celery worker boundary"`).
