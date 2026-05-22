@@ -8,7 +8,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.schemas.inventory import FileSizes, GlobalEnvelope, PermissionsDetail
 from app.schemas.repo import Permissions, Repo, RepoStats
-from app.services.fs_utils import git_branch, list_files, list_md_files
+from app.services.fs_utils import git_branch, list_any_files, list_files, list_md_files
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ def _file_sizes(claude_dir: Path) -> FileSizes:
         fs.commands[f"/{p.stem}"] = p.stat().st_size
     for p in list_md_files(claude_dir / "rules"):
         fs.rules[p.stem] = p.stat().st_size
-    for p in list_files(claude_dir / "hooks", (".sh", ".py", ".js")):
+    for p in list_any_files(claude_dir / "hooks"):
         fs.hooks[p.name] = p.stat().st_size
     for p in list_md_files(claude_dir / "output-styles"):
         fs.output_styles[p.stem] = p.stat().st_size

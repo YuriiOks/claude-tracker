@@ -203,11 +203,11 @@ const ClaudeTree = ({ repo, onOpen }) => {
           {folder('skills',       'skills',        repo.skills || [],       'skill',   'skills')}
           {folder('commands',     'commands',      repo.commands || [],     'command', 'commands')}
           {folder('rules',        'rules',         repo.rules || [],        'rule',    'rules')}
-          {folder('hooks',        'hooks',         repo.hooks || [],        'hook',    'hooks',
+          {(repo.hooks || []).length > 0 && folder("hooks",        "hooks",         repo.hooks || [],        "hook",    "hooks",
             (n) => n /* hooks display verbatim (with extension) */)}
-          {folder('outputStyles', 'output-styles', repo.outputStyles || [], 'output',  'output')}
-          {folder('agentMemory',  'agent-memory',  repo.agentMemory || [],  'memory',  'memory',
-            (n) => n + '/MEMORY.md')}
+          {(repo.outputStyles || []).length > 0 && folder("outputStyles", "output-styles", repo.outputStyles || [], "output",  "output")}
+          {(repo.agentMemory || []).length > 0 && folder("agentMemory",  "agent-memory",  repo.agentMemory || [],  "memory",  "memory",
+            (n) => n + "/MEMORY.md")}
           {contexts.length > 0 && folder('contexts', 'contexts', contexts, 'context', 'contexts')}
         </div>
       </div>
