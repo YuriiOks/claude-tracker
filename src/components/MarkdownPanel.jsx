@@ -375,7 +375,7 @@ const MarkdownPanel = ({
   repoId,
   relPath,
   filePath,
-  defaultMode = 'code',
+  defaultMode = 'html',
   emptyMessage = 'No content',
   hideSourceToggle = false,
 }) => {

@@ -72,7 +72,6 @@ const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
           repoId={repo?.id}
           relPath={fileLabel}
           filePath={fileLabel}
-          defaultMode="code"
           emptyMessage={isCmd ? 'Command file not found in repo.' : 'Rule file not found in repo.'}
         />
       </div>
@@ -139,7 +138,6 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack }) => {
             repoId={repo?.id}
             relPath={'.claude/' + (isAgent ? 'agents' : 'skills') + '/' + name + (isAgent ? '.md' : '/SKILL.md')}
             filePath={'.claude/' + (isAgent ? 'agents' : 'skills') + '/' + name + (isAgent ? '.md' : '/SKILL.md')}
-            defaultMode="code"
             emptyMessage={isAgent ? 'Agent file not found in this repo.' : 'Skill file not found in this repo.'}
           />
 

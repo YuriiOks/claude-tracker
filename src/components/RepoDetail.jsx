@@ -136,7 +136,7 @@ const ClaudeRootFiles = ({ repo }) => {
             repoId={repo.id}
             relPath={active}
             filePath={active}
-            defaultMode={active.endsWith('.json') ? 'code' : 'markdown'}
+            defaultMode={active.endsWith('.json') ? 'code' : 'html'}
             emptyMessage={'File not found: ' + active}
           />
         </div>
