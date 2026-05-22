@@ -4,6 +4,11 @@
 # (since v2.1.85). This script just lints whatever the hook passes through.
 #
 # Falls back silently if eslint isn't available; never fails the tool call.
+#
+# v2.1.141-style terminalSequence:
+#   On lint failure (non-zero exit code from eslint itself), flash the
+#   terminal via a /dev/tty bell + OSC window-title. /dev/tty bypasses
+#   Claude's stdio capture so the visible feedback to Claude is unchanged.
 
 set -u
 
@@ -19,12 +24,28 @@ esac
 
 cd "$PROJECT" || exit 0
 
+# Run eslint with the appropriate runner. Capture exit code so we can
+# decide whether to flash the terminal.
+LINT_EXIT=0
+LINT_OUT=""
 if [ -x "node_modules/.bin/eslint" ]; then
-  node_modules/.bin/eslint --fix --no-eslintrc -c eslint.config.js "$FILE" 2>&1 | head -30 || true
+  LINT_OUT=$(node_modules/.bin/eslint --fix --no-eslintrc -c eslint.config.js "$FILE" 2>&1)
+  LINT_EXIT=$?
 elif command -v pnpm >/dev/null 2>&1 && [ -f "package.json" ]; then
-  pnpm exec eslint --fix "$FILE" 2>&1 | head -30 || true
+  LINT_OUT=$(pnpm exec eslint --fix "$FILE" 2>&1)
+  LINT_EXIT=$?
 elif command -v npx >/dev/null 2>&1; then
-  npx --no-install eslint --fix "$FILE" 2>&1 | head -30 || true
+  LINT_OUT=$(npx --no-install eslint --fix "$FILE" 2>&1)
+  LINT_EXIT=$?
 fi
 
+# Always print first 30 lines of output (so Claude sees what failed)
+printf '%s\n' "$LINT_OUT" | head -30
+
+# Flash the terminal on lint failure. /dev/tty bypasses Claude's stdio.
+if [ "$LINT_EXIT" -ne 0 ] && [ -w /dev/tty ]; then
+  printf '\a\033]0;claude-tracker: lint failed\007' > /dev/tty 2>/dev/null || true
+fi
+
+# Never fail the tool call — eslint errors are fed back as text instead.
 exit 0

@@ -14,6 +14,12 @@
 #   detaching from a background session, NOT ending real work. Skip
 #   the draft entirely so we don't spam them with mid-flight noise.
 #   If `session_crons` is present, mention it in the draft footer.
+#
+# v2.1.141-style terminalSequence:
+#   On NEW draft (hash changed), send bell + OSC window-title escape
+#   directly to /dev/tty so the terminal flashes and the title updates.
+#   Using /dev/tty (not v2.1.141's JSON output) keeps the stdout
+#   text-feedback contract clean across Claude Code versions.
 
 set -u
 
@@ -103,6 +109,11 @@ PREV_HASH=""
 
 if [ "$NEW_HASH" != "$PREV_HASH" ]; then
   printf '%s' "$NEW_HASH" > "$HASH_FILE"
+  # Terminal bell + OSC window-title — only flashes the actual terminal,
+  # bypasses Claude's stdio capture entirely. No-op in non-tty envs.
+  if [ -w /dev/tty ]; then
+    printf '\a\033]0;claude-tracker: errors drafted\007' > /dev/tty 2>/dev/null || true
+  fi
   echo "📋 ${N} failure cluster(s) detected. Draft at ERRORS.md.draft — run \`/log-error promote\` to review & commit."
 fi
 
