@@ -102,6 +102,7 @@ Open generated docs: `open docs/<slug>.html` — they're self-contained, no serv
 - Over-engineering routing — the current `useState({page, …})` switch is fine until proven otherwise.
 - Generating long markdown when HTML would communicate better (see HTML-first section above).
 - Calling backend APIs from components directly — go through `src/api.js`. It's the single fetch/WS layer; adding a new endpoint usage means adding a hook there first.
+- Installing community plugins without reading `.claude/rules/plugin-audit.md` first — hooks run arbitrary shell on your machine.
 
 ---
 

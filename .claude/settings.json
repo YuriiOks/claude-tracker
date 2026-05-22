@@ -1,6 +1,9 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "agent": "tracker-orchestrator",
+  "env": {
+    "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP": "4"
+  },
   "permissions": {
     "allow": [
       "Bash(npm run dev:*)",
@@ -48,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'cd \"${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}\" 2>/dev/null && BRANCH=$(git branch --show-current 2>/dev/null) && DEV_UP=$(lsof -ti:5173 2>/dev/null | wc -l | tr -d \" \") && DOCS=$(ls docs/*.html 2>/dev/null | wc -l | tr -d \" \") && echo \"\ud83d\udcca claude-tracker | branch: $BRANCH | vite: $([ \"$DEV_UP\" -ge 1 ] && echo running || echo stopped) | $DOCS doc(s) in docs/\"'"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start-banner.sh"]
           }
         ]
       }
@@ -60,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '\ud83d\udd01 claude-tracker invariants: 1) HTML-first docs (skill: html-docs) 2) Vanilla CSS, tokens-only (rules: vanilla-css, dual-theme) 3) data.js is the contract \u2014 grep before renaming (rules: data-shape-contract; agent: data-shape-keeper) 4) Both themes must work \u2014 light cyan == amber 5) No router lib, no state lib, no TS yet (agent: react-engineer) 6) Default agent: tracker-orchestrator \u2014 delegates to react-engineer / data-shape-keeper / doc-author'"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-compact-invariants.sh"]
           }
         ]
       }
@@ -72,7 +75,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '\u270b Before stopping: did you run npm run lint? if backend touched, did you run make test? did you eyeball both themes? did you grep src/components/ for any data.js keys you renamed?'"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-stop-checklist.sh"]
           }
         ]
       },
@@ -82,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-draft-errors.sh"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-draft-errors.sh"]
           }
         ]
       }
@@ -90,12 +93,14 @@
     "PostToolUse": [
       {
         "id": "post:edit-write:eslint",
-        "description": "Run eslint --fix on JS/JSX edits",
+        "description": "Run eslint --fix on JS/JSX/CSS edits",
         "matcher": "Edit|Write",
+        "if": "Edit(*.js)|Edit(*.jsx)|Edit(*.css)|Write(*.js)|Write(*.jsx)|Write(*.css)",
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"],
+            "continueOnBlock": true
           }
         ]
       },
@@ -106,7 +111,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-track-failures.sh"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-track-failures.sh"]
           }
         ]
       },
@@ -117,7 +122,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-ruff.sh"
+            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-ruff.sh"]
           }
         ]
       }

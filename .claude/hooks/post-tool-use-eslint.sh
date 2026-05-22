@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Auto-lint .js/.jsx/.mjs files after Edit/Write in claude-tracker.
-# Reads the edited file path from CLAUDE_TOOL_USE_INPUT_FILE_PATH (Claude Code env var).
+# Auto-lint .js/.jsx/.mjs/.cjs files after Edit/Write in claude-tracker.
+# File-extension filtering is now handled by the `if:` matcher in settings.json
+# (since v2.1.85). This script just lints whatever the hook passes through.
+#
 # Falls back silently if eslint isn't available; never fails the tool call.
 
 set -u
@@ -8,13 +10,8 @@ set -u
 FILE="${CLAUDE_TOOL_USE_INPUT_FILE_PATH:-}"
 PROJECT="${CLAUDE_PROJECT_DIR:-$HOME/Documents/Personal/claude-tracker}"
 
-# Only lint JS/JSX in this project
-case "$FILE" in
-  *.js|*.jsx|*.mjs|*.cjs) ;;
-  *) exit 0 ;;
-esac
-
-# Skip if file is outside the project (e.g., editing CLAUDE.md from a sibling repo)
+# Safety net: skip if the file isn't inside the project (e.g. sibling-repo edits).
+# The `if:` matcher in settings.json should already filter, but defense in depth.
 case "$FILE" in
   "$PROJECT"/*) ;;
   *) exit 0 ;;
