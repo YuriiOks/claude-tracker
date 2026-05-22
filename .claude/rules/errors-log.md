@@ -13,6 +13,19 @@ If an incoming task overlaps a logged failure, surface it: *"This looks like the
 - After any proposal that hit a hard invariant (vanilla CSS only, JSX only, dual theme, mock contract).
 - Not for typos, missing imports, or single-shot fixes.
 
+## Auto-draft pipeline
+
+Two hooks coordinate to produce `ERRORS.md.draft` automatically:
+
+1. **PostToolUse `post:bash:track-failures`** silently records every non-zero `Bash` exit (with a normalized `target` key) into `~/.claude/state/errors-candidates/<repo>-<session>.jsonl`.
+2. **Stop `stop:draft-errors`** reads that log at session end. For each `(target → count >= 2)` cluster, it writes a draft entry to `${CLAUDE_PROJECT_DIR}/ERRORS.md.draft` and surfaces a one-line hint. Run `/log-error promote` to review and merge.
+
+### Background-task suppression (v2.1.145)
+
+If the Stop hook stdin shows any `background_tasks` with `status: "running"`, the draft is **skipped entirely**. Rationale: the user is detaching from a background session, not concluding real work — surfacing a "you had failures!" message in that flow would be noise. Once the background task completes and the user returns to it, the next genuine Stop will draft normally.
+
+If `session_crons` is present, a footer note is appended to the draft so future readers know cron-driven sessions were in play.
+
 ## Entry format
 
 ```

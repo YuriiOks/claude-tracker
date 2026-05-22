@@ -8,11 +8,38 @@
 # multiple times within one session without new failures.
 #
 # Reads Stop stdin JSON. Always exits 0.
+#
+# v2.1.145 background-task awareness:
+#   If `background_tasks` contains any running task, the user is just
+#   detaching from a background session, NOT ending real work. Skip
+#   the draft entirely so we don't spam them with mid-flight noise.
+#   If `session_crons` is present, mention it in the draft footer.
 
 set -u
-cat >/dev/null 2>&1 || true
+
+# Capture stdin once. Empty-on-fail is fine — script still runs.
+INPUT=$(cat 2>/dev/null || echo '')
 
 command -v jq >/dev/null 2>&1 || exit 0
+
+# --- v2.1.145 background-task guard ----------------------------------
+# If any background task is still running, suppress the draft entirely.
+if [ -n "$INPUT" ]; then
+  BG_RUNNING=$(printf '%s' "$INPUT" \
+    | jq -r '[.background_tasks // [] | .[] | select(.status == "running")] | length' \
+    2>/dev/null || echo 0)
+  case "$BG_RUNNING" in
+    ""|"0") ;;
+    *) exit 0 ;;
+  esac
+
+  # session_crons goes into the draft footer if anything's present.
+  CRONS=$(printf '%s' "$INPUT" \
+    | jq -r '.session_crons // [] | length' \
+    2>/dev/null || echo 0)
+else
+  CRONS=0
+fi
 
 SESSION_ID="${CLAUDE_SESSION_ID:-unknown}"
 REPO_NAME=$(basename "${CLAUDE_PROJECT_DIR:-$PWD}")
@@ -59,6 +86,10 @@ GEN_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     "**What worked:** <fill in: the approach that landed>\n" +
     "**Note for next time:** <one line worth remembering>\n"
   '
+  if [ "${CRONS:-0}" != "0" ] && [ -n "${CRONS:-}" ]; then
+    echo ""
+    echo "<!-- Note: ${CRONS} session_cron(s) were active when this draft was generated. -->"
+  fi
 } > "$DRAFT_FILE" 2>/dev/null
 
 # De-dup the user-facing message: only echo when the draft has changed
