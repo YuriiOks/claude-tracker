@@ -46,11 +46,18 @@ function useFetch(path, fallback) {
     }
     if (!path) {
       // Caller disabled the fetch (e.g. useFile with empty args)
+      setData(fallback);
       setLoading(false);
       return;
     }
     let cancelled = false;
-    if (_readCache(path) === null) setLoading(true);
+    // Path changed - drop the previous path's payload immediately so the UI
+    // doesn't show stale data while the new fetch is in flight. Seed from the
+    // new path's own cache if one exists, otherwise fall back.
+    const pathCached = _readCache(path);
+    setData(pathCached !== null ? pathCached : fallback);
+    setError(null);
+    setLoading(pathCached === null);
     fetch(path, { headers: { Accept: 'application/json' } })
       .then(r => {
         if (!r.ok) throw new Error(`${r.status} ${path}`);
@@ -114,6 +121,37 @@ export function usePermissions() {
   return useFetch('/api/permissions', MOCK.PERMISSIONS_DETAIL);
 }
 
+// Scoped permissions editor — reads from one specific settings file
+// (committed settings.json OR gitignored settings.local.json) and
+// returns the file metadata too (path, exists, mtime) so the UI can
+// detect external edits when the user saves.
+export function useScopedPermissions(scope = "global", target = "settings_local") {
+  const fallback = { scope, target, filePath: "", fileExists: false, mtime: 0, permissions: { allow: [], deny: [], ask: [] } };
+  const qs = new URLSearchParams({ scope, target }).toString();
+  return useFetch(`/api/permissions/scoped?${qs}`, fallback);
+}
+
+// One-shot PUT that replaces a single settings file's permissions block.
+// Returns a promise that resolves to { filePath, mtime, backupPath }.
+// Throws an Error with .stale=true on 409 so the caller can refresh.
+export async function updateScopedPermissions({ scope, target, permissions, ifUnchangedSince }) {
+  const r = await fetch("/api/permissions/scoped", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope, target, permissions, ifUnchangedSince }),
+  });
+  if (r.status === 409) {
+    const err = new Error("settings file changed on disk");
+    err.stale = true;
+    throw err;
+  }
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(`save failed: ${r.status} ${text}`);
+  }
+  return r.json();
+}
+
 export function usePlugins() {
   return useFetch('/api/plugins', { plugins: {}, names: [] });
 }
@@ -165,6 +203,33 @@ export function useDashboardStats(intervalMs = 5000) {
     tick();
     return () => { cancelled = true; clearTimeout(timer); };
   }, [intervalMs]);
+  return { data, loading };
+}
+
+// Heatmap — 7×24 session-count grid. Polls every 60s (changes slowly).
+export function useHeatmap(intervalMs = 60000) {
+  // Pass browser timezone so the backend buckets sessions in local time.
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    if (USE_MOCKS) { setLoading(false); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/stats/heatmap?tz=${encodeURIComponent(tz)}`);
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) { setData(j); setLoading(false); }
+      } catch {
+        if (!cancelled) setLoading(false);
+      }
+      if (!cancelled) timer = setTimeout(tick, intervalMs);
+    };
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [intervalMs, tz]);
   return { data, loading };
 }
 
@@ -234,23 +299,25 @@ export function useActiveAgents(intervalMs = 1500) {
     if (USE_MOCKS) {
       const cycle = () => {
         const t = Date.now() % 6000;
+        const r0 = MOCK.REPOS[0];
+        const r1 = MOCK.REPOS[1] || MOCK.REPOS[0];
         setAgents([
           {
             sessionId: 'm1',
-            repo: 'jupus',
-            agent: 'ai-developer',
+            repo: r0.id,
+            agent: r0.agents?.[0] ?? 'agent',
             currentTool: ['Read', 'Edit', 'Bash'][Math.floor(t / 2000) % 3],
-            currentTarget: 'app/ai/services/chat/bedrock/stream_parser.py',
+            currentTarget: r0.agents?.[0] ? `.claude/agents/${r0.agents[0]}.md` : 'src/index.js',
             secondsSinceLastEvent: Math.floor((t % 2000) / 200),
             elapsedSec: 124,
             startedAt: new Date(Date.now() - 124000).toISOString(),
           },
           {
             sessionId: 'm2',
-            repo: 'anita',
-            agent: 'rag-architect',
+            repo: r1.id,
+            agent: r1.agents?.[1] ?? r1.agents?.[0] ?? 'agent',
             currentTool: 'Bash',
-            currentTarget: 'python eval_rag.py --model claude-haiku',
+            currentTarget: r1.agents?.[1] ? `.claude/agents/${r1.agents[1]}.md` : 'src/app.js',
             secondsSinceLastEvent: 4,
             elapsedSec: 312,
             startedAt: new Date(Date.now() - 312000).toISOString(),
@@ -289,6 +356,132 @@ export function useActiveAgents(intervalMs = 1500) {
  * Falls back to MOCK.LIVE_EVENTS_SEED + cycling LIVE_EVENTS_FUTURE when
  * VITE_USE_MOCKS=1 or both REST + WS fail.
  */
+// Repo-scoped recent events (one-shot REST, no WS — used by RepoOverview).
+// Polls every 5s so newly-arrived sessions surface without a full refresh.
+export function useRepoEvents(repoId, n = 60, intervalMs = 5000) {
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    if (!repoId) { setEvents([]); return; }
+    if (USE_MOCKS) { setEvents(MOCK.LIVE_EVENTS_SEED.filter(e => e.repo === repoId)); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/live/recent?n=${n}&repo=${encodeURIComponent(repoId)}`);
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) setEvents(j);
+      } catch {
+        /* network blip — keep last good snapshot */
+      } finally {
+        if (!cancelled) timer = setTimeout(tick, intervalMs);
+      }
+    };
+    tick();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [repoId, n, intervalMs]);
+  return events;
+}
+
+// ── Telemetry / OpenTelemetry hooks ──────────────────────────────────────────
+
+// Current telemetry config (enabled flag, ingest URL, options, event total).
+export function useTelemetryConfig() {
+  return useFetch('/api/telemetry', MOCK.TELEMETRY_CONFIG);
+}
+
+// Imperative PUT — mirrors updateScopedPermissions.
+// Returns the updated config (same shape as GET + backupPath).
+// Throws Error with .stale=true on 409.
+export async function setTelemetry({ enabled, logToolDetails, logUserPrompts, ifUnchangedSince }) {
+  const r = await fetch('/api/telemetry', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled, logToolDetails, logUserPrompts, ifUnchangedSince }),
+  });
+  if (r.status === 409) {
+    const err = new Error('telemetry settings changed on disk');
+    err.stale = true;
+    throw err;
+  }
+  if (!r.ok) {
+    const text = await r.text();
+    throw new Error(`save failed: ${r.status} ${text}`);
+  }
+  return r.json();
+}
+
+// Imperative GET for refetching after a 409 stale conflict.
+export async function getTelemetry() {
+  const r = await fetch('/api/telemetry', { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error(`${r.status} /api/telemetry`);
+  return r.json();
+}
+
+// OTel summary (counts, errors, tool latency). Polls every intervalMs.
+// Seeded with MOCK.OTEL_SUMMARY only in mock mode -- in real mode this must
+// start empty so a broken/unreachable backend can never be mistaken for a
+// live telemetry read (see loading/error below).
+export function useOtelSummary(intervalMs = 10000) {
+  const [data, setData] = useState(USE_MOCKS ? MOCK.OTEL_SUMMARY : null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(!USE_MOCKS);
+  useEffect(() => {
+    if (USE_MOCKS) { setLoading(false); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/otel/summary?hours=24');
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) { setData(j); setError(null); setLoading(false); }
+      } catch (e) {
+        if (!cancelled) { setError(e); setLoading(false); }
+      }
+      if (!cancelled) timer = setTimeout(tick, intervalMs);
+    };
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [intervalMs]);
+  return { data, error, loading };
+}
+
+// OTel metrics (cost, tokens, sessions, activeTimeSec). Polls every intervalMs.
+// Seeded with MOCK.OTEL_METRICS only in mock mode -- in real mode this must
+// start empty so a broken/unreachable backend can never be mistaken for a
+// live telemetry read (see loading/error below).
+export function useOtelMetrics(intervalMs = 10000) {
+  const [data, setData] = useState(USE_MOCKS ? MOCK.OTEL_METRICS : null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(!USE_MOCKS);
+  useEffect(() => {
+    if (USE_MOCKS) { setLoading(false); return; }
+    let cancelled = false;
+    let timer;
+    const tick = async () => {
+      try {
+        const r = await fetch('/api/otel/metrics?hours=24');
+        if (!r.ok) throw new Error(`${r.status}`);
+        const j = await r.json();
+        if (!cancelled) { setData(j); setError(null); setLoading(false); }
+      } catch (e) {
+        if (!cancelled) { setError(e); setLoading(false); }
+      }
+      if (!cancelled) timer = setTimeout(tick, intervalMs);
+    };
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [intervalMs]);
+  return { data, error, loading };
+}
+
+// Recent OTel events list (one-shot, no polling).
+export function useOtelEvents(n = 200, kind = '') {
+  const qs = kind ? `?n=${n}&kind=${encodeURIComponent(kind)}` : `?n=${n}`;
+  return useFetch(`/api/otel/events${qs}`, MOCK.OTEL_EVENTS);
+}
+
 export function useLiveEvents() {
   const [events, setEvents] = useState(USE_MOCKS ? MOCK.LIVE_EVENTS_SEED.map(e => ({ ...e })) : []);
   const tickRef = useRef(0);
@@ -297,9 +490,11 @@ export function useLiveEvents() {
   useEffect(() => {
     if (!USE_MOCKS) return undefined;
     const speedMap = { slow: 5500, normal: 2400, fast: 900 };
-    const speed = window.__tweakSpeed || 'normal';
-    const interval = speedMap[speed] || 2400;
-    const id = setInterval(() => {
+    let timer;
+    // Recursive setTimeout (not setInterval) so each tick re-reads
+    // window.__tweakSpeed for its own delay -- a speed change from the
+    // tweaks panel takes effect on the next tick instead of needing reload.
+    const tick = () => {
       tickRef.current += 1;
       const idx = (tickRef.current - 1) % MOCK.LIVE_EVENTS_FUTURE.length;
       const e = MOCK.LIVE_EVENTS_FUTURE[idx];
@@ -307,8 +502,12 @@ export function useLiveEvents() {
         const next = [...prev, { ...e, t: prev.length > 0 ? prev[prev.length - 1].t + (e.dt || 3) : 0 }];
         return next.slice(-60);
       });
-    }, interval);
-    return () => clearInterval(id);
+      const speed = window.__tweakSpeed || 'normal';
+      timer = setTimeout(tick, speedMap[speed] || 2400);
+    };
+    const initialSpeed = window.__tweakSpeed || 'normal';
+    timer = setTimeout(tick, speedMap[initialSpeed] || 2400);
+    return () => clearTimeout(timer);
   }, []);
 
   // Real backend: cold-start + WS.

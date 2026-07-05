@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>claude-tracker — Monitoring Gap Analysis &amp; Implementation Plan (2026-05-31)</title>
+  <style>
+/* ============================================================
+   "kb-restructure" design language v2
+   Warm cream gradient · amber+teal radial accents · glassmorphism
+   Fraunces serif (with system fallback) · italic+accent emphasis
+   ============================================================ */
+
+:root {
+  --bg-app:  linear-gradient(155deg, #F4E3CC 0%, #F7EFE3 60%, #FBFAF7 100%);
+  --bg-aux1: radial-gradient(46% 40% at 12% 8%,  rgba(232,159,76,.32), transparent 72%);
+  --bg-aux2: radial-gradient(42% 38% at 92% 96%, rgba(30,95,116,.16),  transparent 72%);
+  --bg-base: #EDE7DD;
+
+  --text-1: #1A1F2E;
+  --text-2: rgba(26,31,46,.72);
+  --text-3: rgba(26,31,46,.50);
+  --text-4: rgba(26,31,46,.36);
+  --hairline: rgba(26,31,46,.10);
+
+  --chip-bg:       rgba(255,255,255,.45);
+  --glass-bg:     rgba(251,250,247,.42);
+  --glass-border: rgba(255,255,255,.55);
+  --glass-shadow: 0 18px 50px rgba(120,75,30,.14), inset 0 1px 0 rgba(255,255,255,.65);
+
+  --accent:      #E89F4C;
+  --accent-ink:  #a86b25;
+  --accent-2:    #D45D5D;
+  --accent-grad: linear-gradient(135deg, #F2C94C 0%, #E89F4C 55%, #D45D5D 110%);
+  --teal:  #1E5F74;
+  --plum:  #5C3D7A;
+  --green: #3F7D5C;
+  --coral: #D45D5D;
+  --gold:  #F2C94C;
+
+  --font-display: "Fraunces", "Iowan Old Style", "Times New Roman", Georgia, serif;
+  --font-body:    -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --s-1: 4px;  --s-2: 8px;   --s-3: 12px;  --s-4: 16px;
+  --s-5: 24px; --s-6: 32px;  --s-7: 48px;  --s-8: 64px;
+  --radius-1: 4px;  --radius-2: 12px;  --radius-3: 18px;  --radius-4: 20px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { background: var(--bg-base); }
+
+body {
+  font-family: var(--font-body);
+  color: var(--text-1);
+  background: var(--bg-aux1), var(--bg-aux2), var(--bg-app);
+  min-height: 100vh;
+  padding: 56px 32px 96px;
+  line-height: 1.5;
+}
+
+.stack { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 36px; }
+
+header.hd {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 32px; flex-wrap: wrap;
+}
+
+.sec-h {
+  display: flex; align-items: baseline; justify-content: space-between;
+  padding: 0 2px 14px;
+  border-bottom: 1px solid var(--hairline);
+  margin-bottom: 8px;
+}
+.sec-h .meta { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+
+h1 { font-family: var(--font-display); font-weight: 500; font-size: 48px; line-height: 1.05; letter-spacing: -.022em; }
+h1 em { font-style: italic; font-weight: 400; color: var(--accent); }
+h2 { font-family: var(--font-display); font-weight: 500; font-size: 28px; letter-spacing: -.015em; }
+h2 em { font-style: italic; color: var(--text-3); font-weight: 400; }
+h3 { font-family: var(--font-display); font-weight: 500; font-size: 20px; margin: 0; }
+h3 em { font-style: italic; color: var(--text-3); font-weight: 400; }
+h4 {
+  font-family: var(--font-body); font-weight: 600; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--text-3);
+  margin: 0 0 8px;
+}
+
+p { color: var(--text-2); line-height: 1.55; max-width: 760px; }
+p.lede { font-size: 16px; }
+a { color: var(--accent-ink); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+a:hover { border-bottom-color: var(--accent); }
+ul, ol { padding-left: 24px; color: var(--text-2); line-height: 1.7; }
+li + li { margin-top: 4px; }
+small { color: var(--text-3); font-size: 12px; }
+strong { color: var(--text-1); font-weight: 600; }
+
+.underline-word {
+  background: linear-gradient(180deg, transparent 65%, rgba(232,159,76,.45) 65%);
+  padding: 0 2px; border-radius: 3px;
+}
+
+.meta-strip {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3); letter-spacing: .04em;
+}
+
+.glass {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-4);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  padding: 24px 28px;
+}
+
+.pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  background: var(--chip-bg); color: var(--text-2); border: 1px solid var(--hairline);
+}
+.pill .hdot { width: 6px; height: 6px; border-radius: 99px; background: currentColor; }
+.pill.db    { background: rgba(63,125,92,.14);  color: var(--green);      border-color: rgba(63,125,92,.30); }
+.pill.md    { background: rgba(30,95,116,.14);  color: var(--teal);       border-color: rgba(30,95,116,.30); }
+.pill.both  { background: rgba(232,159,76,.18); color: var(--accent-ink); border-color: rgba(232,159,76,.36); }
+.pill.defer { background: rgba(212,93,93,.12);  color: var(--coral);      border-color: rgba(212,93,93,.30); }
+.pill.keep  { background: rgba(92,61,122,.14);  color: var(--plum);       border-color: rgba(92,61,122,.30); }
+.pill.ok    { background: rgba(63,125,92,.14);  color: var(--green);      border-color: rgba(63,125,92,.30); }
+.pill.warn  { background: rgba(242,201,76,.18); color: #8a6210;           border-color: rgba(242,201,76,.40); }
+.pill.bad   { background: rgba(212,93,93,.12);  color: var(--coral);      border-color: rgba(212,93,93,.30); }
+
+.badge-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.summary .glass { padding: 18px 20px; }
+.summary .lab { font-size: 10.5px; letter-spacing: .10em; text-transform: uppercase; color: var(--text-3); font-weight: 600; }
+.summary .num { font-family: var(--font-display); font-weight: 600; font-size: 34px; letter-spacing: -.02em; margin-top: 6px; }
+.summary .sub { font-size: 11px; color: var(--text-3); margin-top: 4px; }
+
+table.kb { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+table.kb thead th {
+  text-align: left; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--text-3); font-weight: 600;
+  padding: 10px 12px; border-bottom: 1px solid var(--hairline);
+}
+table.kb tbody td { padding: 12px 12px; border-bottom: 1px dashed var(--hairline); vertical-align: top; }
+table.kb tbody tr:last-child td { border-bottom: none; }
+table.kb tr:hover td { background: rgba(255,255,255,.25); }
+
+table:not(.kb) { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+table:not(.kb) th, table:not(.kb) td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--hairline); vertical-align: top; }
+table:not(.kb) th { font-weight: 600; color: var(--text-3); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 2px solid var(--hairline); }
+table:not(.kb) tr:hover td { background: rgba(255,255,255,.25); }
+
+code { font-family: var(--font-mono); font-size: .92em; background: rgba(255,255,255,.35); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--hairline); color: var(--text-1); }
+pre { font-family: var(--font-mono); font-size: 13px; line-height: 1.55; background: #1A1F2E; color: rgba(255,255,255,.85); padding: 16px; border-radius: 12px; overflow-x: auto; margin: 12px 0; }
+pre code { background: none; border: none; padding: 0; color: inherit; }
+.tok-k  { color: #F2C94C; }
+.tok-s  { color: rgba(255,255,255,.65); }
+.tok-c  { color: rgba(255,255,255,.40); font-style: italic; }
+.tok-n  { color: #E89F4C; }
+
+.signoff {
+  background: var(--accent-grad); color: #fff; padding: 28px 32px;
+  border-radius: 18px; box-shadow: 0 20px 40px -16px rgba(232,159,76,.45);
+}
+.signoff h3 { color: #fff; }
+.signoff p  { color: rgba(255,255,255,.92); }
+
+.callout {
+  background: rgba(255,255,255,.30); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 12px 16px; margin: 12px 0;
+}
+.callout--teal  { border-left-color: var(--teal); }
+.callout--coral { border-left-color: var(--coral); }
+.callout--green { border-left-color: var(--green); }
+
+/* doc-specific */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; }
+.two-col ul { margin: 0; }
+
+.phase-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+.phase-card {
+  background: var(--glass-bg); border: 1px solid var(--glass-border);
+  border-radius: 16px; box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(20px) saturate(160%); -webkit-backdrop-filter: blur(20px) saturate(160%);
+  padding: 20px 24px;
+}
+.phase-card.full { grid-column: 1 / -1; }
+.phase-card .phase-label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em;
+  text-transform: uppercase; font-weight: 700; color: var(--text-4); margin-bottom: 4px;
+}
+.phase-card h3 { font-size: 17px; }
+.phase-card .success-crit {
+  margin-top: 10px; padding: 8px 12px; background: rgba(63,125,92,.10);
+  border-radius: 8px; border-left: 3px solid var(--green);
+  font-size: 12px; color: var(--green); font-family: var(--font-mono);
+}
+
+.option-cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.option-card { padding: 16px 18px; border-radius: 12px; border: 1.5px solid var(--hairline); background: rgba(255,255,255,.22); }
+.option-card.recommended { border-color: var(--accent); background: rgba(232,159,76,.08); }
+.option-card .opt-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .10em; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+.option-card h3 { font-size: 16px; margin-bottom: 6px; }
+
+details summary {
+  cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: .04em;
+  color: var(--text-3); padding: 8px 0;
+  border-top: 1px solid var(--hairline); margin-top: 8px; user-select: none;
+}
+details summary::before { content: "▶"; font-size: 9px; color: var(--accent); }
+details[open] summary::before { content: "▼"; }
+
+@media (max-width: 900px) {
+  body { padding: 32px 16px 64px; }
+  .summary { grid-template-columns: repeat(2, 1fr); }
+  h1 { font-size: 36px; }
+  h2 { font-size: 24px; }
+  .phase-grid, .two-col, .option-cards { grid-template-columns: 1fr; }
+  .phase-card.full { grid-column: auto; }
+}
+
+@media print {
+  body { background: white; padding: 0; }
+  .glass, .phase-card, .option-card {
+    background: white; box-shadow: none; border-color: var(--hairline);
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  .signoff { box-shadow: none; background: #f5c97a; }
+  .signoff h3, .signoff p { color: var(--text-1) !important; }
+  details > *:not(summary) { display: block !important; }
+}
+  </style>
+</head>
+<body>
+<div class="stack">
+
+  <!-- HEADER -->
+  <header class="hd">
+    <div>
+      <p class="meta-strip" style="margin-bottom: 10px;">Decision Record · 2026-05-31</p>
+      <h1>Monitoring <em>gap analysis</em> &amp; plan.</h1>
+      <p class="lede" style="margin-top: 12px;">
+        What we consume today vs. Claude Code's official
+        <span class="underline-word">OpenTelemetry stream</span>
+        and Claude-Code-Agent-Monitor — and a phased plan to close the gaps.
+      </p>
+    </div>
+    <div class="badge-row">
+      <span class="pill"><span class="hdot"></span>5 phases</span>
+      <span class="pill"><span class="hdot"></span>3-bucket triage</span>
+      <span class="pill ok"><span class="hdot"></span>SQLite — no new container (Ph. 1–2)</span>
+    </div>
+  </header>
+
+  <!-- SUMMARY KPIs -->
+  <section class="summary">
+    <div class="glass">
+      <div class="lab">Ingestion channels today</div>
+      <div class="num">1</div>
+      <div class="sub">JSONL poll + watchfiles tail</div>
+    </div>
+    <div class="glass">
+      <div class="lab">OTel references in codebase</div>
+      <div class="num">0</div>
+      <div class="sub">Zero — the strategic gap</div>
+    </div>
+    <div class="glass">
+      <div class="lab">New containers needed (Ph. 1–2)</div>
+      <div class="num">0</div>
+      <div class="sub">SQLite + new table; revisit at Ph. 3</div>
+    </div>
+    <div class="glass">
+      <div class="lab">Intentional out-of-scope items</div>
+      <div class="num">4</div>
+      <div class="sub">Alerting, spawn, multi-i18n, config-edit-UI</div>
+    </div>
+  </section>
+
+  <p class="meta-strip">
+    Sources: <code>backend/</code> codebase · <code>MASTER_PLAN.md §11</code> · Claude Code OTel docs · CCAM feature set · git log 2026-05-31
+  </p>
+
+  <!-- §0 EXEC SUMMARY -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>0. Executive summary</h2>
+      <span class="meta">Read this first</span>
+    </div>
+    <ul>
+      <li>claude-tracker today is mature: FastAPI + async SQLAlchemy + <strong>single-file SQLite</strong>, JSONL ingest (<code>~/.claude/projects/**/*.jsonl</code>) via polling + <code>watchfiles</code> live tail over WebSocket, per-repo <code>.claude/</code> scanning, a drag-drop permissions editor that <strong>writes</strong> <code>settings.json</code>, and 11 React routes.</li>
+      <li>The <span class="underline-word">single biggest gap is strategic</span>: we reverse-engineer everything from JSONL and completely ignore Claude Code's <strong>first-party OpenTelemetry stream</strong> (<code>CLAUDE_CODE_ENABLE_TELEMETRY=1</code>). OTel gives version-stable, attributed metrics + structured events that JSONL parsing cannot reliably reconstruct.</li>
+      <li>Most feature gaps vs. Claude-Code-Agent-Monitor (CCAM) are <strong>deliberate scope boundaries, not oversights</strong> — MASTER_PLAN §11 explicitly declines push/email alerting, config-editing-from-UI, multi-surface clients. This doc triages gaps into three buckets so the plan stays aligned with project intent.</li>
+      <li><strong>Recommended thrust:</strong> adopt OTel events-first, metrics-second; surface error/latency/compaction/attributed-cost data unavailable from JSONL today; keep SQLite for Phase 1, with a clearly-gated container upgrade path.</li>
+      <li><strong>Task-5 answer up front:</strong> <em>No new DB container is required for Phase 1.</em> A container becomes justified only as a de-risking/scaling choice for OTel metrics (see §6). This is a recommendation pending explicit go-ahead — nothing is being built in this pass.</li>
+      <li><strong>Status as of 2026-05-31:</strong> Phases 1–2 (OTel events ingestion + derived panels) and Phase 3 (OTel metrics ingestion) are now implemented on SQLite with no new container — Option A confirmed viable through Phase 3.</li>
+    </ul>
+  </section>
+
+  <!-- §1 CURRENT STATE -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>1. Current state <em>· consumes vs. doesn't</em></h2>
+      <span class="meta">Sources + gaps</span>
+    </div>
+    <div class="two-col">
+      <div>
+        <h4>Consumes today (real sources)</h4>
+        <ul>
+          <li><code>~/.claude/projects/**/*.jsonl</code> — startup full ingest + 30s incremental + <code>watchfiles</code> live tail → SQLite (<code>session_summary</code>, <code>live_event</code>, WIP <code>session_hour</code>, <code>subagent_call</code>)</li>
+          <li>Per-repo + global <code>.claude/</code> folders — agents, skills, commands, rules, hooks, output-styles, memory, <code>settings.json</code>/<code>settings.local.json</code> (permissions, plugins, mcpServers), <code>.mcp.json</code></li>
+          <li><code>~/.claude/plugins/installed_plugins.json</code> (names only); <code>~/.claude.json</code> (mcpServers only)</li>
+          <li>Git via subprocess (<code>git diff</code>, <code>status --porcelain</code>, branch); <code>gh pr list</code>; Linear GraphQL (needs key); Langfuse (needs keys, only on explicit call — not auto-ingested)</li>
+          <li>JSONL parser emits 5 event kinds: <code>command</code>, <code>delegate</code>, <code>skill</code>, <code>tool</code>, <code>permission</code>. <code>cache_read_input_tokens</code> deliberately excluded from token/cost totals.</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Does NOT consume — the gaps</h4>
+        <ul>
+          <li><strong>OpenTelemetry / OTLP</strong> — zero references to <code>CLAUDE_CODE_ENABLE_TELEMETRY</code> / <code>OTEL_*</code> anywhere in the codebase. No OTLP receiver, no metrics endpoint, no time-series store.</li>
+          <li><code>~/.claude/cost-tracker.log</code> — <code>settings.cost_log</code> property exists but <strong>nothing reads it</strong> (dead property; cost comes from JSONL <code>usage</code>/<code>subagent_call</code> only)</li>
+          <li>No API-error / retry tracking, no per-tool latency/duration, no compaction tracking, no commit/PR/LOC metrics</li>
+          <li>No active-time metric, no edit accept/reject-by-language</li>
+          <li>No auth (localhost-only CORS), no alerting, no retention/rollup beyond <code>session_hour</code>, no daily/weekly rollup tables. Frontend has no tests.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- §2 SOURCE-OF-TRUTH MATRIX -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>2. Source-of-truth matrix <em>· prevents double-counting</em></h2>
+      <span class="meta">3 channels · 10 concerns</span>
+    </div>
+    <p style="margin-bottom: 14px;"><strong>OTel is additive, not a replacement.</strong> JSONL stays the source for transcript content and rich tool targets — OTel only carries those when <code>OTEL_LOG_TOOL_DETAILS=1</code>, which is off by default and has privacy implications.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Concern</th>
+          <th>JSONL (have)</th>
+          <th>OTel events/metrics (proposed)</th>
+          <th>Hooks (optional)</th>
+          <th>Owner of truth</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Session list / transcript content</strong></td>
+          <td><span class="pill ok"><span class="hdot"></span>full content, tool targets, messages</span></td>
+          <td><span class="pill warn"><span class="hdot"></span>partial (OTEL_LOG_TOOL_DETAILS=1 only)</span></td>
+          <td>lifecycle pings only</td>
+          <td><strong>JSONL</strong> (content)</td>
+        </tr>
+        <tr>
+          <td><strong>Token usage</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>usage fields, cacheRead excluded</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>token.usage per model/subagent, all types</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong> (attributed)</td>
+        </tr>
+        <tr>
+          <td><strong>Cost</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>derived / estimated</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>cost.usage + api_request.cost_usd per model/query_source/agent/skill</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong> (estimate); Langfuse/Console for billing-accurate</td>
+        </tr>
+        <tr>
+          <td><strong>Tool calls + latency</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>tool name + target, no duration</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>tool_result (duration_ms, success, error_type)</span></td>
+          <td>Pre/PostToolUse timing</td>
+          <td><strong>OTel</strong> (latency/success)</td>
+        </tr>
+        <tr>
+          <td><strong>API errors / retries</strong></td>
+          <td><span class="pill bad"><span class="hdot"></span>not captured</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>api_error, api_retries_exhausted</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Compaction</strong></td>
+          <td><span class="pill bad"><span class="hdot"></span>not captured</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>compaction (pre/post tokens, auto/manual)</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Permission decisions</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>permission kind (lossy)</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>tool_decision, code_edit_tool.decision (by language), permission_mode_changed</span></td>
+          <td>permission Notification</td>
+          <td><strong>OTel</strong> (permission)</td>
+        </tr>
+        <tr>
+          <td><strong>LOC / commits / PRs</strong></td>
+          <td><span class="pill bad"><span class="hdot"></span>not captured</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>lines_of_code.count (added/removed), commit.count, pull_request.count</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Active time</strong></td>
+          <td><span class="pill bad"><span class="hdot"></span>not captured</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>active_time.total (user vs cli)</span></td>
+          <td>—</td>
+          <td><strong>OTel</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Session lifecycle / awaiting-input</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>inferred (lossy)</span></td>
+          <td><span class="pill warn"><span class="hdot"></span>session.count; no SessionEnd event</span></td>
+          <td><span class="pill ok"><span class="hdot"></span>SessionStart/Stop/SubagentStop/Notification (~0ms)</span></td>
+          <td><strong>Hooks</strong> if adopted, else inferred</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- §3 GAP ANALYSIS — THREE BUCKETS -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>3. Gap analysis <em>· three buckets</em></h2>
+      <span class="meta">Plan · Declined · Out-of-surface</span>
+    </div>
+
+    <!-- 3a -->
+    <h3 style="margin-top: 8px; margin-bottom: 6px;">
+      3a. Genuine, intent-aligned gaps
+      <span class="pill ok" style="font-size: 11px; vertical-align: middle; margin-left: 8px;"><span class="hdot"></span>the plan</span>
+    </h3>
+    <table>
+      <thead>
+        <tr><th>Gap</th><th>Why it matters</th><th>Best source</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>No OTel ingestion</strong></td>
+          <td>Version-stable, attributed data that cannot be reconstructed from JSONL</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel (events first)</span></td>
+        </tr>
+        <tr>
+          <td>No API-error / retry visibility</td>
+          <td>Can't see auth failures, rate limits, quota exhaustion</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel api_error / api_retries_exhausted</span></td>
+        </tr>
+        <tr>
+          <td>No per-tool latency</td>
+          <td>Can't show p50/p95 tool duration or identify slow tools</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel tool_result.duration_ms</span></td>
+        </tr>
+        <tr>
+          <td>No compaction tracking</td>
+          <td>Token totals lose pre-compaction baseline; <code>/compact</code> invisible</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel compaction event</span></td>
+        </tr>
+        <tr>
+          <td>Cost is estimated / unattributed</td>
+          <td>Can't break down cost by model / subagent / skill</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel cost.usage (+ Langfuse for billing-accurate)</span></td>
+        </tr>
+        <tr>
+          <td>No LOC / commit / PR metrics</td>
+          <td>No productivity/output view</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel lines_of_code / commit / pull_request</span></td>
+        </tr>
+        <tr>
+          <td>No edit accept/reject rate by language</td>
+          <td>Can't see how often Claude's edits are kept</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel code_edit_tool.decision</span></td>
+        </tr>
+        <tr>
+          <td>No active-time metric</td>
+          <td>No engagement / utilization signal</td>
+          <td><span class="pill md"><span class="hdot"></span>OTel active_time.total</span></td>
+        </tr>
+        <tr>
+          <td><code>cost-tracker.log</code> dead property</td>
+          <td>Confusing dead code in settings schema</td>
+          <td><span class="pill both"><span class="hdot"></span>Wire it or remove</span></td>
+        </tr>
+        <tr>
+          <td>No frontend tests; no log rotation; no retention job</td>
+          <td>Hardening debt (MASTER_PLAN B1/B5)</td>
+          <td><span class="pill both"><span class="hdot"></span>Internal</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 3b -->
+    <h3 style="margin-top: 28px; margin-bottom: 6px;">
+      3b. Deliberately out of scope per MASTER_PLAN §11
+      <span class="pill defer" style="font-size: 11px; vertical-align: middle; margin-left: 8px;"><span class="hdot"></span>declined by design</span>
+    </h3>
+    <p style="margin-bottom: 10px;">Revisit only if the trigger condition is met — not on a whim.</p>
+    <table>
+      <thead>
+        <tr><th>CCAM feature</th><th>§11 status</th><th>Revisit trigger</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Web-Push / Slack / email alerting</td>
+          <td><span class="pill defer"><span class="hdot"></span>Explicitly declined</span></td>
+          <td>Only if cost/error thresholds become a real need; even then prefer a local OS notification</td>
+        </tr>
+        <tr>
+          <td>Spawn / "Run Claude" from dashboard</td>
+          <td><span class="pill defer"><span class="hdot"></span>Explicitly declined</span></td>
+          <td>Not recommended — dashboard is observational</td>
+        </tr>
+        <tr>
+          <td>Editing Claude config from UI (CCAM CC-Config Explorer)</td>
+          <td><span class="pill defer"><span class="hdot"></span>Explicitly declined</span></td>
+          <td>Permissions editor sets a narrow precedent (see §7); keep writes minimal and explicit</td>
+        </tr>
+        <tr>
+          <td>Multi-language i18n</td>
+          <td><span class="pill defer"><span class="hdot"></span>Explicitly declined</span></td>
+          <td>Single-user tool; reconsider only at publication (Phase F)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 3c -->
+    <h3 style="margin-top: 28px; margin-bottom: 6px;">
+      3c. Different product surface
+      <span class="pill keep" style="font-size: 11px; vertical-align: middle; margin-left: 8px;"><span class="hdot"></span>do not plan</span>
+    </h3>
+    <p>Electron desktop app, VS Code extension, Python statusline, plugin marketplace, PWA/service-worker — these make CCAM a <em>distribution</em> product. claude-tracker is a single-user local dashboard. These categories do not overlap and none are roadmapped. <em>(The Claude/Tabby mascot page is explicitly requested and is deferred to Phase 5 — not in this bucket.)</em></p>
+
+    <!-- head-to-head -->
+    <h3 style="margin-top: 28px; margin-bottom: 8px;">Head-to-head: claude-tracker vs CCAM</h3>
+    <p style="margin-bottom: 10px;">OTel is the channel <span class="underline-word">neither currently uses well</span> — our differentiator opportunity. CCAM's collection is hooks-first; ours is JSONL-first.</p>
+    <table>
+      <thead>
+        <tr><th>Dimension</th><th>claude-tracker (today)</th><th>CCAM</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Collection method</td><td>JSONL poll + watchfiles; OTel proposed</td><td>Hooks POST + JSONL (hooks-first)</td></tr>
+        <tr><td>Database</td><td>SQLite (single file)</td><td>SQLite</td></tr>
+        <tr><td>Real-time</td><td>WebSocket (watchfiles tail)</td><td>WebSocket</td></tr>
+        <tr><td>Cost model</td><td>Estimated from usage fields</td><td>Configurable pricing rules</td></tr>
+        <tr><td>Error tracking</td><td><span class="pill bad"><span class="hdot"></span>None</span></td><td>Watchdog panel</td></tr>
+        <tr><td>Compaction</td><td><span class="pill bad"><span class="hdot"></span>None</span></td><td>Baseline-preserving</td></tr>
+        <tr>
+          <td>Subagent attribution</td>
+          <td><span class="pill warn"><span class="hdot"></span>Partial — agentType from .meta.json</span></td>
+          <td>Reconstructs full tool-call timeline from subagents/*.jsonl</td>
+        </tr>
+        <tr><td>Health score</td><td><span class="pill bad"><span class="hdot"></span>None</span></td><td>Composite ring</td></tr>
+        <tr><td>Workflow viz</td><td>Delegation graph + heatmap</td><td>11 D3 sections</td></tr>
+        <tr><td>MCP server</td><td>None</td><td>25-tool</td></tr>
+        <tr><td>Auth</td><td>None (localhost-only CORS)</td><td>None</td></tr>
+        <tr>
+          <td>OTel ingestion</td>
+          <td><span class="pill bad"><span class="hdot"></span>None — the gap</span></td>
+          <td><span class="pill bad"><span class="hdot"></span>None — shared gap</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- §4 IMPLEMENTATION PLAN -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>4. Implementation plan <em>· phased with verifiable success criteria</em></h2>
+      <span class="meta">5 phases</span>
+    </div>
+    <p style="margin-bottom: 20px;">Each phase is independent of the next. Start Phase 1 with a spike; do not build until the spike passes.</p>
+
+    <div class="phase-grid">
+
+      <div class="phase-card">
+        <div class="phase-label">Phase 1</div>
+        <h3>OTel events ingestion <em style="color: var(--green); font-size: 13px; font-style: normal;">— events-first, lowest risk, highest value</em></h3>
+        <ul style="margin-top: 10px; font-size: 13px;">
+          <li><strong>Spike first:</strong> confirm Claude Code's Node OTel SDK emits clean <code>http/json</code> logs to a local endpoint — flag as "verify before building"</li>
+          <li>Add FastAPI receiver <code>POST /v1/logs</code> (OTLP/HTTP json). Decode OTel logRecords → append-only SQLite table <code>otel_event(id, event_name, ts, session_id, prompt_id, attrs JSON, repo)</code></li>
+          <li>Add UI action "Enable telemetry" that writes the <code>env</code> block into <code>~/.claude/settings.json</code> (reuse <code>permissions_writer</code> infra): <code>CLAUDE_CODE_ENABLE_TELEMETRY=1</code>, <code>OTEL_LOGS_EXPORTER=otlp</code>, <code>OTEL_EXPORTER_OTLP_PROTOCOL=http/json</code>, <code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:8765/v1/logs</code></li>
+          <li>Privacy defaults: leave <code>OTEL_LOG_TOOL_DETAILS</code> / <code>OTEL_LOG_USER_PROMPTS</code> OFF; expose as opt-in toggles</li>
+        </ul>
+        <div class="success-crit">Success: after enabling + a real claude session, otel_event rows appear; an "Errors" panel lists api_error/api_retries_exhausted; make test green.</div>
+      </div>
+
+      <div class="phase-card">
+        <div class="phase-label">Phase 2</div>
+        <h3>Derived event panels <em style="color: var(--text-3); font-size: 13px; font-style: normal;">— no new ingestion</em></h3>
+        <ul style="margin-top: 10px; font-size: 13px;">
+          <li>Errors feed: <code>api_error</code> / <code>internal_error</code> / <code>api_retries_exhausted</code></li>
+          <li>Tool latency: p50/p95 from <code>tool_result.duration_ms</code></li>
+          <li>Compaction timeline: pre/post tokens per <code>compaction</code> event</li>
+          <li>Edit accept/reject by language: <code>code_edit_tool.decision</code></li>
+          <li>Skill / plugin / MCP lifecycle panels</li>
+        </ul>
+        <div class="success-crit">Success: each panel renders in BOTH themes; npm run lint + npm run build clean.</div>
+      </div>
+
+      <div class="phase-card">
+        <div class="phase-label">Phase 3</div>
+        <h3>OTel metrics ingestion <em style="color: var(--coral); font-size: 13px; font-style: normal;">— deferred; DB container decision bites here</em></h3>
+        <ul style="margin-top: 10px; font-size: 13px;">
+          <li>Decision point: FastAPI owns OTLP decode + delta→cumulative accumulation (Option A) OR add OTel Collector container as de-risking layer (Option B). See §6.</li>
+          <li>Metrics: <code>cost.usage</code>, <code>token.usage</code>, <code>lines_of_code</code>, <code>commit.count</code>, <code>pull_request.count</code>, <code>active_time.total</code></li>
+          <li><strong>Key hazard:</strong> default temporality is <code>delta</code> — naive storage gives wrong cumulative totals. Must implement correct accumulation before shipping.</li>
+        </ul>
+        <div class="success-crit">Success: dashboard cost card matches OTel within tolerance of JSONL-derived; LOC/commit/PR cards populate.</div>
+      </div>
+
+      <div class="phase-card">
+        <div class="phase-label">Phase 4 — optional</div>
+        <h3>Hook ingestion channel <em style="color: var(--text-3); font-size: 13px; font-style: normal;">— lifecycle / awaiting-input</em></h3>
+        <ul style="margin-top: 10px; font-size: 13px;">
+          <li><code>POST /api/hooks/event</code> + installer writing SessionStart/Stop/SubagentStop/Notification/UserPromptSubmit hooks</li>
+          <li>Gives ~0ms latency + a real working/waiting/completed/error state machine — the one CCAM strength OTel doesn't cover (no <code>SessionEnd</code> event in OTel)</li>
+          <li>Frame as optional; deepens the write-to-config precedent (see §7)</li>
+        </ul>
+        <div class="success-crit">Success: Live page shows awaiting-input state transitions in real time.</div>
+      </div>
+
+      <div class="phase-card full">
+        <div class="phase-label">Phase 5 — lower priority</div>
+        <h3>UI richness + cross-cutting hardening</h3>
+        <div class="two-col" style="margin-top: 10px;">
+          <ul style="font-size: 13px;">
+            <li>Configurable model-pricing table (CRUD) so cost stays accurate as models change</li>
+            <li>Health-score panel</li>
+            <li>Richer Workflow viz: error-propagation, concurrency timeline (extend Graph)</li>
+            <li>Tool-aware session-detail renderers</li>
+          </ul>
+          <ul style="font-size: 13px;">
+            <li>First frontend tests (Vitest)</li>
+            <li>Structured JSON logging + rotation (MASTER_PLAN B5)</li>
+            <li>Retention / rollup job</li>
+            <li>Resolve dead <code>cost-tracker.log</code> property (wire or remove)</li>
+            <li><strong>Mascot page</strong> — a Claude/Tabby-style status mascot reflecting live session state (per user request 2026-05-31; deferred to this phase, not built yet)</li>
+          </ul>
+        </div>
+        <div class="success-crit">Success: make test passes including frontend; no orphan settings properties; log rotation confirmed after 7 days.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- §6 DB CONTAINER DECISION -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>6. DB container decision <em>· Task-5 answer</em></h2>
+      <span class="meta">Three options — one recommended</span>
+    </div>
+    <p style="margin-bottom: 16px;">The axis is <strong>implementation risk, not scale.</strong> The principal risk with OTel metrics is delta-temporality accumulation — not data volume.</p>
+
+    <div class="option-cards">
+      <div class="option-card recommended">
+        <div class="opt-label">Option A — RECOMMENDED for Phase 1–2</div>
+        <h3>SQLite-first, no new container</h3>
+        <p style="font-size: 13px; margin-top: 6px; max-width: none;">Honors MASTER_PLAN §5 ("SQLite locked, no service to run"). Add <code>otel_event</code> (and later <code>otel_metric</code>) tables. FastAPI owns OTLP/json decode — for events this is append-only and trivial. For metrics (Phase 3), FastAPI must implement delta-temporality accumulation correctly.</p>
+      </div>
+      <div class="option-card">
+        <div class="opt-label">Option B — DE-RISKING for Phase 3 metrics</div>
+        <h3>Add OTel Collector container</h3>
+        <p style="font-size: 13px; margin-top: 6px; max-width: none;">A lightweight, stateless <code>otel/opentelemetry-collector</code> container receives OTLP from Claude Code, handles decode + batching + delta→cumulative, and forwards a normalized stream to FastAPI. Adds one container; no persistent DB. Justification is risk reduction, not scale.</p>
+      </div>
+      <div class="option-card">
+        <div class="opt-label">Option C — ONLY on real escalation</div>
+        <h3>Full time-series stack</h3>
+        <p style="font-size: 13px; margin-top: 6px; max-width: none;">OTel Collector + VictoriaMetrics (single-binary, low-ops) or Prometheus + optional Grafana. Justified only if high-cardinality/retention outgrows SQLite, or Phase E multi-device lands. Prefer feeding collector → FastAPI → existing React UI over standing up Grafana.</p>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Option</th><th>New containers</th><th>Ops cost</th><th>Honors §5?</th><th>When to choose</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A — SQLite-first</strong></td>
+          <td><span class="pill ok"><span class="hdot"></span>0</span></td>
+          <td>Zero</td>
+          <td><span class="pill ok"><span class="hdot"></span>Yes</span></td>
+          <td>Phases 1–2 (now)</td>
+        </tr>
+        <tr>
+          <td><strong>B — OTel Collector</strong></td>
+          <td><span class="pill warn"><span class="hdot"></span>1 (stateless)</span></td>
+          <td>Low</td>
+          <td><span class="pill warn"><span class="hdot"></span>Borderline</span></td>
+          <td>Phase 3, if delta-accumulation proves brittle in FastAPI</td>
+        </tr>
+        <tr>
+          <td><strong>C — Full TS stack</strong></td>
+          <td><span class="pill bad"><span class="hdot"></span>2–3</span></td>
+          <td>Medium</td>
+          <td><span class="pill bad"><span class="hdot"></span>No</span></td>
+          <td>Only if SQLite capacity or multi-device confirmed</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout" style="margin-top: 16px;">
+      <strong>Option B docker-compose snippet (reference only — not built yet):</strong>
+<pre style="margin-top: 8px;"><code><span class="tok-c"># add to docker-compose.yml if/when Phase 3 selects Option B</span>
+<span class="tok-n">otel-collector</span>:
+  image: <span class="tok-s">otel/opentelemetry-collector:latest</span>
+  ports:
+    - <span class="tok-s">"4317:4317"</span>   <span class="tok-c"># OTLP gRPC</span>
+    - <span class="tok-s">"4318:4318"</span>   <span class="tok-c"># OTLP HTTP</span>
+  volumes:
+    - <span class="tok-s">./otel-collector.yaml:/etc/otel/config.yaml</span>
+  command: [<span class="tok-s">"--config=/etc/otel/config.yaml"</span>]</code></pre>
+    </div>
+  </section>
+
+  <!-- §7 READ-ONLY DEVIATION NOTE -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>7. Read-only deviation note</h2>
+      <span class="meta">Existing precedent</span>
+    </div>
+    <div class="callout callout--teal">
+      <p style="max-width: none;">MASTER_PLAN §11 lists "editing Claude config from the UI" as out-of-scope, but the existing <strong>permissions editor already writes settings.json</strong> — so writing a telemetry <code>env</code> block (Phase 1) and optionally installing hooks (Phase 4) <em>extends an existing narrow precedent</em> rather than breaking new ground. Keep writes explicit, minimal, and backed-up.</p>
+      <p style="margin-top: 8px; max-width: none;"><strong>Operational caveat:</strong> env changes only take effect on the next <code>claude</code> launch, not running sessions. Surface this clearly in the UI.</p>
+    </div>
+  </section>
+
+  <!-- §8 RISKS -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>8. Risks &amp; spike-before-build list</h2>
+      <span class="meta">5 items</span>
+    </div>
+    <div class="callout callout--coral">
+      <strong>Verify before committing Phase 1 design:</strong> confirm Claude Code emits clean <code>http/json</code> OTLP (chosen to avoid protobuf dependency) to a local endpoint. Do not assume — spike first.
+    </div>
+    <ul style="margin-top: 12px;">
+      <li><strong>Delta temporality default</strong> — OTel metrics use <code>delta</code> by default; naive storage of each push gives wrong cumulative totals. Phase 3 must implement correct accumulation before shipping any metric cards.</li>
+      <li><strong>OTel tool targets are privacy-gated</strong> — events carry rich tool targets only with <code>OTEL_LOG_TOOL_DETAILS=1</code> (off by default). OTel <em>complements</em>, not replaces, JSONL. Do not reduce JSONL collection.</li>
+      <li><strong>Cost from OTel is an estimate</strong> — the official docs state this explicitly. Langfuse/Console remain billing-truth. Label cost figures accordingly in the UI.</li>
+      <li><strong>Bind the OTLP receiver to localhost</strong> — consider an <code>OTEL_EXPORTER_OTLP_HEADERS</code> bearer token for the local endpoint; at minimum ensure the listener rejects non-loopback connections.</li>
+    </ul>
+  </section>
+
+  <!-- §9 APPENDIX -->
+  <section class="glass">
+    <div class="sec-h">
+      <h2>9. Appendix <em>· OTel reference (verbatim names)</em></h2>
+      <span class="meta">Metrics · Events · Env vars</span>
+    </div>
+
+    <details open>
+      <summary>Metrics</summary>
+      <table style="margin-top: 10px; font-size: 12px;">
+        <thead><tr><th>Metric name</th><th>Key attributes</th></tr></thead>
+        <tbody>
+          <tr><td><code>claude_code.session.count</code></td><td>start_type</td></tr>
+          <tr><td><code>claude_code.lines_of_code.count</code></td><td>type=added/removed</td></tr>
+          <tr><td><code>claude_code.pull_request.count</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.commit.count</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.cost.usage</code></td><td>model, query_source=main/subagent/auxiliary, agent.name, skill.name, plugin.name, mcp_server.name</td></tr>
+          <tr><td><code>claude_code.token.usage</code></td><td>type=input/output/cacheRead/cacheCreation + same attribution as cost</td></tr>
+          <tr><td><code>claude_code.code_edit_tool.decision</code></td><td>tool_name, decision=accept/reject, source, language</td></tr>
+          <tr><td><code>claude_code.active_time.total</code></td><td>type=user/cli</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details open>
+      <summary>Events (logRecords)</summary>
+      <table style="margin-top: 10px; font-size: 12px;">
+        <thead><tr><th>Event name</th><th>Key attributes</th></tr></thead>
+        <tbody>
+          <tr><td><code>claude_code.user_prompt</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.tool_result</code></td><td>tool_name, tool_use_id, success, duration_ms, error_type</td></tr>
+          <tr><td><code>claude_code.api_request</code></td><td>model, cost_usd, duration_ms, input/output/cache tokens, request_id</td></tr>
+          <tr><td><code>claude_code.api_error</code></td><td>status_code, error, attempt</td></tr>
+          <tr><td><code>claude_code.api_retries_exhausted</code></td><td>total_attempts, total_retry_duration_ms</td></tr>
+          <tr><td><code>claude_code.tool_decision</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.permission_mode_changed</code></td><td>from_mode, to_mode, trigger</td></tr>
+          <tr><td><code>claude_code.auth</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.mcp_server_connection</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.internal_error</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.plugin_loaded</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.skill_activated</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.compaction</code></td><td>trigger=auto/manual, pre_tokens, post_tokens</td></tr>
+          <tr><td><code>claude_code.hook_registered</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.hook_execution_start</code></td><td>—</td></tr>
+          <tr><td><code>claude_code.hook_execution_complete</code></td><td>—</td></tr>
+        </tbody>
+      </table>
+    </details>
+
+    <details>
+      <summary>Environment variables</summary>
+      <table style="margin-top: 10px; font-size: 12px;">
+        <thead><tr><th>Variable</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>CLAUDE_CODE_ENABLE_TELEMETRY</code></td><td>Set to <code>1</code> to enable</td></tr>
+          <tr><td><code>OTEL_METRICS_EXPORTER</code></td><td>otlp | prometheus | console | none</td></tr>
+          <tr><td><code>OTEL_LOGS_EXPORTER</code></td><td>otlp | console | none</td></tr>
+          <tr><td><code>OTEL_EXPORTER_OTLP_PROTOCOL</code></td><td>grpc | http/protobuf | <strong>http/json</strong> (recommended — no protobuf dep)</td></tr>
+          <tr><td><code>OTEL_EXPORTER_OTLP_ENDPOINT</code></td><td>e.g. <code>http://localhost:8765</code></td></tr>
+          <tr><td><code>OTEL_EXPORTER_OTLP_LOGS_ENDPOINT</code></td><td>Override logs-only endpoint</td></tr>
+          <tr><td><code>OTEL_EXPORTER_OTLP_HEADERS</code></td><td>Bearer token for local endpoint security</td></tr>
+          <tr><td><code>OTEL_METRIC_EXPORT_INTERVAL</code></td><td>Default 60000ms</td></tr>
+          <tr><td><code>OTEL_LOGS_EXPORT_INTERVAL</code></td><td>Default 5000ms</td></tr>
+          <tr><td><code>OTEL_METRICS_INCLUDE_SESSION_ID</code></td><td>Cardinality toggle</td></tr>
+          <tr><td><code>OTEL_METRICS_INCLUDE_ACCOUNT_UUID</code></td><td>Cardinality toggle</td></tr>
+          <tr><td><code>OTEL_METRICS_INCLUDE_VERSION</code></td><td>Cardinality toggle</td></tr>
+          <tr><td><code>OTEL_METRICS_INCLUDE_ENTRYPOINT</code></td><td>Cardinality toggle</td></tr>
+          <tr><td><code>OTEL_LOG_USER_PROMPTS</code></td><td>Privacy gate — off by default; opt-in only</td></tr>
+          <tr><td><code>OTEL_LOG_TOOL_DETAILS</code></td><td>Privacy gate — off by default; enables rich tool targets in events</td></tr>
+        </tbody>
+      </table>
+      <p style="font-size: 12px; margin-top: 10px;"><strong>Temporality default:</strong> <code>delta</code> — Phase 3 metrics accumulation must account for this.</p>
+    </details>
+  </section>
+
+  <!-- SIGNOFF -->
+  <section class="signoff">
+    <h3>Recommendation — awaiting explicit go-ahead</h3>
+    <p style="margin-top: 8px;">
+      Ship <strong>Phases 1–2 on SQLite (Option A)</strong> with no new container.
+      Start with the <code>http/json</code> OTLP spike to confirm Claude Code emits clean events to a local listener.
+      If the spike passes, add <code>POST /v1/logs</code> + <code>otel_event</code> table + the "Enable telemetry" UI action (reuse <code>permissions_writer</code>).
+      Revisit Option B (OTel Collector) only at Phase 3, and only if delta-temporality accumulation proves brittle in FastAPI.
+    </p>
+    <p style="margin-top: 10px; font-size: 14px; opacity: .78;">
+      Nothing is being built in this analysis pass — no schema changes, no new containers, no settings writes. Explicit go-ahead needed before Phase 1 begins.
+    </p>
+  </section>
+
+  <p class="meta-strip" style="text-align: center; margin-top: 4px;">
+    docs/monitoring-gap-analysis-2026-05-31.html · generated 2026-05-31 · source: backend/ codebase + MASTER_PLAN.md + Claude Code OTel docs
+  </p>
+
+</div>
+</body>
+</html>

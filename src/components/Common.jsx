@@ -60,15 +60,18 @@ export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent =
     return points.map(v => Math.max(0.05, Math.min(0.95, v / max)));
   })();
   const W = 118, H = 38;
-  const step = W / (pts.length - 1);
-  const ys = pts.map(p => H - p * (H - 2) - 1);
-  const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+  // A single-point series has no interval to divide by — duplicate it so
+  // the geometry degenerates into a flat line instead of Infinity/NaN.
+  const gpts = pts.length > 1 ? pts : [pts[0] ?? 0.5, pts[0] ?? 0.5];
+  const step = W / (gpts.length - 1);
+  const ys = gpts.map(p => H - p * (H - 2) - 1);
+  const linePath = gpts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
   const areaPath = `${linePath} L${W},${H} L0,${H} Z`;
-  const lastX = (pts.length - 1) * step;
+  const lastX = (gpts.length - 1) * step;
   const lastY = ys[ys.length - 1];
 
   let pathLen = 0;
-  for (let i = 1; i < pts.length; i++) {
+  for (let i = 1; i < gpts.length; i++) {
     const dx = step;
     const dy = ys[i] - ys[i - 1];
     pathLen += Math.sqrt(dx * dx + dy * dy);
@@ -138,11 +141,15 @@ export const Tag = ({ children, accent = 'cyan' }) => (
   <span className="ctag" style={{ '--accent': `var(--${accent})` }}>{children}</span>
 );
 
-export const InlineSpark = ({ seed, accent = 'cyan', width = 56, height = 14, showDot = false }) => {
-  const pts = sparkPoints(seed, 14, 0.55);
-  const step = width / (pts.length - 1);
-  const ys = pts.map(p => height - p * (height - 2) - 1);
-  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
+export const InlineSpark = ({ seed, accent = 'cyan', width = 56, height = 14, showDot = false, points }) => {
+  const rawPts = (points && points.length > 0) ? points : sparkPoints(seed, 14, 0.55);
+  const maxVal = Math.max(...rawPts, 1);
+  const pts = rawPts.map(v => Math.max(0.05, Math.min(0.95, v / maxVal)));
+  // Guard the single-point case the same way Metric's sparkline does.
+  const spts = pts.length > 1 ? pts : [pts[0] ?? 0.5, pts[0] ?? 0.5];
+  const step = width / (spts.length - 1);
+  const ys = spts.map(p => height - p * (height - 2) - 1);
+  const path = spts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
   const areaPath = `${path} L${width.toFixed(1)},${height} L0,${height} Z`;
   const gradId = `inlSpark-${seed}-${accent}`;
   const lastX = (width).toFixed(1);

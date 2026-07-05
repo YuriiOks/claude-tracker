@@ -1,6 +1,8 @@
 """GET /api/integrations/{repo_id} — Linear ticket + GitHub PR for a repo's branch."""
 from __future__ import annotations
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 
 from app.services.fs_utils import git_branch
@@ -24,12 +26,12 @@ async def integrations_for_repo(repo_id: str) -> dict:
     from pathlib import Path
 
     repo_path = Path(target.path.replace("~", str(Path.home()), 1)).expanduser()
-    branch = target.branch or git_branch(repo_path)
+    branch = target.branch or await asyncio.to_thread(git_branch, repo_path)
     return {
         "repo": repo_id,
         "branch": branch,
         "linear": await linear_ticket_for_branch(branch),
-        "githubPr": github_pr_for_branch(repo_path, branch),
+        "githubPr": await asyncio.to_thread(github_pr_for_branch, repo_path, branch),
     }
 
 

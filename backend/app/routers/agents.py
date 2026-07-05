@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter, defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
@@ -11,7 +11,7 @@ from sqlalchemy import select
 import app.db as db_mod
 from app.config import get_settings
 from app.models.session_event import LiveEventRow
-from app.models.session_summary import SessionSummaryRow
+from app.models.subagent_call import SubagentCallRow
 from app.schemas.agent import AgentMeta
 from app.services.fs_utils import read_frontmatter
 
@@ -57,7 +57,11 @@ async def list_agents() -> dict[str, AgentMeta]:
     calls_today: Counter[str] = Counter()
     tokens_per_agent: dict[str, list[int]] = defaultdict(list)
 
+    today_start = datetime.now(tz=UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = datetime.now(tz=UTC) - timedelta(days=7)
+
     async with sm() as session:
+        # Delegate edges from live events
         rows = (await session.execute(select(LiveEventRow))).scalars().all()
         for ev in rows:
             payload = json.loads(ev.payload) if ev.payload else {}
@@ -66,13 +70,15 @@ async def list_agents() -> dict[str, AgentMeta]:
                 tgt = payload.get("to", "")
                 if tgt:
                     delegate_map[src].add(tgt)
-        today = datetime.now(tz=UTC).date()
-        summaries = (await session.execute(select(SessionSummaryRow))).scalars().all()
-        for s in summaries:
-            ts = s.started_at if s.started_at.tzinfo else s.started_at.replace(tzinfo=UTC)
-            if ts.date() == today and s.agent:
-                calls_today[s.agent] += 1
-                tokens_per_agent[s.agent].append(s.tokens)
+
+        # Per-agent stats from SubagentCallRow
+        sc_rows = (await session.execute(select(SubagentCallRow))).scalars().all()
+        for sc in sc_rows:
+            ts = sc.started_at if sc.started_at.tzinfo else sc.started_at.replace(tzinfo=UTC)
+            if ts >= today_start:
+                calls_today[sc.agent_type] += 1
+            if ts >= week_start:
+                tokens_per_agent[sc.agent_type].append(sc.tokens)
 
     for name, m in meta.items():
         m["delegates"] = sorted(delegate_map.get(name, set()))

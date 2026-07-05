@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -18,19 +19,41 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# Rough USD per million tokens (input, output). Falls back to sonnet rates.
-_PRICING = {
-    "claude-opus-4-7": (15.0, 75.0),
-    "claude-opus-4-5": (15.0, 75.0),
-    "claude-opus-4": (15.0, 75.0),
-    "claude-opus-3-5": (15.0, 75.0),
-    "claude-sonnet-4-5": (3.0, 15.0),
-    "claude-sonnet-4": (3.0, 15.0),
-    "claude-sonnet-3-7": (3.0, 15.0),
-    "claude-sonnet-3-5": (3.0, 15.0),
-    "claude-haiku-4-5": (0.80, 4.0),
-    "claude-haiku-3-5": (0.80, 4.0),
-    "claude-haiku-3": (0.25, 1.25),
+# Rough USD per million tokens (input, output), keyed by (family, version).
+# NOTE: this is a static table -- it needs periodic updating against real
+# Anthropic pricing (see anthropic.com/pricing). Entries for the "claude-5"
+# tier (Fable 5 / Mythos 5) are a conservative assumption -- priced at the
+# Opus tier pending official published rates -- not authoritative figures.
+_PRICING: dict[tuple[str, str], tuple[float, float]] = {
+    ("opus", "4-7"): (15.0, 75.0),
+    ("opus", "4-5"): (15.0, 75.0),
+    ("opus", "4-1"): (15.0, 75.0),
+    ("opus", "4-8"): (15.0, 75.0),
+    ("opus", "4"): (15.0, 75.0),
+    ("opus", "3-5"): (15.0, 75.0),
+    ("opus", "3"): (15.0, 75.0),
+    ("sonnet", "4-5"): (3.0, 15.0),
+    ("sonnet", "4"): (3.0, 15.0),
+    ("sonnet", "3-7"): (3.0, 15.0),
+    ("sonnet", "3-5"): (3.0, 15.0),
+    ("sonnet", "3"): (3.0, 15.0),
+    ("sonnet", "5"): (3.0, 15.0),
+    ("haiku", "4-5"): (0.80, 4.0),
+    ("haiku", "3-5"): (0.80, 4.0),
+    ("haiku", "3"): (0.25, 1.25),
+    # Claude 5 family -- see NOTE above.
+    ("fable", "5"): (15.0, 75.0),
+    ("mythos", "5"): (15.0, 75.0),
+}
+# Fallback for a recognized family whose specific version is not yet listed
+# above (e.g. a brand-new dated release) -- keeps the right cost tier instead
+# of silently dropping to the global default.
+_FAMILY_DEFAULT: dict[str, tuple[float, float]] = {
+    "opus": (15.0, 75.0),
+    "sonnet": (3.0, 15.0),
+    "haiku": (0.80, 4.0),
+    "fable": (15.0, 75.0),
+    "mythos": (15.0, 75.0),
 }
 _DEFAULT_PRICE = (3.0, 15.0)
 
@@ -57,6 +80,7 @@ class SessionSummary:
     edits: int = 0
     file_path: str = ""
     file_mtime: float = 0.0
+    hourly_tokens: dict = field(default_factory=dict)
 
 
 def _ts(obj: dict) -> datetime | None:
@@ -111,18 +135,28 @@ def _content_text(content) -> str:  # noqa: ANN001
     return ""
 
 
+# Matches "claude-{family}-{version}" (current naming, e.g. "claude-opus-4-5")
+# and legacy "claude-{version}-{family}" (e.g. "claude-3-opus-20240229" or
+# "claude-3-5-sonnet-20241022") -- the family word can appear before or after
+# the version digits, so we search for it instead of assuming an order.
+_MODEL_RE = re.compile(
+    r"claude-(?:(?P<pre>\d[\d-]*)-)?(?P<family>opus|sonnet|haiku|fable|mythos)(?:-(?P<post>\d[\d-]*))?"
+)
+
+
 def _price(model: str | None) -> tuple[float, float]:
     if not model:
         return _DEFAULT_PRICE
     m = model.lower()
-    # Exact match first.
-    if m in _PRICING:
-        return _PRICING[m]
-    # Prefix match handles date-versioned names like "claude-opus-4-5-20251101".
-    for key, price in _PRICING.items():
-        if m.startswith(key):
-            return price
-    return _DEFAULT_PRICE
+    match = _MODEL_RE.search(m)
+    if not match:
+        return _DEFAULT_PRICE
+    family = match.group("family")
+    version_raw = match.group("pre") or match.group("post") or ""
+    # Strip a trailing release-date suffix (e.g. "-20251101") -- dates are
+    # 8-digit segments, real version numbers are 1-2 digits.
+    version = "-".join(seg for seg in version_raw.split("-") if seg and len(seg) < 6)
+    return _PRICING.get((family, version)) or _FAMILY_DEFAULT.get(family, _DEFAULT_PRICE)
 
 
 _EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
@@ -149,6 +183,8 @@ def parse_jsonl(
     cost = 0.0
     edits = 0
     model_seen: str | None = None
+    last_assistant_msg_id: str | None = None
+    hourly_tokens: dict = {}
 
     try:
         fh = path.open("r", encoding="utf-8", errors="replace")
@@ -193,24 +229,41 @@ def parse_jsonl(
             elif t == "assistant":
                 msg = obj.get("message", {}) or {}
                 model_seen = msg.get("model") or model_seen
+                msg_id = msg.get("id")
                 usage = msg.get("usage", {}) or {}
-                in_tok = int(usage.get("input_tokens", 0) or 0)
-                out_tok = int(usage.get("output_tokens", 0) or 0)
-                cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-                # Headline tokens = generation work (input + output + cache_creation).
-                # cache_read is excluded because long-lived sessions can re-read the same
-                # 80k-token cached system prompt thousands of times — a single 8h session
-                # can easily accumulate 670M cache_read tokens against just 1.3M output,
-                # inflating BOTH the token count and the cost by ~100x in a way that
-                # doesn't reflect actual generation effort. We exclude it from both so
-                # the dashboard tells a consistent story: tokens × avg-rate ≈ cost.
-                tokens += in_tok + out_tok + cache_write
-                input_price, output_price = _price(model_seen)
-                cost += (in_tok / 1_000_000) * input_price
-                cost += (out_tok / 1_000_000) * output_price
-                # Cache write (one-time) is 25% more expensive than input.
-                cost += (cache_write / 1_000_000) * input_price * 1.25
+                # Claude Code splits one logical assistant turn (thinking / text /
+                # each tool_use block) across multiple JSONL lines that all share
+                # the same message.id and all repeat the SAME consolidated,
+                # non-delta usage object. Only fold usage in once per unique
+                # message.id -- otherwise tokens/cost get summed once per split
+                # line (measured ~7x inflation vs. a deduped baseline on a real
+                # transcript). Lines with no id (older format) always count,
+                # since we cannot tell whether they duplicate a prior turn.
+                is_new_turn = msg_id is None or msg_id != last_assistant_msg_id
+                if msg_id is not None:
+                    last_assistant_msg_id = msg_id
+                if is_new_turn:
+                    in_tok = int(usage.get("input_tokens", 0) or 0)
+                    out_tok = int(usage.get("output_tokens", 0) or 0)
+                    cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                    # Headline tokens = generation work (input + output + cache_creation).
+                    # cache_read_input_tokens is intentionally excluded from both tokens
+                    # and cost (not even bound to a variable): long-lived sessions can
+                    # re-read the same 80k-token cached system prompt thousands of times --
+                    # a single 8h session can easily accumulate 670M cache_read tokens
+                    # against just 1.3M output, inflating BOTH figures by ~100x in a way
+                    # that does not reflect actual generation effort. Excluding it from
+                    # both keeps the dashboard story consistent: tokens × avg-rate ≈ cost.
+                    turn_tokens = in_tok + out_tok + cache_write
+                    tokens += turn_tokens
+                    if ts is not None and turn_tokens > 0:
+                        hour_key = ts.replace(minute=0, second=0, microsecond=0)
+                        hourly_tokens[hour_key] = hourly_tokens.get(hour_key, 0) + turn_tokens
+                    input_price, output_price = _price(model_seen)
+                    cost += (in_tok / 1_000_000) * input_price
+                    cost += (out_tok / 1_000_000) * output_price
+                    # Cache write (one-time) is 25% more expensive than input.
+                    cost += (cache_write / 1_000_000) * input_price * 1.25
 
                 content = msg.get("content", [])
                 if isinstance(content, list) and ts is not None:
@@ -221,7 +274,7 @@ def parse_jsonl(
                         ti = c.get("input", {}) or {}
                         if tool in _EDIT_TOOLS:
                             edits += 1
-                        if tool == "Task":
+                        if tool in ("Task", "Agent"):
                             target = ti.get("subagent_type") or ti.get("description", "")
                             events.append(
                                 ParsedEvent(
@@ -302,6 +355,7 @@ def parse_jsonl(
         file_path=str(path),
         file_mtime=mtime,
     )
+    summary.hourly_tokens = hourly_tokens
     return summary, events
 
 

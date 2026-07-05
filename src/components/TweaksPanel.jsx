@@ -104,7 +104,7 @@ export function TweaksPanel({ title = 'Tweaks', children }) {
   return (
     <>
       <style>{TWEAKS_STYLE}</style>
-      <div ref={dragRef} className="twk-panel" style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+      <div ref={dragRef} className="twk-panel" style={{ right: PAD, bottom: PAD }}>
         <div className="twk-hd" onMouseDown={onDragStart}>
           <b>{title}</b>
           <button className="twk-x" onClick={() => setOpen(false)}>✕</button>
@@ -143,7 +143,7 @@ export function TweakRadio({ label, value, options, onChange }) {
   const idx = Math.max(0, opts.findIndex((o) => o.value === value));
   const n = opts.length;
   const valueRef = useRef(value);
-  valueRef.current = value;
+  useEffect(() => { valueRef.current = value; }, [value]);
 
   const segAt = (clientX) => {
     const r = trackRef.current.getBoundingClientRect();

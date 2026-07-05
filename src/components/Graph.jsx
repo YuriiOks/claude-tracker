@@ -11,6 +11,7 @@ const Graph = ({ repos, onOpen }) => {
   const FILE_SIZES = useFileSizes();
 
   const { initialNodes, edges } = useMemo(() => {
+    if (!repo) return { initialNodes: [], edges: [] };
     const ns = [];
     const agentMeta = AGENT_META;
 
@@ -23,7 +24,7 @@ const Graph = ({ repos, onOpen }) => {
 
     const SIZES = FILE_SIZES;
     const sizeFor = (kind, name, fallbackBytes) => {
-      const bytes = SIZES[kind]?.[name] ?? fallbackBytes;
+      const bytes = SIZES[kind + 's']?.[name] ?? fallbackBytes;
       const k = Math.sqrt(Math.max(0.2, bytes / 1000));
       // File-size-based ranges: [min, max, sqrt-multiplier]
       // Kept small so the central repo node (r=34) reads as the focus.
@@ -268,6 +269,15 @@ const Graph = ({ repos, onOpen }) => {
       {label}
     </span>
   );
+
+  if (!repo) {
+    return (
+      <>
+        <PageHead title="Delegation graph" sub="Force-directed map of how agents, skills, commands and rules connect inside each repo." />
+        <div className="empty">No repos tracked yet — the delegation graph needs at least one repo to render.</div>
+      </>
+    );
+  }
 
   return (
     <>

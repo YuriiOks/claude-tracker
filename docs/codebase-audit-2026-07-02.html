@@ -1,0 +1,932 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>claude-tracker &mdash; Full Codebase Audit (2026-07-02)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root {
+    --bg:        #FAF8F5;
+    --surface:   #F0EDE8;
+    --surface-2: #E3DACC;
+    --border:    #D4CFC7;
+    --text:      #2C2825;
+    --muted:     #8A837A;
+    --accent:    #B8602A;
+    --clay:      #D97757;
+    --olive:     #788C5D;
+    --sky:       #6A8CAF;
+    --oat:       #E3DACC;
+    --slate:     #141413;
+    --ok:        #5C8C5A;
+    --bad:       #B14D45;
+    --warn:      #C46A3D;
+    --radius:    6px;
+    --shadow:    0 1px 3px rgba(20,20,19,.06), 0 2px 8px rgba(20,20,19,.05);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 48px 28px 88px; }
+
+  h1 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 2rem; font-weight: 600;
+    letter-spacing: -0.015em; line-height: 1.15;
+    color: var(--slate); margin-bottom: .25em;
+  }
+  h2 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 1.3rem; font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--slate);
+    margin: 2.4em 0 .6em;
+    padding-bottom: .3em;
+    border-bottom: 1px solid var(--border);
+  }
+  h2 .count { font-family: ui-monospace, monospace; font-size: .6em; font-weight: 600; color: var(--muted); margin-left: .5em; vertical-align: middle; text-transform: none; letter-spacing: 0; }
+  h3 {
+    font-family: ui-serif, Georgia, "Iowan Old Style", serif;
+    font-size: 1.05rem; font-weight: 600;
+    color: var(--accent);
+    margin: 0;
+  }
+
+  p { margin-bottom: .75em; max-width: 76ch; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(184,96,42,.3); }
+  a:hover { border-bottom-color: var(--accent); }
+
+  code, .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .84em;
+  }
+  code {
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 2em 0; }
+
+  .page-header { border-bottom: 2px solid var(--border); padding-bottom: 1.4em; margin-bottom: 1.6em; }
+  .page-eyebrow {
+    font-family: ui-monospace, monospace;
+    font-size: .75em; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: .4em;
+  }
+  .page-meta { display: flex; gap: 1em; align-items: center; flex-wrap: wrap; margin-top: .7em; font-size: .82em; color: var(--muted); }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 99px; font-size: .72em; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .pill-warn { background: rgba(196,106,61,.12); color: var(--warn); border: 1px solid rgba(196,106,61,.3); }
+  .pill-ok   { background: rgba(92,140,90,.12);  color: var(--ok);   border: 1px solid rgba(92,140,90,.3); }
+  .pill-bad  { background: rgba(177,77,69,.12);  color: var(--bad);  border: 1px solid rgba(177,77,69,.3); }
+
+  .jumpnav { display: flex; gap: .5em; flex-wrap: wrap; margin-top: 1.1em; font-family: ui-monospace, monospace; font-size: .78em; }
+  .jumpnav a { border: 1px solid var(--border); background: var(--surface); padding: 3px 11px; border-radius: 99px; color: var(--text); }
+  .jumpnav a:hover { border-color: var(--accent); color: var(--accent); }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 1.4em 0; }
+  .kpi { background: white; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; border-top: 3px solid var(--muted); box-shadow: var(--shadow); }
+  .kpi.k-critical { border-top-color: var(--bad); }
+  .kpi.k-high     { border-top-color: var(--warn); }
+  .kpi.k-medium   { border-top-color: var(--sky); }
+  .kpi.k-low      { border-top-color: var(--olive); }
+  .kpi .kpi-num { font-family: ui-serif, Georgia, serif; font-size: 1.9rem; font-weight: 700; color: var(--slate); line-height: 1; }
+  .kpi .kpi-lab { font-size: .72em; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+  @media (max-width: 700px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  .gt-strip { display: flex; gap: 10px; flex-wrap: wrap; margin: 1em 0 1.4em; }
+  .gt-item { display: flex; align-items: center; gap: 6px; font-family: ui-monospace, monospace; font-size: .78em; background: var(--surface); border: 1px solid var(--border); border-radius: 99px; padding: 5px 12px; }
+  .gt-item b { font-weight: 700; }
+  .gt-ok   b { color: var(--ok); }
+  .gt-bad  b { color: var(--bad); }
+  .gt-warn b { color: var(--warn); }
+
+  .headline {
+    font-family: ui-serif, Georgia, serif;
+    font-size: 1.06rem; line-height: 1.55;
+    background: var(--surface-2);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    margin: 1.2em 0 1.6em;
+    color: var(--slate);
+    max-width: none;
+  }
+
+  .legend { display: flex; gap: 1.3em; align-items: center; flex-wrap: wrap; margin: .4em 0 1.1em; font-size: .82em; color: var(--muted); }
+  .legend .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .dot.critical { background: var(--bad); }
+  .dot.high     { background: var(--warn); }
+  .dot.medium   { background: var(--sky); }
+  .dot.low      { background: var(--olive); }
+
+  .filter-row { display: flex; gap: 8px; margin: .2em 0 1.3em; flex-wrap: wrap; }
+  .filter-btn { font-family: ui-monospace, monospace; font-size: .74em; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: white; color: var(--muted); cursor: pointer; }
+  .filter-btn.active { background: var(--slate); color: var(--oat); border-color: var(--slate); }
+
+  table.findings { width: 100%; border-collapse: collapse; font-size: .87em; margin: .6em 0 1.6em; background: white; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+  table.findings th { text-align: left; background: var(--oat); font-weight: 600; font-size: .74em; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); padding: 9px 12px; border-bottom: 1px solid var(--border); }
+  table.findings td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.findings tr:last-child td { border-bottom: none; }
+  table.findings tr:hover td { background: rgba(212,207,199,.2); }
+  table.findings td.id { font-family: ui-monospace, monospace; font-weight: 700; white-space: nowrap; border-left: 3px solid var(--border); }
+  tr[data-sev="critical"] td.id { border-left-color: var(--bad); color: var(--bad); }
+  tr[data-sev="high"]     td.id { border-left-color: var(--warn); color: var(--warn); }
+  tr[data-sev="medium"]   td.id { border-left-color: var(--sky); color: var(--sky); }
+  tr[data-sev="low"]      td.id { border-left-color: var(--olive); color: var(--olive); }
+  table.findings td.area { font-size: .84em; color: var(--muted); white-space: nowrap; }
+  table.findings td.loc code { display: inline-block; white-space: nowrap; margin: 1px 0; }
+  table.findings td.fix { color: var(--text); }
+  table.findings td.fix span.arrow { color: var(--accent); font-weight: 700; margin-right: 4px; }
+
+  .theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 14px; margin: 1em 0 1.6em; }
+  .callout { background: var(--surface); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; }
+  .callout strong { display: block; margin-bottom: .3em; color: var(--slate); font-family: ui-serif, Georgia, serif; font-size: 1.02em; }
+  .callout .refs { font-family: ui-monospace, monospace; font-size: .76em; color: var(--muted); margin-top: 8px; }
+
+  .phase { background: white; border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; margin: 1em 0; box-shadow: var(--shadow); }
+  .phase-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px; margin-bottom: .7em; }
+  .effort { font-family: ui-monospace, monospace; font-size: .72em; font-weight: 600; color: white; background: var(--slate); padding: 3px 10px; border-radius: 99px; }
+  table.phase { width: 100%; border-collapse: collapse; font-size: .87em; }
+  table.phase td { padding: 7px 4px; border-bottom: 1px dashed var(--border); vertical-align: top; }
+  table.phase tr:last-child td { border-bottom: none; }
+  table.phase td.chk { width: 20px; color: var(--border); font-family: ui-monospace, monospace; }
+  table.phase td.ids { font-family: ui-monospace, monospace; font-size: .82em; color: var(--muted); white-space: nowrap; text-align: right; }
+
+  .method-block { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; font-size: .88em; color: var(--muted); line-height: 1.6; }
+  .method-block strong { color: var(--text); display: block; margin-bottom: .3em; }
+  .method-block p { max-width: none; margin-bottom: .6em; }
+
+  @media (max-width: 680px) {
+    main { padding: 28px 16px 60px; }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.15rem; }
+    table.findings { font-size: .8em; }
+  }
+
+  @media print {
+    main { padding: 16px; }
+    .filter-row { display: none; }
+    tr[data-sev] { display: table-row !important; }
+    .phase, .callout, table.findings { break-inside: avoid; }
+    h2 { break-after: avoid; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <div class="page-header">
+    <div class="page-eyebrow">claude-tracker &middot; Full Codebase Audit</div>
+    <h1>Full Codebase Audit</h1>
+    <div class="page-meta">
+      <span>2026-07-02</span>
+      <span>&middot;</span>
+      <span>25-agent parallel review &mdash; frontend + backend + docs &mdash; cross-verified</span>
+      <span>&middot;</span>
+      <span class="pill pill-warn">Audit only &mdash; no fixes applied yet</span>
+    </div>
+    <p style="margin-top:1em; color:var(--muted); font-size:.92em; max-width:74ch;">
+      25 review agents scanned the full stack in parallel; every finding below is cross-verified
+      against a direct file read at the stated line before inclusion. Findings are grouped by
+      severity with a file:line reference and a one-line fix for each.
+    </p>
+    <nav class="jumpnav">
+      <a href="#critical">Critical (13)</a>
+      <a href="#high">High (24)</a>
+      <a href="#medium">Medium (28)</a>
+      <a href="#low">Low (32)</a>
+      <a href="#themes">Themes</a>
+      <a href="#plan">Fixing plan</a>
+      <a href="#method">Methodology</a>
+    </nav>
+  </div>
+
+  <h2 style="margin-top:0">Executive summary</h2>
+
+  <div class="kpi-grid">
+    <div class="kpi k-critical"><div class="kpi-num">13</div><div class="kpi-lab">Critical</div></div>
+    <div class="kpi k-high"><div class="kpi-num">24</div><div class="kpi-lab">High</div></div>
+    <div class="kpi k-medium"><div class="kpi-num">28</div><div class="kpi-lab">Medium</div></div>
+    <div class="kpi k-low"><div class="kpi-num">32</div><div class="kpi-lab">Low</div></div>
+  </div>
+
+  <div class="gt-strip">
+    <span class="gt-item gt-ok">&#10003; <code>make test</code> &mdash; <b>124 passed</b></span>
+    <span class="gt-item gt-ok">&#10003; <code>npm run build</code> &mdash; <b>clean</b></span>
+    <span class="gt-item gt-bad">&#10007; <code>make lint</code> &mdash; <b>FAILS, ruff 15 errors</b></span>
+    <span class="gt-item gt-warn">&#9650; <code>npm run lint</code> &mdash; <b>0 errors / 35 warnings</b></span>
+  </div>
+
+  <div class="headline">
+    Ships and builds, but has 3 Critical XSS vectors, an unauthenticated LAN-exposed write API
+    (an uncommitted regression), and several places where the dashboard silently shows fabricated
+    numbers as if they were real &mdash; and its core token/cost numbers are measured ~7&times; too
+    high due to a JSONL double-counting bug.
+  </div>
+
+  <div class="legend">
+    <span><span class="dot critical"></span>Critical &mdash; ships broken or exploitable</span>
+    <span><span class="dot high"></span>High &mdash; wrong data, crashes, or blocking bugs</span>
+    <span><span class="dot medium"></span>Medium &mdash; real but contained</span>
+    <span><span class="dot low"></span>Low &mdash; cleanup, dead code, lint</span>
+  </div>
+
+  <div class="filter-row" role="group" aria-label="Filter findings by severity">
+    <button class="filter-btn active" data-filter="all">All (97)</button>
+    <button class="filter-btn" data-filter="critical">Critical</button>
+    <button class="filter-btn" data-filter="high">High</button>
+    <button class="filter-btn" data-filter="medium">Medium</button>
+    <button class="filter-btn" data-filter="low">Low</button>
+  </div>
+
+  <h2 id="critical">Critical<span class="count">13 findings &mdash; fix before this branch ships</span></h2>
+  <table class="findings">
+    <thead><tr><th>ID</th><th>Area</th><th>File:line</th><th>Finding</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr data-sev="critical">
+        <td class="id">C12</td><td class="area">Data integrity</td>
+        <td class="loc"><code>jsonl_parser.py:195-218</code></td>
+        <td>Assistant <code>usage</code> is summed per JSONL line, but one logical turn spans multiple lines (thinking/text/tool_use) that all repeat the same non-delta <code>usage</code>. Measured against the real local transcript: 1,594,916 vs 227,507 deduped tokens = <b>7.0&times; inflation</b>, flowing into cost and hourly buckets. Every token/cost number on the dashboard is ~7&times; too high.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Dedupe by <code>message.id</code>; add usage once per unique message.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C13</td><td class="area">Cost accuracy</td>
+        <td class="loc"><code>jsonl_parser.py:20-35,115-126</code></td>
+        <td>Static <code>_PRICING</code> table with fragile prefix matching is wrong for current models: <code>claude-fable-5</code> and <code>claude-sonnet-5</code> silently fall to the <code>(3,15)</code> default; legacy <code>claude-3-opus</code>/<code>claude-3-haiku</code> naming is reversed vs the keys (5&times; under / 3-12&times; over).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Version-aware pricing keyed off model family + version; verify against a live price source.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C1</td><td class="area">Security</td>
+        <td class="loc"><code>backend/app/main.py:76-82</code></td>
+        <td>Zero authentication on every backend endpoint; CORS only restricts browsers, not direct curl or script access.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add a shared-secret bearer token dependency on mutating routes at minimum.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C2</td><td class="area">Security</td>
+        <td class="loc"><code>docker-compose.yml</code> (uncommitted)</td>
+        <td>Port bindings changed from <code>127.0.0.1:47821:8765</code> / <code>127.0.0.1:47820:5173</code> to bare <code>47821:8765</code> / <code>47820:5173</code>, which binds 0.0.0.0 and exposes the unauthenticated backend to the whole LAN. Verified via <code>git diff</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Restore <code>127.0.0.1</code> for the backend port (frontend LAN exposure may be intentional for phone access).</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C3</td><td class="area">Security</td>
+        <td class="loc"><code>backend/app/routers/permissions.py:47-81</code><br /><code>services/permissions_writer.py:39-53</code></td>
+        <td>Unauthenticated <code>PUT /api/permissions/scoped</code> can rewrite <code>~/.claude/settings.local.json</code> (e.g. add <code>Bash(*)</code> to allow), silently pre-approving dangerous tool calls in the real, local Claude Code instance.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Require auth plus an explicit confirm step.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C4</td><td class="area">Security</td>
+        <td class="loc"><code>backend/app/routers/repos.py:129-145</code></td>
+        <td><code>POST /api/repos</code> has no path containment &mdash; it only checks that the directory exists and contains <code>.claude</code>. POSTing the home directory registers all of <code>$HOME</code> as a repo, enabling arbitrary file read via <code>/api/files</code> and arbitrary settings write via the permissions endpoint.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Constrain the target path under <code>settings.host_home</code>.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C5</td><td class="area">XSS</td>
+        <td class="loc"><code>src/components/MarkdownPanel.jsx:105,144,402,492</code></td>
+        <td><code>marked.parse()</code> output goes to <code>dangerouslySetInnerHTML</code> with no sanitizer anywhere in the repo (verified: no DOMPurify). Three vectors: unescaped code-fence lang string, unescaped link href (<code>javascript:</code> allowed), raw HTML in markdown. Any markdown file from a tracked or registered repo is stored XSS.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add DOMPurify, an href scheme allowlist, and escape the lang string.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C6</td><td class="area">XSS / sandbox</td>
+        <td class="loc"><code>src/components/MarkdownPanel.jsx:486</code></td>
+        <td><code>iframe sandbox="allow-same-origin allow-scripts"</code> is the textbook sandbox-escape combination; any HTML file served gets script execution in the app origin.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Drop <code>allow-same-origin</code>.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C7</td><td class="area">Data integrity</td>
+        <td class="loc"><code>src/api.js:417,443</code><br /><code>Monitoring.jsx:440</code></td>
+        <td><code>useOtelSummary</code> and <code>useOtelMetrics</code> seed React state with <code>MOCK.OTEL_SUMMARY</code> / <code>OTEL_METRICS</code> but, unlike every other hook, are not gated by <code>USE_MOCKS</code>, and never clear on fetch failure. In real mode a broken backend permanently shows fabricated numbers ($2.40 cost, 312,840 tokens, 124 events, a fake 529 error) as if live.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Gate the initializer on <code>USE_MOCKS</code> and clear or surface the error on catch.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C8</td><td class="area">Data integrity</td>
+        <td class="loc"><code>src/components/Misc.jsx:36-38</code></td>
+        <td><code>HeatmapPage</code> falls back to a deterministic PRNG (<code>Math.sin</code>) grid when <code>useHeatmap()</code> fails, then computes Peak hour, Quietest day, and Most active from the fake grid and shows them as real stats.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Show an explicit offline indicator instead of deriving headline stats from synthetic data.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C9</td><td class="area">SQLite concurrency</td>
+        <td class="loc"><code>backend/app/db.py:27</code></td>
+        <td>The async engine has no WAL journal mode and no <code>busy_timeout</code>, yet the ingest loop (every 30s), the OTel HTTP receiver, and every GET all read/write the same file, producing <code>database is locked</code> errors under concurrency.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Set <code>PRAGMA journal_mode=WAL</code> and <code>busy_timeout=5000</code>.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C10</td><td class="area">Silent failure</td>
+        <td class="loc"><code>backend/app/main.py:28-31,47-48</code></td>
+        <td>Ingest health is logged via <code>r.get("new_summaries")</code> / <code>r.get("updated_summaries")</code>, but <code>ingest_all()</code> actually returns the keys <code>"new"</code> and <code>"updated"</code> (verified) &mdash; every ingest tick logs <code>new=None updated=None</code>, so the only ingest-health signal is dead.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Use the correct keys.</td>
+      </tr>
+      <tr data-sev="critical">
+        <td class="id">C11</td><td class="area">Test isolation</td>
+        <td class="loc"><code>backend/tests/conftest.py:9-19</code></td>
+        <td>The autouse <code>_isolated_db</code> fixture sets the <code>DB_PATH</code> env var but never resets the process-global <code>app.db._engine</code> / <code>_sessionmaker</code>, so the first DB-touching test pins the engine and the isolation of every later test is silently ignored. Only 4 files manually reset it, and the fixture name actively misleads.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Move the engine reset into the shared fixture.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="high">High<span class="count">24 findings &mdash; wrong data, crashes, blocking bugs</span></h2>
+  <table class="findings">
+    <thead><tr><th>ID</th><th>Area</th><th>File:line</th><th>Finding</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr data-sev="high">
+        <td class="id">H1</td><td class="area">Data accuracy</td>
+        <td class="loc"><code>backend/app/routers/stats.py:83</code><br /><code>services/repo_stats.py:127,140</code></td>
+        <td><code>sessionsToday</code> is double-counted: the DB query already counts <code>status=="running"</code> sessions today, then the live-tracker count is added on top using the same 60-second freshness window (verified in both files), inflating the count for every active repo by at least 1.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Dedupe by <code>session_id</code> instead of summing two independent counts.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H2</td><td class="area">Regression</td>
+        <td class="loc"><code>backend/app/routers/agents.py:68-71</code></td>
+        <td>Delegate-edge source is hardcoded to <code>"main"</code> (was <code>payload.get("from","main")</code>); <code>AgentMeta.delegates</code> is now always empty except for <code>"main"</code>, breaking the multi-hop delegation graph.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Restore <code>src = payload.get("from","main")</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H3</td><td class="area">Hallucinated key</td>
+        <td class="loc"><code>src/components/Graph.jsx:24-26</code></td>
+        <td><code>sizeFor</code> indexes <code>FILE_SIZES</code> with a singular kind (agent/skill/command/rule) but the data is keyed plural (agents/skills/...); verified &mdash; <code>SIZES[kind]</code> is always undefined, so every node renders the identical fallback radius, contradicting the node-size-equals-file-size caption.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Index with <code>SIZES[kind + "s"]</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H4</td><td class="area">Crash</td>
+        <td class="loc"><code>src/components/Graph.jsx:9,17</code></td>
+        <td><code>repo = repos.find(...) || repos[0]</code> is undefined when <code>repos</code> is an empty array (a valid state for a fresh backend); the following <code>repo.name</code> dereference crashes the Delegation Graph page.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add an empty-state guard.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H5</td><td class="area">Regression</td>
+        <td class="loc"><code>src/components/RepoDetail.jsx:404-406</code></td>
+        <td>The Tail session button is not guarded by <code>!isGlobal</code>; on the Global overview it routes to <code>/live?repoId=global</code>, but no event carries <code>repo:"global"</code>, so the one place that needs the unfiltered feed shows nothing.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Use <code>repoId: isGlobal ? null : repo.id</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H6</td><td class="area">Blocking I/O</td>
+        <td class="loc"><code>backend/app/routers/repos.py:23,33,44,89-126</code></td>
+        <td><code>scan_all_repos</code>, <code>get_repo_by_id</code>, <code>scan_global</code>, and <code>list_repo_candidates</code> do synchronous filesystem walks (<code>rglob</code> / <code>read_text</code>) inside <code>async def</code>, stalling the single event loop &mdash; and the WebSocket handler &mdash; for the whole scan.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Move the work to <code>asyncio.to_thread</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H7</td><td class="area">Blocking I/O</td>
+        <td class="loc"><code>backend/app/routers/integrations.py:27,32</code><br /><code>services/fs_utils.py:53-65</code></td>
+        <td><code>git</code> and <code>gh</code> <code>subprocess.run</code> calls (2-4s timeout) run synchronously from <code>async def</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Move to <code>asyncio.to_thread</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H8</td><td class="area">Blocking I/O</td>
+        <td class="loc"><code>backend/app/routers/diffs.py:295-297</code></td>
+        <td><code>list_diffs</code> runs a nested synchronous subprocess loop (<code>git status</code> plus <code>numstat</code> per repo per file) directly on the event loop.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Use <code>gather</code> with <code>to_thread</code>, or move the work into the ingest loop.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H9</td><td class="area">Stale-response race</td>
+        <td class="loc"><code>src/api.js:31-89</code></td>
+        <td><code>useFetch</code> never resets <code>data</code> when the <code>path</code> argument changes, so PermissionsKanban shows editable rules from the previous scope right after the scope dropdown switches (and Misc DiffPage shows the diff from the previous file, with the loading spinner suppressed).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Reset <code>data</code> on path change, or add an <code>AbortController</code> plus a request-id guard.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H10</td><td class="area">Routing</td>
+        <td class="loc"><code>src/useRoute.js:16-24</code></td>
+        <td><code>REPO_TAB_TO_KIND</code> omits <code>plugins</code> and <code>mcp</code> (verified); plugin and MCP deep-links build as <code>/agents/...</code> and reparse as kind <code>"agent"</code>, so AgentDetail renders the wrong item on refresh, back, or a shared link. The <code>KIND_TAB</code> map inside App.jsx already has the correct mapping.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add <code>plugins:"plugin"</code> (and <code>mcp</code>) to <code>REPO_TAB_TO_KIND</code>.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H11</td><td class="area">Routing</td>
+        <td class="loc"><code>src/useRoute.js:99-105</code></td>
+        <td><code>goBack</code> gates on <code>document.referrer</code>, which never updates on a <code>pushState</code> client-side navigation, so in the primary flow (direct load plus in-app clicks) it always falls back to <code>setRoute</code>, defeating real browser Back.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Track in-app navigation depth instead.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H12</td><td class="area">CSS / theme</td>
+        <td class="loc"><code>src/styles.css:1727-2370</code></td>
+        <td>Two unconditional <code>!important</code> redesign layers (NEUMORPHISM at 1727+, GLASSMORPHISM v2 at 2011+) re-declare roughly 24 core selectors (<code>.sidebar</code>, <code>.btn</code>, <code>.cd</code>, <code>.topbar</code>, <code>body</code>, <code>--txt</code>...) with bare selectors; the last one in the file (glassmorphism) wins, silently superseding the documented cyan/gold-dark plus amber/orange-light system for most chrome, with its own undocumented palette (coral/violet/electric-blue). Pre-existing on main.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Pick one system and remove the others.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H13</td><td class="area">CSS</td>
+        <td class="loc"><code>src/styles.css:1187-1199</code> (uncommitted)</td>
+        <td>The new heatmap tooltip references <code>var(--nav)</code>, <code>var(--fg)</code>, and <code>var(--ink)</code>, none of which are defined anywhere, so the tooltip is unstyled (transparent background) in both themes.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Use tokens that are actually defined.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H14</td><td class="area">Perf / index</td>
+        <td class="loc"><code>backend/app/models/session_summary.py:11-25</code></td>
+        <td>No index on <code>started_at</code>, <code>last_event_at</code>, or <code>status</code>, though these are filtered on nearly every dashboard, repo, and heatmap request, causing full table scans.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add indexes.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H15</td><td class="area">Perf</td>
+        <td class="loc"><code>backend/app/routers/cost.py:24-25</code>, <code>agents.py:65,74</code>, <code>diffs.py:263-274</code>, <code>telemetry.py:239-246,333-340</code></td>
+        <td>Multiple endpoints pull entire tables into memory with no WHERE or LIMIT clause, growing unbounded with the append-only ingest.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Push cutoffs into SQL and add limits.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H16</td><td class="area">File-watch</td>
+        <td class="loc"><code>backend/app/services/live_stream.py:119-123,218-224</code></td>
+        <td>A trailing partial JSONL line advances the read offset but is dropped on <code>JSONDecodeError</code>, permanently losing the event on a write race; separately, the watcher idles forever if <code>~/.claude/projects</code> does not exist at startup and never re-checks.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Do not advance the offset past the last newline, and periodically re-check the directory.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H17</td><td class="area">Silent failure</td>
+        <td class="loc"><code>backend/app/routers/diffs.py:22-31,162-179,212-224</code></td>
+        <td>The <code>git</code> subprocess returncode is never checked, so a missing or broken git binary returns empty stdout, reported as "no changes" across every repo with an HTTP 200 and no signal.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Check <code>returncode</code> and log a warning.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H18</td><td class="area">Silent failure</td>
+        <td class="loc"><code>backend/app/services/ingest.py:56-58,64-65</code></td>
+        <td>Malformed or inaccessible JSONL files hit <code>continue</code> without incrementing <code>new</code>, <code>updated</code>, or <code>skipped</code> counters, so dropped files vanish from every count. Combined with C10, there is no way to detect silent data loss.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Count and surface skips.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H19</td><td class="area">Contract</td>
+        <td class="loc"><code>cost.py</code>, <code>stats.py</code> (&times;2), <code>user.py</code>, <code>plugins.py</code>, <code>live_agents.py</code>, <code>integrations.py</code> (&times;2), <code>files.py</code> (&times;2), <code>repos.py</code> (&times;3)</td>
+        <td>9+ endpoints return a raw dict or <code>list[dict]</code> with no <code>response_model</code>, so a key rename ships with no validation or test to catch it &mdash; a direct violation of the schemas-mirror-data.js rule.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add Pydantic response models.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H20</td><td class="area">Data accuracy</td>
+        <td class="loc"><code>src/components/AgentDetail.jsx:83-92,114-133</code></td>
+        <td><code>todayCount</code>, <code>weekCount</code>, and <code>timeAgo</code> call <code>new Date(s.started)</code>, but the mock <code>SESSIONS.started</code> values are non-ISO (<code>"10:42"</code>, <code>"yesterday 22:14"</code>), producing NaN &mdash; Calls today/week is always 0 and every invocation shows an em dash, visibly disagreeing with the Invocations list on the same screen.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Use ISO-parseable dates, or parse tolerantly.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H21</td><td class="area">Test coverage</td>
+        <td class="loc"><code>backend/app/routers/files.py:90-106</code> (path-traversal guard), <code>diffs.py</code> (360 lines), <code>stats.py</code> (236 lines), <code>cost.py</code>, <code>user.py</code>, <code>agents.py</code></td>
+        <td>Zero tests across all of these. The one line preventing arbitrary file read is untested.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add endpoint tests (403 on <code>../</code>, 415, 413).</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H22</td><td class="area">Security</td>
+        <td class="loc"><code>vite.config.js:14-16</code></td>
+        <td><code>host:true</code> binds the Vite dev server to 0.0.0.0 even under a plain <code>npm run dev</code>; its proxy forwards to the localhost-only backend, so a LAN attacker reaches the backend via <code>:5173/api</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Set <code>host:false</code> unless the LAN binding is intentional.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H23</td><td class="area">Contract/bug</td>
+        <td class="loc"><code>RepoDetail.jsx:439</code></td>
+        <td>Passes <code>scope={repo.name}</code> but backend <code>permissions_writer._resolve_scope_dir</code> matches on directory basename (<code>repo.id</code>); diverges for <code>anita</code>/<code>anita-legal</code> and <code>mcp-presentation</code>/<code>mcp-servers-presentation</code> &mdash; permissions editor fails to resolve scope for those repos. Found independently by two agents.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Pass <code>repo.id</code> as scope.</td>
+      </tr>
+      <tr data-sev="high">
+        <td class="id">H24</td><td class="area">CSS/theme</td>
+        <td class="loc"><code>styles.css:2284-2285</code></td>
+        <td><code>[data-theme="light"] .term-line .ts/.who</code> override targets classes that don't exist &mdash; LiveTerminal renders <code>term-time</code>/<code>term-repo</code> &mdash; so the light-theme terminal override never fires (dual-theme rule violation).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Rename the selector to <code>.term-time</code>/<code>.term-repo</code>.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="medium">Medium<span class="count">28 findings &mdash; real but contained</span></h2>
+  <table class="findings">
+    <thead><tr><th>ID</th><th>Area</th><th>File:line</th><th>Finding</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr data-sev="medium">
+        <td class="id">M1</td><td class="area">Contract drift</td>
+        <td class="loc"><code>src/api.js:153</code><br /><code>backend/app/schemas/repo.py:24</code></td>
+        <td><code>useCost</code> fallback is missing <code>byAgent</code>, and <code>stats.spark</code> is absent from the mock, so the real API returns fields the mock never has &mdash; mock mode never exercises the real code paths and API-only bugs stay hidden.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Align the mock shape with the real API response.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M2</td><td class="area">Contract</td>
+        <td class="loc"><code>backend/app/schemas/otel.py:21</code></td>
+        <td><code>OtelEvent.id</code> is typed <code>int</code>, but the mock uses a string like <code>ev-001</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Make the schema and mock agree on type.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M3</td><td class="area">Perf</td>
+        <td class="loc"><code>src/api.js:288</code></td>
+        <td><code>useActiveAgents</code> is called at the App.jsx root and again in LiveAgents, Repos, and LiveGraph, so Dashboard and Repos each run two concurrent 1.5s pollers.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Lift the call to App and pass the result as a prop.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M4</td><td class="area">Staleness</td>
+        <td class="loc"><code>src/api.js:472-492</code></td>
+        <td><code>useLiveEvents</code> captures <code>window.__tweakSpeed</code> once at mount (empty deps array), so changing the feed speed has no effect until reload.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Read the tweak value on each cycle instead of once.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M5</td><td class="area">Race</td>
+        <td class="loc"><code>src/components/PermissionsKanban.jsx:233,266,279</code></td>
+        <td><code>inFlightRef</code> is set but never read; rapid drags let a second save use a stale <code>serverMtime</code>, producing a false 409 that disables auto-save with a misleading changed-on-disk message.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Check <code>inFlightRef</code> inside the debounce.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M6</td><td class="area">Stale UI</td>
+        <td class="loc"><code>src/components/PermissionsKanban.jsx:199-200</code></td>
+        <td>The segmented-control badge counts (<code>settings.local.json (N)</code>) never refetch after a save, so they show pre-save counts indefinitely.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Refetch counts after save.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M7</td><td class="area">UX trap</td>
+        <td class="loc"><code>src/components/Misc.jsx:253</code></td>
+        <td>A DiffPage 404 (routine &mdash; the file was already committed) blanks the whole page, including the way back.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Keep the page shell and only replace the diff pane.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M8</td><td class="area">Navigation</td>
+        <td class="loc"><code>src/components/Pages.jsx:229,248</code></td>
+        <td>Clicking a global Plugins/MCP card then Back lands on Agents &amp; Skills, not Plugins &amp; MCP, because <code>KIND_TAB</code> is only consulted when <code>repoId</code> is present.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Consult <code>KIND_TAB</code> for the global case too.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M9</td><td class="area">NaN</td>
+        <td class="loc"><code>src/components/Common.jsx:63,145</code></td>
+        <td>The sparkline <code>step = W / (pts.length - 1)</code> produces an Infinity/NaN path on a one-point array &mdash; a landmine for the next data source.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Guard for <code>length &gt; 1</code>.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M10</td><td class="area">Empty-state</td>
+        <td class="loc"><code>src/components/Repos.jsx:96-104,136-144</code><br /><code>Dashboard.jsx:154-175</code></td>
+        <td>The list and grid layouts have no empty-array guard, breaking the render for a fresh backend with zero repos (the board layout already handles it).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add the same guard to list/grid.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M11</td><td class="area">Undefined deref</td>
+        <td class="loc"><code>src/components/RepoDetail.jsx:307-313</code></td>
+        <td><code>RepoAgents</code> reads <code>meta.delegates.length</code> with no guard, while AgentDetail already guards the same access.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Match the AgentDetail guard.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M12</td><td class="area">Data plausibility</td>
+        <td class="loc"><code>src/data.js:533-553</code></td>
+        <td>Haiku is priced at $8.92/M versus Sonnet at $7.36/M &mdash; backwards, since Haiku is the cheap tier. Totals are correct; only the per-model price relationship is wrong.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Fix the per-model unit price.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M13</td><td class="area">Data staleness</td>
+        <td class="loc"><code>src/data.js:478,486-488</code></td>
+        <td>The OTEL block is 32 days old (2026-05-31) under a hard-coded 24h label, and the settings mtime <code>1748715965.5</code> resolves to 2025-05-31 &mdash; a one-year typo next to otherwise-2026 dates. Monitoring.jsx renders 32d ago under a 24h badge.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Refresh the mock timestamps or compute the label dynamically.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M14</td><td class="area">Data integrity</td>
+        <td class="loc"><code>backend/app/routers/telemetry.py:333-339</code></td>
+        <td><code>/otel/metrics</code> sums every <code>kind=="sum"</code> row with no temporality check; a single CUMULATIVE row (a settings drift, or a future Claude Code default) would silently inflate every cost/token total.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Filter on <code>temporality==1</code>.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M15</td><td class="area">DoS</td>
+        <td class="loc"><code>backend/app/routers/otel_ingest.py:95-98,146-149</code></td>
+        <td>The request body and gzip decompression have no size cap (a decompression-bomb vector), and there is no row pruning or retention, so SQLite grows unbounded &mdash; and the endpoint always returns 200, so floods are invisible.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Cap body/decompressed size and add pruning.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M16</td><td class="area">Data attribution</td>
+        <td class="loc"><code>backend/app/routers/otel_ingest.py:36-37</code></td>
+        <td><code>_resolve_repo</code> looks up <code>session_summary</code>, which is only created by the 30-second JSONL walk, so the first ~30 seconds of telemetry for a session gets <code>repo=None</code> permanently (<code>on_conflict_do_nothing</code> never backfills it).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Insert an eager stub row, or backfill on a periodic UPDATE.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M17</td><td class="area">Race / corruption</td>
+        <td class="loc"><code>backend/app/services/repo_registry.py:62-74</code></td>
+        <td>An unsynchronized read-modify-write plus a non-atomic <code>write_text</code> means a concurrent <code>POST /api/repos</code> can lose an add or corrupt <code>tracked-repos.json</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add a lock and write atomically.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M18</td><td class="area">Maintainability</td>
+        <td class="loc"><code>backend/app/services/ingest.py:141-144</code> (plus 7 more sites)</td>
+        <td>The SQLite naive-datetime round trip is patched with a copy-pasted <code>.tzinfo is None</code> guard in 7+ places instead of one TypeDecorator; the <code>otel_*</code> code uses a different convention entirely.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Centralize into one TypeDecorator.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M19</td><td class="area">Silent failure</td>
+        <td class="loc"><code>backend/app/services/integrations.py:61-63,89-91</code></td>
+        <td>Real Linear/Langfuse failures (bad key, schema change) collapse to the same not-configured UI and are logged only at DEBUG (default level is INFO).</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Log a warning and distinguish the failure states.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M20</td><td class="area">Race</td>
+        <td class="loc"><code>src/components/AddRepoModal.jsx:8-21</code></td>
+        <td>A single <code>adding</code> string cannot track two in-flight adds, so clicking a second row re-enables the first and can trigger a duplicate POST.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Track in-flight state per row.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M21</td><td class="area">CSS / theme</td>
+        <td class="loc"><code>src/styles.css:982-983</code></td>
+        <td><code>.bg-gr</code> and <code>.bg-ro</code> hardcode dark neon/rose hues for background and border and do not follow the light-mode amber palette.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Route through theme tokens.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M22</td><td class="area">Perf</td>
+        <td class="loc"><code>backend/app/routers/agents.py:91-96</code></td>
+        <td><code>get_agent(name)</code> calls the full <code>list_agents()</code> (a filesystem scan plus two full-table queries) just to return one entry.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add a direct single-entry lookup.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M23</td><td class="area">Docs FALSE</td>
+        <td class="loc"><code>docs/docker-setup.html:125,151,157</code></td>
+        <td>Claims ports are 127.0.0.1-only and mounts are read-only; both are now false (0.0.0.0 ports, <code>:rw</code> mounts) after the writable-mounts commit.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Update the doc.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M24</td><td class="area">Docs FALSE</td>
+        <td class="loc"><code>MASTER_PLAN.md:29-33</code></td>
+        <td>States Backend: Does not exist / Tests: None / Data: 100% mocked / Deploy: vite dev only &mdash; all false; there are 30+ backend files, 18 test files, real fetch/WS, and Docker.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Update the doc.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M25</td><td class="area">Docs contradiction</td>
+        <td class="loc"><code>docs/monitoring-gap-analysis-2026-05-31.html:300</code> vs <code>:833</code></td>
+        <td>The top of the page says Phases 1-3 are implemented (true), while the bottom still says nothing is being built and a go-ahead is needed before Phase 1.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Reconcile the two sections.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M26</td><td class="area">Test rule</td>
+        <td class="loc"><code>backend/tests/test_jsonl_parser.py</code></td>
+        <td>No <code>tests/fixtures/jsonl/</code> directory exists despite the project rule requiring parser fixtures; the pricing table (<code>_price</code>, opus/haiku, the cache_write 1.25&times; multiplier) is untested even though it drives every dashboard dollar figure.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add fixtures and price-table tests.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M27</td><td class="area">Test depth</td>
+        <td class="loc"><code>backend/tests/test_integrations.py</code></td>
+        <td>Only the no-credentials-returns-None branch is tested; no adapter has its success or response-shape path tested.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add success-path tests per adapter.</td>
+      </tr>
+      <tr data-sev="medium">
+        <td class="id">M28</td><td class="area">Merge logic</td>
+        <td class="loc"><code>ingest.py:113-149</code></td>
+        <td>New untested <code>content_win</code> logic can silently drop a session's LiveEvents if Claude Code ever resumes into a lower-token second file with the same <code>sessionId</code>.</td>
+        <td class="fix"><span class="arrow">&rarr;</span>Add a test pinning the intended merge semantics.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="low">Low<span class="count">32 items, condensed into 21 rows &mdash; cleanup, dead code, lint</span></h2>
+  <table class="findings">
+    <thead><tr><th>ID</th><th>Area</th><th>File</th><th>Finding</th></tr></thead>
+    <tbody>
+      <tr data-sev="low">
+        <td class="id">L1</td><td class="area">CSS</td>
+        <td class="loc"><code>src/App.css</code>, <code>src/index.css</code></td>
+        <td>Dead Vite-scaffold leftovers, unimported; <code>index.css</code> even carries a <code>prefers-color-scheme</code> block that would violate the dual-theme rule if it were ever wired in.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L2</td><td class="area">Dead code</td>
+        <td class="loc"><code>Common.jsx</code>, <code>Pages.jsx</code>, <code>useRoute.js</code>, <code>data.js</code>, backend <code>fs_utils.py</code></td>
+        <td>Dead exports: <code>Common.jsx</code> Crumbs/sparkPoints/Tag; <code>Pages.jsx</code> <code>PermissionsPanelReadOnly</code> (renders fabricated permission rules, including an unsafe force-push allowance and a <code>.env</code> read rule, unused and should be removed before it is ever wired); <code>useRoute.js</code> parsePath/buildPath/REPO_TAB_TO_KIND/KIND_TO_REPO_TAB; <code>data.js</code> MODEL_PRICING_USD_PER_M/AGENT_INVOCATIONS/MOCK_DATA; backend <code>fs_utils.list_files</code>.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L3</td><td class="area">Dead code</td>
+        <td class="loc"><code>src/api.js</code></td>
+        <td>Dead hooks: <code>usePlugins</code>, <code>removeRepo</code>, <code>useOtelEvents</code> &mdash; backend routes exist but no UI calls them.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L4</td><td class="area">Icons</td>
+        <td class="loc"><code>src/icons.jsx</code>, <code>public/icons.svg</code></td>
+        <td>8 unused icon paths (edit, trash, arrowRight, users, code, externalLink, copy, flame); 6 orphaned sprite symbols in <code>icons.svg</code>; and the icon name <code>"plus"</code>, referenced at <code>PermissionsKanban.jsx:147</code>, is undefined and renders an empty SVG element.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L5</td><td class="area">Duplication</td>
+        <td class="loc"><code>src/components/AgentDetail.jsx:82-92</code></td>
+        <td>A local <code>timeAgo()</code> re-implements <code>utils/time.js</code> <code>fmtAgo</code>, the documented single source of truth.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L6</td><td class="area">Duplication</td>
+        <td class="loc"><code>src/api.js</code></td>
+        <td>6 hand-rolled polling hooks (<code>useDashboardStats</code>, <code>useHeatmap</code>, <code>useActiveAgents</code>, <code>useRepoEvents</code>, <code>useOtelSummary</code>, <code>useOtelMetrics</code>) repeat the same boilerplate &mdash; extract a shared <code>usePolling</code>.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L7</td><td class="area">Comments</td>
+        <td class="loc"><code>otel_ingest.py:7</code>, <code>user.py:1-7</code>, <code>db.py:36-47</code>, <code>RepoDetail.jsx:233</code></td>
+        <td>Comment rot: <code>otel_ingest.py</code> still says "Phase-1 no-op stub" though it is fully implemented; <code>user.py</code> docstring lists name/email/initials but the endpoint returns only <code>claudeVersion</code>; <code>db.py</code> "Safe before Phase A3" try/except now hides real import errors; <code>RepoDetail.jsx</code> has a misleading fallback comment.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L8</td><td class="area">Backend</td>
+        <td class="loc"><code>agents.py:52-54</code>, <code>cost.py:19-21</code></td>
+        <td><code>assert sm is not None</code> used as a runtime guard, stripped when Python runs in optimized mode; <code>stats.py</code> already uses an explicit raise for the same case.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L9</td><td class="area">Backend</td>
+        <td class="loc"><code>sessions.py:15</code>, <code>live.py:21</code>, <code>cost.py:18</code></td>
+        <td>Unbounded query params (<code>limit</code>, <code>n</code>, <code>days</code>) &mdash; a negative LIMIT dumps the whole table in SQLite. Add <code>Query(ge=1, le=...)</code>.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L10</td><td class="area">Data</td>
+        <td class="loc"><code>src/data.js</code></td>
+        <td><code>FILE_SIZES.hooks</code> lists 3 phantom hooks and misses 4 real ones; <code>FILE_SIZES.agents</code> has 2 phantom agents; 11 agents referenced across repos have no <code>AGENT_META</code> entry.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L11</td><td class="area">Frontend</td>
+        <td class="loc"><code>Common.jsx:7</code>, <code>Monitoring.jsx:175</code>, <code>LiveGraph.jsx:293,298</code></td>
+        <td>Index-as-key on reorderable live lists can misfire the pulse animation.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L12</td><td class="area">Theme</td>
+        <td class="loc"><code>src/components/LiveAgents.jsx:9</code></td>
+        <td>A hardcoded hex palette fallback bypasses the theme tokens.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L13</td><td class="area">Frontend</td>
+        <td class="loc"><code>src/components/Common.jsx:93</code></td>
+        <td>The Metric gradient id <code>sparkFill-${accent}</code> can collide if two same-accent Metrics render together.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L14</td><td class="area">Backend</td>
+        <td class="loc"><code>backend/app/routers/telemetry.py:298</code></td>
+        <td><code>/otel/metrics</code> bounds hours at <code>le=87600</code> (10 years) versus <code>/otel/summary</code> at <code>le=8760</code> (1 year) two lines away &mdash; looks like an extra-zero typo.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L15</td><td class="area">Backend</td>
+        <td class="loc"><code>backend/app/services/duration.py:21</code></td>
+        <td><code>fmt_started</code> defaults <code>now=datetime.now(tz=ts.tzinfo)</code>; with a naive <code>ts</code> that becomes local wall-clock, not UTC (latent, currently unreachable).</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L16</td><td class="area">Lint</td>
+        <td class="loc">ruff, 15 errors</td>
+        <td><code>make lint</code> fails: E701 &times;4 (<code>main.py:59-60</code>, <code>repo_stats.py:21-22</code>), F841 &times;2 (<code>diffs.py:127</code> <code>target_host</code> unused; <code>jsonl_parser.py:202</code> <code>cache_read</code> unused &mdash; the <code>cache_read</code> exclusion itself is intentional and documented, only the unused assignment is the lint nit), B904 &times;6 (<code>permissions.py</code>, <code>files.py</code> &mdash; need <code>raise ... from</code>), B008 (<code>repos.py:130</code>, <code>Body()</code> in a default), ASYNC251 (<code>test_permissions_routes.py:73</code>, <code>time.sleep</code> in an async test).</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L17</td><td class="area">Lint</td>
+        <td class="loc">eslint, 35 warnings</td>
+        <td><code>react-hooks/refs</code> fires in <code>TweaksPanel.jsx:107,146</code> &mdash; reads/writes <code>ref.current</code> during render, which can cause the panel to not update.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L18</td><td class="area">Bundle</td>
+        <td class="loc">MarkdownPanel chunk</td>
+        <td>113 KB (marked plus the highlighter) &mdash; lazy-loaded so acceptable, but worth tracking.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L19</td><td class="area">Dead CSS</td>
+        <td class="loc"><code>src/styles.css</code></td>
+        <td>~33 verified-dead selectors: <code>.lbl-*</code> family, <code>.d1</code>&ndash;<code>.d6</code>, <code>.graph-node</code>/<code>.graph-edge</code>, <code>.modal-bg</code>, <code>.status-badge</code>, <code>.icon-btn .sun/.moon</code>, several <code>.sb-*</code>, <code>.ct-emoji</code>, misc utilities. (Excludes 33 <code>hljs-*</code> runtime classes and all dynamically-built classNames &mdash; those are NOT dead.) Remove.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L20</td><td class="area">Unstyled classNames</td>
+        <td class="loc">JSX</td>
+        <td>Referenced but no CSS rule: <code>flex-wrap</code> (<code>Pages.jsx:114,123</code>), <code>mt-1</code> (<code>Graph.jsx:433</code>), <code>no-header</code> (<code>LiveTerminal.jsx:45</code>), <code>metric-sub</code> (<code>Common.jsx:122</code>), <code>md-fm-stripe-*</code> family (<code>MarkdownPanel.jsx:282</code>), <code>lg-sat</code> base class. Add rules or drop the classes.</td>
+      </tr>
+      <tr data-sev="low">
+        <td class="id">L21</td><td class="area">Comment rot</td>
+        <td class="loc">various</td>
+        <td><code>useRoute.js:12</code> tab enum omits <code>graph</code>; <code>Misc.jsx:171</code> says &ldquo;&times;4.3&rdquo; but const is <code>4.33</code>; <code>Dashboard.jsx:24</code> example &ldquo;+22x&rdquo; computes to &ldquo;+59x&rdquo;; <code>Common.jsx:53</code> claims <code>[0,1]</code> but clamps <code>[0.05,0.95]</code>; <code>otel_parser</code>/<code>otel_metrics_parser</code> docstrings say &ldquo;warning&rdquo; but log at <code>debug</code>. Correct the comments.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 id="themes">Themes &amp; patterns<span class="count">5 recurring root causes</span></h2>
+  <div class="theme-grid">
+    <div class="callout">
+      <strong>T1 &mdash; Fake data shown as real</strong>
+      The whole app falls back to <code>src/data.js</code> mocks on backend failure with no offline indicator; error and loading state already exist on every hook, but roughly 24 of 25 consumers discard them. Worst offenders: Monitoring OTel (C7) and Heatmap PRNG (C8) fabricate specific, plausible-looking numbers. A single shared offline/stale banner closes most of this.
+      <div class="refs">C7 &middot; C8 &middot; affects ~24 hook consumers</div>
+    </div>
+    <div class="callout">
+      <strong>T2 &mdash; Blocking I/O on the async event loop</strong>
+      The repos, integrations, diffs, agents, user, and files routers all do synchronous filesystem or subprocess work in <code>async def</code>, systemically stalling the WebSocket live feed.
+      <div class="refs">H6 &middot; H7 &middot; H8 &middot; several M/L items</div>
+    </div>
+    <div class="callout">
+      <strong>T3 &mdash; Silent failures hide data loss</strong>
+      Ingest drops files uncounted, the git returncode goes unchecked, and the ingest health log is dead &mdash; the dashboard can go quietly wrong with zero signal.
+      <div class="refs">H17 &middot; H18 &middot; C10</div>
+    </div>
+    <div class="callout">
+      <strong>T4 &mdash; Double-counting running sessions</strong>
+      The live-tracker count is added on top of the DB running-count in two places, using the same 60-second window, so the total is nearly always double.
+      <div class="refs">H1</div>
+    </div>
+    <div class="callout">
+      <strong>T5 &mdash; Singular/plural and type key mismatches from AI generation</strong>
+      Graph <code>FILE_SIZES</code> key, <code>useRoute</code> kind maps, <code>OtelEvent.id</code> type, and contract drift are all cross-file key drift that lint cannot catch because it spans JS object shapes rather than syntax.
+      <div class="refs">H3 &middot; H10 &middot; M2 &middot; M1</div>
+    </div>
+  </div>
+
+  <h2 id="plan">Fixing plan<span class="count">5 phases, ordered by ship risk</span></h2>
+
+  <div class="phase">
+    <div class="phase-head"><h3>Phase 0 &mdash; Pre-commit blockers</h3><span class="effort">~1-2h</span></div>
+    <p style="max-width:none;">Before this branch ships anywhere.</p>
+    <table class="phase">
+      <tbody>
+        <tr><td class="chk">&#9633;</td><td>Revert the docker-compose port binding regression</td><td class="ids">C2</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Make <code>make lint</code> green (15 ruff errors: delete the unused <code>cache_read</code>/<code>target_host</code> assignments, add <code>raise ... from err</code>, fix E701)</td><td class="ids">L16</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the ingest log keys (one line)</td><td class="ids">C10</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><h3>Phase 1 &mdash; Security</h3><span class="effort">~1 day</span></div>
+    <table class="phase">
+      <tbody>
+        <tr><td class="chk">&#9633;</td><td>Add an auth dependency to mutating routes</td><td class="ids">C1, C3, C4</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Add DOMPurify, an href allowlist, and drop <code>allow-same-origin</code> in MarkdownPanel</td><td class="ids">C5, C6</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Review the Vite host setting and the backend bind address</td><td class="ids">H22</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Add an OTel request body-size cap</td><td class="ids">M15</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><h3>Phase 2 &mdash; Data correctness</h3><span class="effort">~2 days</span></div>
+    <p style="max-width:none;">C12 comes first &mdash; it means every token/cost figure the dashboard shows today is ~7&times; inflated and not trustworthy until fixed.</p>
+    <table class="phase">
+      <tbody>
+        <tr><td class="chk">&#9633;</td><td>Dedupe assistant <code>usage</code> by <code>message.id</code> &mdash; fixes the ~7&times; token/cost inflation</td><td class="ids">C12</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Replace the static pricing table with version-aware model pricing</td><td class="ids">C13</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Gate the Monitoring OTel mock seed and add honest offline states across hooks</td><td class="ids">C7, C8, T1</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the <code>sessionsToday</code> double-count in both files</td><td class="ids">H1</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Restore the delegate-edge source</td><td class="ids">H2</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the Graph <code>FILE_SIZES</code> key and add the empty-state guard</td><td class="ids">H3, H4</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the RepoDetail global feed routing</td><td class="ids">H5</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the AgentDetail date parsing</td><td class="ids">H20</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Reset <code>useFetch</code> state on a stale response</td><td class="ids">H9</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the <code>useRoute</code> plugin/mcp map and <code>goBack</code></td><td class="ids">H10, H11</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Pass <code>repo.id</code> instead of <code>repo.name</code> as the permissions scope</td><td class="ids">H23</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><h3>Phase 3 &mdash; Backend robustness</h3><span class="effort">~2-3 days</span></div>
+    <table class="phase">
+      <tbody>
+        <tr><td class="chk">&#9633;</td><td>Enable WAL journal mode and <code>busy_timeout</code></td><td class="ids">C9</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Move the blocking routers to <code>asyncio.to_thread</code></td><td class="ids">H6, H7, H8, T2</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Add <code>session_summary</code> indexes</td><td class="ids">H14</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Bound the unbounded queries</td><td class="ids">H15, L9</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Check the git returncode and count ingest skips</td><td class="ids">H17, H18, T3</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Add <code>response_model</code> to the 9+ endpoints</td><td class="ids">H19</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Make <code>repo_registry</code> writes atomic and locked</td><td class="ids">M17</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the conftest DB isolation fixture</td><td class="ids">C11</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="phase">
+    <div class="phase-head"><h3>Phase 4 &mdash; Theme, docs, dead code, tests</h3><span class="effort">~2-3 days</span></div>
+    <table class="phase">
+      <tbody>
+        <tr><td class="chk">&#9633;</td><td>Resolve the triple CSS override layers, the undefined tokens, and the theme-drift chips</td><td class="ids">H12, H13, M21</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the light-theme LiveTerminal selector (<code>.term-time</code>/<code>.term-repo</code>)</td><td class="ids">H24</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the false documentation claims</td><td class="ids">M23, M24, M25</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix comment rot</td><td class="ids">L7</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Delete dead files, exports, hooks, and icons; add the missing "plus" icon</td><td class="ids">L1&ndash;L6, L4</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Remove verified-dead CSS selectors; style or drop the unstyled classNames</td><td class="ids">L19, L20</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix comment rot (round 2)</td><td class="ids">L21</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Backfill tests for files/diffs/stats and add JSONL fixtures</td><td class="ids">H21, M26, M27</td></tr>
+        <tr><td class="chk">&#9633;</td><td>Fix the <code>data.js</code> mock issues</td><td class="ids">M12, M13, L10</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="mono" style="font-size:.82em; color:var(--muted); margin-top:1.2em;">
+    Re-verify after each phase: <code>make test</code> (currently 124 pass) &middot;
+    <code>make lint</code> (currently fails) &middot;
+    <code>npm run lint</code> (35 warnings) &middot;
+    <code>npm run build</code> (clean).
+  </p>
+
+  <hr />
+
+  <div class="method-block" id="method">
+    <strong>Methodology</strong>
+    <p>25 review agents scanned the full stack in parallel: frontend components and hooks, backend
+    routers/services/models, CSS and theme consistency across both themes, test coverage, and
+    documentation drift against the actual code. Every finding above was cross-verified against a
+    direct file read at the stated line before inclusion, and duplicate reports from overlapping
+    agents were merged into a single entry.</p>
+    <p>3 agents (comments, be-jsonl, css-dead) were interrupted mid-synthesis, but their domains
+    were covered by the remaining agents, so no coverage gap resulted. The css-dead agent raw
+    dead-selector list was self-flagged as false-positive-heavy &mdash; it could not distinguish
+    genuinely dead selectors from dynamically built classNames (<code>ct-fico-${type}</code>,
+    <code>hljs-*</code>, <code>md-*</code>) &mdash; so that raw list is intentionally not reported
+    as findings above.</p>
+  </div>
+
+</main>
+
+<script>
+(function () {
+  var buttons = document.querySelectorAll(".filter-btn");
+  var rows = document.querySelectorAll("tr[data-sev]");
+  buttons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      buttons.forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      var target = btn.getAttribute("data-filter");
+      rows.forEach(function (row) {
+        var show = target === "all" || row.getAttribute("data-sev") === target;
+        row.style.display = show ? "" : "none";
+      });
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

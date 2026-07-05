@@ -8,11 +8,21 @@ from pathlib import Path
 from app.config import get_settings
 from app.schemas.inventory import FileSizes, GlobalEnvelope, PermissionsDetail
 from app.schemas.repo import Permissions, Repo, RepoStats
-from app.services.fs_utils import git_branch, list_files, list_md_files
+from app.services.fs_utils import git_branch, list_any_files, list_md_files
 
 logger = logging.getLogger(__name__)
 
 ACCENTS = ["#d97757", "#5a8dee", "#a78bfa", "#10b981", "#f59e0b", "#ef4444"]
+
+# Project-root files Claude Code reads at session start, plus repo
+# conventions we surface in the dashboard. Order = display order.
+ROOT_FILES = (
+    "CLAUDE.md",
+    ".mcp.json",
+    ".worktreeinclude",
+    "ERRORS.md",
+    "MASTER_PLAN.md",
+)
 
 
 def _read_settings_json(claude_dir: Path) -> dict:
@@ -51,6 +61,17 @@ def _list_skills(skills_dir: Path) -> list[Path]:
     return out
 
 
+def _list_agent_memory(mem_dir: Path) -> list[Path]:
+    """agent-memory/<agent-name>/MEMORY.md — one entry per agent that has memory."""
+    if not mem_dir.is_dir():
+        return []
+    out: list[Path] = []
+    for child in sorted(mem_dir.iterdir()):
+        if child.is_dir() and (child / "MEMORY.md").is_file():
+            out.append(child / "MEMORY.md")
+    return out
+
+
 def _file_sizes(claude_dir: Path) -> FileSizes:
     fs = FileSizes()
     for p in list_md_files(claude_dir / "agents"):
@@ -62,9 +83,21 @@ def _file_sizes(claude_dir: Path) -> FileSizes:
         fs.commands[f"/{p.stem}"] = p.stat().st_size
     for p in list_md_files(claude_dir / "rules"):
         fs.rules[p.stem] = p.stat().st_size
-    for p in list_files(claude_dir / "hooks", (".sh", ".py", ".js")):
+    for p in list_any_files(claude_dir / "hooks"):
         fs.hooks[p.name] = p.stat().st_size
+    for p in list_md_files(claude_dir / "output-styles"):
+        fs.output_styles[p.stem] = p.stat().st_size
+    for p in _list_agent_memory(claude_dir / "agent-memory"):
+        # Display the agent name, not the MEMORY.md leaf.
+        fs.agent_memory[p.parent.name] = p.stat().st_size
+    for p in list_md_files(claude_dir / "contexts"):
+        fs.contexts[p.stem] = p.stat().st_size
     return fs
+
+
+def _scan_root_files(repo_path: Path) -> list[str]:
+    """Return the subset of ROOT_FILES that actually exist at repo root."""
+    return [name for name in ROOT_FILES if (repo_path / name).exists()]
 
 
 def _scan_one(repo_path: Path, accent: str) -> Repo | None:
@@ -79,6 +112,16 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
     skills_names = []
     for p in _list_skills(claude_dir / "skills"):
         skills_names.append(p.parent.name if p.name == "SKILL.md" else p.stem)
+
+    # Also read <repo>/.mcp.json — Claude Code's canonical per-project MCP config
+    _mcp_extra: set[str] = set()
+    mcp_json = repo_path / ".mcp.json"
+    if mcp_json.is_file():
+        try:
+            _mcp_data = json.loads(mcp_json.read_text())
+            _mcp_extra = set((_mcp_data.get("mcpServers") or {}).keys())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not parse %s: %s", mcp_json, exc)
 
     return Repo(
         id=repo_path.name,
@@ -95,8 +138,13 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
         skills=skills_names,
         commands=list(fs.commands.keys()),
         rules=list(fs.rules.keys()),
+        hooks=list(fs.hooks.keys()),
+        output_styles=list(fs.output_styles.keys()),
+        agent_memory=list(fs.agent_memory.keys()),
+        contexts=list(fs.contexts.keys()),
         plugins=sorted(settings["plugins"].keys()),
-        mcp=sorted(settings["mcpServers"].keys()),
+        mcp=sorted(set(settings["mcpServers"].keys()) | _mcp_extra),
+        root_files=_scan_root_files(repo_path),
         permissions=Permissions(
             allow=len(perms["allow"]),
             deny=len(perms["deny"]),
@@ -185,6 +233,10 @@ def scan_global() -> GlobalEnvelope:
         agents=list(fs.agents.keys()),
         skills=skills_names,
         commands=list(fs.commands.keys()),
+        rules=list(fs.rules.keys()),
+        hooks=list(fs.hooks.keys()),
+        output_styles=list(fs.output_styles.keys()),
+        agent_memory=list(fs.agent_memory.keys()),
         plugins=plugin_names,
         mcp=mcp_names,
         permissions=Permissions(

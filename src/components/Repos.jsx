@@ -1,6 +1,5 @@
 import Icon from '../icons';
 import { Status } from './Common';
-import { useActiveAgents } from '../api';
 
 export const RepoCard = ({ repo, onOpen, liveAgent }) => (
   <div className="cd clickable" style={{ '--accent': repo.accent }} onClick={() => onOpen(repo.id)}>
@@ -82,10 +81,10 @@ const RepoListRow = ({ repo, onOpen }) => (
   </div>
 );
 
-export const ReposPage = ({ repos, onOpen, layout }) => {
-  // App.jsx already merges live activity into repo.isActive. We only need
-  // the per-repo agent record here for the "doing X" footer in card view.
-  const liveAgents = useActiveAgents();
+export const ReposPage = ({ repos, onOpen, layout, liveAgents = [] }) => {
+  // App.jsx already merges live activity into repo.isActive and passes down
+  // the single useActiveAgents() poll result. We only need the per-repo
+  // agent record here for the "doing X" footer in card view.
   const liveByRepo = {};
   for (const a of liveAgents) {
     if (!liveByRepo[a.repo]) liveByRepo[a.repo] = a;

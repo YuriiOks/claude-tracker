@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.config import get_settings
 from app.schemas.inventory import GlobalEnvelope
@@ -20,7 +21,7 @@ router = APIRouter(prefix="", tags=["repos"])
 
 @router.get("/repos", response_model=list[Repo])
 async def list_repos() -> list[Repo]:
-    repos = scan_all_repos()
+    repos = await asyncio.to_thread(scan_all_repos)
     real = await fetch_real_stats()
     for r in repos:
         if r.name in real:
@@ -30,7 +31,7 @@ async def list_repos() -> list[Repo]:
 
 @router.get("/repos/{repo_id}", response_model=Repo)
 async def get_repo(repo_id: str) -> Repo:
-    repo = get_repo_by_id(repo_id)
+    repo = await asyncio.to_thread(get_repo_by_id, repo_id)
     if repo is None:
         raise HTTPException(status_code=404, detail=f"repo not found: {repo_id}")
     real = await fetch_real_stats()
@@ -41,7 +42,7 @@ async def get_repo(repo_id: str) -> Repo:
 
 @router.get("/global", response_model=GlobalEnvelope)
 async def get_global() -> GlobalEnvelope:
-    return scan_global()
+    return await asyncio.to_thread(scan_global)
 
 
 # ----------------------- Add-repo discovery & writes ------------------------
@@ -86,14 +87,11 @@ def _cwd_from_project_dir(project_dir: Path) -> str:
     return ""
 
 
-@router.get("/repos/candidates/list")
-async def list_repo_candidates() -> list[dict]:
-    """Discover candidate repos by scanning ~/.claude/projects/. A path is a
-    valid candidate if (a) it exists on disk and (b) it contains a `.claude/`
-    folder. Already-tracked paths are excluded.
-
-    Returns: [{ host_path, container_path, name, sessions, alreadyTracked }, ...]
-    """
+def _scan_repo_candidates() -> list[dict]:
+    # Discover candidate repos by scanning ~/.claude/projects/. A path is a
+    # valid candidate if (a) it exists on disk and (b) it contains a
+    # .claude/ folder. Already-tracked paths are excluded. Returns:
+    # [{ host_path, container_path, name, sessions, alreadyTracked }, ...]
     settings = get_settings()
     projects_dir = settings.projects_dir
     if not projects_dir.is_dir():
@@ -126,8 +124,40 @@ async def list_repo_candidates() -> list[dict]:
     return sorted(out, key=lambda r: (r["alreadyTracked"], -r["sessions"], r["name"]))
 
 
+@router.get("/repos/candidates/list")
+async def list_repo_candidates() -> list[dict]:
+    """Discover candidate repos by scanning ~/.claude/projects/. A path is a
+    valid candidate if (a) it exists on disk and (b) it contains a `.claude/`
+    folder. Already-tracked paths are excluded.
+
+    Returns: [{ host_path, container_path, name, sessions, alreadyTracked }, ...]
+    """
+    return await asyncio.to_thread(_scan_repo_candidates)
+
+
+def _add_repo_sync(raw: str, settings) -> dict:
+    # If it is a host path, translate. If it is already a container path, no-op.
+    target = settings.translate_host_path(raw) if raw.startswith(settings.host_home or "/Users") else Path(raw)
+
+    # C4: containment -- resolved target must live under the allowed
+    # host-mount root (Docker) or the real home dir (bare-metal), never an
+    # arbitrary filesystem path outside what this process should see.
+    allowed_root = (Path(settings.host_mount_path) if settings.host_home else Path.home()).resolve()
+    try:
+        target.resolve().relative_to(allowed_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"path outside allowed root: {target}") from None
+
+    if not target.is_dir():
+        raise HTTPException(status_code=404, detail=f"path not found in container: {target}")
+    if not (target / ".claude").is_dir():
+        raise HTTPException(status_code=400, detail=f"no .claude folder in {target}")
+    added = registry_add(str(target))
+    return {"path": str(target), "added": added}
+
+
 @router.post("/repos")
-async def add_repo_endpoint(payload: dict = Body(...)) -> dict:
+async def add_repo_endpoint(payload: dict) -> dict:
     """Append a new repo path to the runtime registry. Accepts either a host
     path (auto-translated) or an explicit container path.
     """
@@ -135,14 +165,7 @@ async def add_repo_endpoint(payload: dict = Body(...)) -> dict:
     if not raw:
         raise HTTPException(status_code=400, detail="missing 'path'")
     settings = get_settings()
-    # If it's a host path, translate. If it's already a container path, no-op.
-    target = settings.translate_host_path(raw) if raw.startswith(settings.host_home or "/Users") else Path(raw)
-    if not target.is_dir():
-        raise HTTPException(status_code=404, detail=f"path not found in container: {target}")
-    if not (target / ".claude").is_dir():
-        raise HTTPException(status_code=400, detail=f"no .claude folder in {target}")
-    added = registry_add(str(target))
-    return {"path": str(target), "added": added}
+    return await asyncio.to_thread(_add_repo_sync, raw, settings)
 
 
 @router.delete("/repos/{repo_id}")

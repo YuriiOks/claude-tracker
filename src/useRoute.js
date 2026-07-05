@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 //   /                              → dashboard
 //   /<page>                        → top-level page (repos, agents, live, ...)
 //   /repos/:repoId                 → repo detail (default tab=overview)
-//   /repos/:repoId/:tab            → repo detail with active tab (agents, skills, commands, rules, permissions, plugins)
+//   /repos/:repoId/:tab            → repo detail with active tab (agents, skills, commands, rules, permissions, plugins, mcp)
 //   /repos/:repoId/:tab/:name      → drill into an item inside the repo
 //   /agents/:name                  → global agent detail
 //   /agents/:name/:kind            → global agent/skill detail (kind explicit)
@@ -18,6 +18,8 @@ const REPO_TAB_TO_KIND = {
   skills: 'skill',
   commands: 'command',
   rules: 'rule',
+  plugins: 'plugin',
+  mcp: 'mcp',
 };
 const KIND_TO_REPO_TAB = Object.fromEntries(
   Object.entries(REPO_TAB_TO_KIND).map(([t, k]) => [k, t]),
@@ -87,7 +89,13 @@ export function useRoute() {
   const setRoute = useCallback((next) => {
     const path = buildPath(next);
     if (path !== window.location.pathname) {
-      window.history.pushState(null, '', path);
+      // Stamp each entry with how many in-app pushes deep it is. The browser
+      // restores this on every popstate (back AND forward), so it survives
+      // refresh and works even with multiple useRoute() call sites (App.jsx,
+      // MarkdownPanel.jsx) — unlike a module-level counter, which would
+      // desync between instances.
+      const depth = (window.history.state?.navDepth || 0) + 1;
+      window.history.pushState({ navDepth: depth }, '', path);
     }
     setRouteState(next);
   }, []);
@@ -95,9 +103,10 @@ export function useRoute() {
   // In-app "Back" buttons: walk the history stack instead of pushing a fresh
   // entry so the back button trail stays intuitive. Falls back to a plain
   // setRoute when there is no prior in-app history (e.g. user opened a deep
-  // link in a fresh tab).
+  // link in a fresh tab, so this session never pushed an entry to walk back
+  // to).
   const goBack = useCallback((fallbackRoute) => {
-    if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) {
+    if ((window.history.state?.navDepth || 0) > 0) {
       window.history.back();
     } else {
       setRoute(fallbackRoute);

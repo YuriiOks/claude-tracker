@@ -7,7 +7,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_tracker_records_and_prunes() -> None:
-    from app.services.live_agents import _Activity, get_tracker
+    from app.services.live_agents import get_tracker
 
     tracker = get_tracker()
     await tracker.reset()
