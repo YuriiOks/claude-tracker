@@ -96,7 +96,7 @@ async def get_file(repo_id: str, rel_path: str) -> dict:
     try:
         target.relative_to(repo_root)
     except ValueError:
-        raise HTTPException(status_code=403, detail="path outside repo")
+        raise HTTPException(status_code=403, detail="path outside repo") from None
 
     if not target.is_file():
         raise HTTPException(status_code=404, detail=f"file not found: {rel_path}")

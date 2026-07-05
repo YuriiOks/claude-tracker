@@ -360,7 +360,7 @@ export const FILE_SIZES = {
     "jupus-orchestrator": 3914, "jupus-test-engineer": 2904, "integration-engineer": 3655,
     "jupus-devops": 3719, "frontend-engineer": 3871, "ai-developer": 5117,
     "backend-engineer": 4053, "document-specialist": 2898,
-    "idor-auditor": 4038, "migration-reversibility": 5320,
+    "code-reviewer": 3402, "commit-writer": 2117, "doc-explorer": 2955,
     "voice-engineer": 3200, "twilio-specialist": 2800, "websocket-debugger": 2600,
     "rag-architect": 4400, "embeddings-tuner": 3300, "next-frontend": 3100,
     "slide-writer": 2200,
@@ -393,8 +393,9 @@ export const FILE_SIZES = {
     "talk-conventions": 1100,
   },
   hooks: {
-    "post-tool-use-idor-warn.sh": 779, "post-tool-use-types-nudge.sh": 587,
-    "post-tool-use-prettier.sh": 606, "post-tool-use-ruff.sh": 738,
+    "post-tool-use-eslint.sh": 612, "post-tool-use-ruff.sh": 738,
+    "stop-draft-errors.sh": 1284, "session-start-banner.sh": 421,
+    "global-session-start.sh": 890,
   },
 };
 
@@ -431,24 +432,6 @@ export const MCP_REGISTRY = {
   'code-review-graph': { desc: 'Code review graph + impact analysis' },
 };
 
-// F11: Claude API pricing — USD per 1M tokens (rough average; refine per model later).
-export const MODEL_PRICING_USD_PER_M = {
-  default: 8,
-  'claude-sonnet-4': 3,
-  'claude-opus-4': 15,
-};
-
-
-// F12: Sample agent invocation feed shown on AgentDetail. Backend can later
-// surface real per-agent execution log via /api/agents/:name/invocations.
-export const AGENT_INVOCATIONS = [
-  { t: '2m',  task: 'Audit Bedrock stream parser for empty content blocks', tokens: 4200, status: 'completed' },
-  { t: '14m', task: 'Generate TypeScript types from OpenAPI spec',          tokens: 1800, status: 'completed' },
-  { t: '38m', task: 'Run ACM-026 test suite end-to-end',                    tokens: 6300, status: 'running'   },
-  { t: '1h',  task: 'Investigate stuck SSE in production',                  tokens: 8100, status: 'failed'    },
-  { t: '2h',  task: 'Add seed migration for new model descriptions',        tokens: 2200, status: 'completed' },
-];
-
 
 // F13: Recent diff feed shown on DiffPage. Real data served by
 // /api/diffs/list — this array is the fallback when the backend hasn't
@@ -465,7 +448,95 @@ export const RECENT_DIFFS = [
   { ts: _agoIso(60), file: 'retell/handlers/polish_agent.py',                   repo: 'voice',  adds: 18, dels: 4, agent: 'voice-engineer' },
 ];
 
-export const MOCK_DATA = {
-  REPOS, GLOBAL, AGENT_META, LIVE_EVENTS_SEED, LIVE_EVENTS_FUTURE, SESSIONS,
-  PERMISSIONS_DETAIL, DIFF_SAMPLE, FILE_SIZES, USER, PLUGIN_REGISTRY, MCP_REGISTRY, MODEL_PRICING_USD_PER_M, AGENT_INVOCATIONS, RECENT_DIFFS,
+// ── Monitoring / OpenTelemetry mock data ─────────────────────────────────────
+// TELEMETRY_CONFIG: enabled:false + eventTotal:0 → shows CTA empty state in mock mode.
+export const TELEMETRY_CONFIG = {
+  enabled: false,
+  ingestUrl: 'http://localhost:8765/v1/logs',
+  metricsUrl: 'http://localhost:8765/v1/metrics',
+  exporters: { logs: null, metrics: null },
+  options: { logToolDetails: false, logUserPrompts: false },
+  settingsPath: '/Users/yurii_jupus/.claude/settings.json',
+  fileExists: true,
+  mtime: 1780251965.5,
+  eventTotal: 0,
+  lastEventAt: null,
+  metricTotal: 0,
+  lastMetricAt: null,
+};
+
+export const OTEL_SUMMARY = {
+  windowHours: 24,
+  eventTotal: 124,
+  lastEventAt: '2026-07-05T11:29:37.000Z',
+  counts: {
+    api_request: 12,
+    tool_result: 38,
+    hook_registered: 48,
+    mcp_server_connection: 5,
+    agent_invocation: 21,
+  },
+  errors: [
+    {
+      ts: '2026-07-05T09:05:42.554Z',
+      eventName: 'api_request',
+      model: 'claude-sonnet-4-6',
+      statusCode: 529,
+      error: 'Overloaded',
+      attempt: 2,
+    },
+    {
+      ts: '2026-07-05T07:51:05.318Z',
+      eventName: 'tool_result',
+      model: null,
+      statusCode: 500,
+      error: 'Internal server error from MCP server',
+      attempt: 1,
+    },
+  ],
+  toolLatency: [
+    { tool: 'Bash',    count: 18, p50Ms: 312,  p95Ms: 1840, maxMs: 4210  },
+    { tool: 'Edit',    count: 24, p50Ms: 48,   p95Ms: 210,  maxMs: 580   },
+    { tool: 'Read',    count: 41, p50Ms: 22,   p95Ms: 88,   maxMs: 310   },
+  ],
+};
+
+export const OTEL_EVENTS = [
+  { id: 'ev-001', eventName: 'hook_registered',      ts: '2026-07-05T11:29:37.000Z', sessionId: 'sess-abc1', promptId: null,    repo: 'jupus', attrs: { hook: 'post-tool-use-ruff.sh' } },
+  { id: 'ev-002', eventName: 'api_request',           ts: '2026-07-05T11:27:43.534Z', sessionId: 'sess-abc1', promptId: 'p-001', repo: 'jupus', attrs: { model: 'claude-sonnet-4-6', inputTokens: 3200, outputTokens: 840 } },
+  { id: 'ev-003', eventName: 'tool_result',            ts: '2026-07-05T11:27:29.834Z', sessionId: 'sess-abc1', promptId: 'p-001', repo: 'jupus', attrs: { tool: 'Bash', durationMs: 312, exitCode: 0 } },
+  { id: 'ev-004', eventName: 'mcp_server_connection',  ts: '2026-07-05T11:23:32.434Z', sessionId: 'sess-abc2', promptId: null,    repo: null,    attrs: { server: 'filesystem' } },
+  { id: 'ev-005', eventName: 'agent_invocation',       ts: '2026-07-05T11:02:15.654Z', sessionId: 'sess-abc2', promptId: 'p-002', repo: 'voice', attrs: { agent: 'voice-engineer' } },
+];
+
+export const OTEL_METRICS = {
+  windowHours: 24,
+  cost: {
+    total: 2.40,
+    byModel: [
+      { model: 'claude-sonnet-4-6', cost: 2.20 },
+      { model: 'claude-haiku-3-5',  cost: 0.20 },
+    ],
+    bySource: [
+      { querySource: 'chat',   cost: 1.62 },
+      { querySource: 'agent',  cost: 0.78 },
+    ],
+  },
+  tokens: {
+    total: 312_840,
+    byType: [
+      { type: 'input',         tokens: 148_200 },
+      { type: 'output',        tokens: 62_400 },
+      { type: 'cacheRead',     tokens: 96_800 },
+      { type: 'cacheCreation', tokens: 5_440 },
+    ],
+    byModel: [
+      { model: 'claude-sonnet-4-6', tokens: 251_200 },
+      { model: 'claude-haiku-3-5',  tokens: 61_640 },
+    ],
+  },
+  sessions: 6,
+  activeTimeSec: 1850,
+  metricTotal: 42,
+  lastMetricAt: '2026-07-05T11:31:45.434Z',
 };

@@ -6,6 +6,7 @@ import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
 import { useAgents, useRepoEvents } from "../api";
+import LiveGraph from "./LiveGraph";
 
 const HtmlArtifacts = ({ repo }) => {
   const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
@@ -307,7 +308,7 @@ const RepoAgents = ({ repo, onOpen }) => {
             <div className="row between" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>
               <span><span className="tc">{meta.callsToday}</span> calls today</span>
               <span><span className="tg">{(meta.avgTokens / 1000).toFixed(1)}k</span> avg tokens</span>
-              {meta.delegates.length > 0 && <span><span className="tp">{meta.delegates.length}</span> delegates</span>}
+              {(meta.delegates?.length ?? 0) > 0 && <span><span className="tp">{meta.delegates.length}</span> delegates</span>}
             </div>
           )}
         </div>
@@ -367,7 +368,7 @@ const RepoRules = ({ repo, onOpen }) => (
   </div>
 );
 
-const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
+const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute, liveAgents }) => {
   const setTab = onTabChange || (() => {});
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
@@ -400,8 +401,8 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
           ><Icon name="eye" size={12} />Copy path</button>
           <button
             className="btn primary"
-            title="Open the live activity feed (filtered to all repos for now)"
-            onClick={() => setRoute && setRoute({ page: 'live' })}
+            title="Tail live activity feed for this repo"
+            onClick={() => setRoute && setRoute({ page: 'live', repoId: isGlobal ? null : repo.id })}
           ><Icon name="terminal" size={12} />Tail session</button>
         </>}
       />
@@ -424,6 +425,7 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
           { id: 'rules', label: 'Rules', icon: 'book', count: (repo.rules || []).length },
           { id: 'permissions', label: 'Permissions', icon: 'shield' },
           { id: 'plugins', label: 'Plugins / MCP', icon: 'plug' },
+          ...(repo.id !== 'global' ? [{ id: 'graph', label: 'Live Graph', icon: 'cpu' }] : []),
         ]}
         value={tab}
         onChange={setTab}
@@ -434,8 +436,9 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
       {tab === 'skills' && <RepoSkills repo={repo} onOpen={onOpen} />}
       {tab === 'commands' && <RepoCommands repo={repo} onOpen={onOpen} />}
       {tab === 'rules' && <RepoRules repo={repo} onOpen={onOpen} />}
-      {tab === 'permissions' && <PermissionsPanel scope={repo.name} />}
-      {tab === 'plugins' && <PluginsPanel repo={repo} />}
+      {tab === 'permissions' && <PermissionsPanel scope={repo.id} />}
+      {tab === 'plugins' && <PluginsPanel repo={repo} onOpen={onOpen} />}
+      {tab === 'graph' && <LiveGraph repo={repo} agents={liveAgents} />}
     </>
   );
 };

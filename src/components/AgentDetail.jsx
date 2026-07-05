@@ -3,6 +3,7 @@ import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import { useAgents, useRepoHtmlArtifacts, useSessions } from '../api';
 import MarkdownPanel from './MarkdownPanel';
+import { PLUGIN_REGISTRY, MCP_REGISTRY } from '../data';
 
 // Templates section — when a skill has a `templates/` subdir (e.g. html-docs),
 // list the .html templates so the user can preview them inline.
@@ -78,6 +79,9 @@ const SimpleItemDetail = ({ name, kind, repo, onBack }) => {
   );
 };
 
+// Local variant of utils/time.js fmtAgo: keeps a linear "Nd ago" bucket for
+// multi-day items instead of switching to a calendar-date label. Intentional
+// divergence for this invocations list — not a dupe to remove.
 // Format "2m ago" / "1h ago" / "3d ago" from an ISO timestamp.
 function timeAgo(iso) {
   if (!iso) return '—';
@@ -114,24 +118,50 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
     if (!sessions) return null;
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const cutoff = today.getTime();
-    return sessions.filter(s => {
-      if (!s || s.agent !== name) return false;
-      const t = s.started ? new Date(s.started).getTime() : 0;
-      return t >= cutoff;
-    }).length;
+    const matches = sessions.filter(s => s && s.agent === name);
+    if (matches.length === 0) return 0;
+    const parseable = matches.filter(s => !Number.isNaN(new Date(s.started).getTime()));
+    if (parseable.length === 0) return null;
+    return parseable.filter(s => new Date(s.started).getTime() >= cutoff).length;
   }, [sessions, name]);
 
   const weekCount = useMemo(() => {
     if (!sessions) return null;
     const cutoff = Date.now() - 7 * 86400 * 1000;
-    return sessions.filter(s => {
-      if (!s || s.agent !== name) return false;
-      const t = s.started ? new Date(s.started).getTime() : 0;
-      return t >= cutoff;
-    }).length;
+    const matches = sessions.filter(s => s && s.agent === name);
+    if (matches.length === 0) return 0;
+    const parseable = matches.filter(s => !Number.isNaN(new Date(s.started).getTime()));
+    if (parseable.length === 0) return null;
+    return parseable.filter(s => new Date(s.started).getTime() >= cutoff).length;
   }, [sessions, name]);
 
   // Now safe to dispatch on kind — every hook has run.
+  if (kind === "plugin" || kind === "mcp") {
+    const [itemName, itemSource = 'local'] = String(name).split('@');
+    const registry = kind === "plugin" ? PLUGIN_REGISTRY : MCP_REGISTRY;
+    const info = registry[itemName] || registry[name] || { desc: kind === "plugin" ? "Installed plugin" : "MCP server" };
+    const accent = kind === "plugin" ? 'var(--cyan)' : 'var(--purple)';
+    const badge = kind === "plugin" ? 'bg-c' : 'bg-p';
+    const iconName = kind === "plugin" ? 'pkg' : 'cpu';
+    return (
+      <>
+        <button className="page-back" onClick={onBack}><Icon name="x" size={11} /><span>Back</span></button>
+        <PageHead
+          title={itemName}
+          accent={accent}
+          sub={info.desc}
+          actions={<>
+            <span className={'bg ' + badge}>
+              <Icon name={iconName} size={10} />{kind}
+            </span>
+            {itemSource && itemSource !== 'local' && <span className="bg bg-m">{itemSource}</span>}
+            {repo && <span className="bg bg-m">{repo.name}</span>}
+          </>}
+        />
+      </>
+    );
+  }
+
   if (kind === "command" || kind === "rule") {
     return <SimpleItemDetail name={name} kind={kind} repo={repo} onBack={onBack} />;
   }

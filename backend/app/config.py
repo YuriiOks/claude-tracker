@@ -24,10 +24,15 @@ class Settings(BaseSettings):
     port: int = 8765
     frontend_origin: str = "http://localhost:5173"
     log_level: str = "INFO"
+    otel_ingest_url: str = "http://localhost:8765/v1/logs"
+    otel_metrics_url: str = "http://localhost:8765/v1/metrics"
     # Host's home directory. Used to translate JSONL host paths
     # (e.g. /Users/yurii_jupus/...) → container paths (/host/home/...)
     # so repo matching works across the docker boundary. Bare-metal: empty.
     host_home: str = ""
+    # Container volume mount target for host home. Change HOST_MOUNT_PATH env var
+    # if you rename the docker-compose volume mount target (default: /host/home).
+    host_mount_path: str = "/host/home"
 
     @field_validator("claude_dir", "db_path", mode="before")
     @classmethod
@@ -50,7 +55,7 @@ class Settings(BaseSettings):
         """
         p = str(host_path)
         if self.host_home and p.startswith(self.host_home):
-            return Path("/host/home" + p[len(self.host_home):])
+            return Path(self.host_mount_path + p[len(self.host_home):])
         return Path(p)
 
     @property

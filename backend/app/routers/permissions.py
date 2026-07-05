@@ -38,9 +38,9 @@ async def get_scoped_permissions(
     try:
         data = pw.read_permissions(scope=scope, target=target)
     except pw.ScopeNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return ScopedPermissionsRead.model_validate(data)
 
 
@@ -68,14 +68,14 @@ async def put_scoped_permissions(
             if_unchanged_since=body.if_unchanged_since,
         )
     except pw.ScopeNotFound as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     except pw.StaleFile as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except json.JSONDecodeError as e:
         raise HTTPException(
             status_code=409,
             detail=f"settings file is not valid JSON; refusing to overwrite: {e}",
-        )
+        ) from e
     return ScopedPermissionsWriteResult.model_validate(result)

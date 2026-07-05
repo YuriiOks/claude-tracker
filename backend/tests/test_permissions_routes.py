@@ -1,8 +1,8 @@
 """HTTP-level tests for the scoped permissions read/write endpoints."""
 from __future__ import annotations
 
+import asyncio
 import json
-import time
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -70,7 +70,7 @@ async def test_stale_write_409(claude_dir_override, client):
     path = claude_dir_override / "settings.local.json"
     new_content = json.loads(path.read_text())
     new_content["permissions"]["allow"] = ["external"]
-    time.sleep(0.05)
+    await asyncio.sleep(0.05)
     path.write_text(json.dumps(new_content))
     r2 = await client.put("/api/permissions/scoped", json={
         "scope": "global",

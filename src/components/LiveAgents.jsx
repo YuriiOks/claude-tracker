@@ -1,4 +1,3 @@
-import { useActiveAgents } from '../api';
 import Icon from '../icons';
 import { fmtSince } from '../utils/time';
 
@@ -23,9 +22,7 @@ function fmtElapsed(s) {
   return `${h}h ${m % 60}m`;
 }
 
-export default function LiveAgents({ repos = [], onOpen }) {
-  const agents = useActiveAgents();
-
+export default function LiveAgents({ repos = [], onOpen, agents = [] }) {
   const repoMap = Object.fromEntries(repos.map(r => [r.id || r.name, r]));
 
   return (

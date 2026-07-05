@@ -8,7 +8,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.schemas.inventory import FileSizes, GlobalEnvelope, PermissionsDetail
 from app.schemas.repo import Permissions, Repo, RepoStats
-from app.services.fs_utils import git_branch, list_any_files, list_files, list_md_files
+from app.services.fs_utils import git_branch, list_any_files, list_md_files
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,16 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
     for p in _list_skills(claude_dir / "skills"):
         skills_names.append(p.parent.name if p.name == "SKILL.md" else p.stem)
 
+    # Also read <repo>/.mcp.json — Claude Code's canonical per-project MCP config
+    _mcp_extra: set[str] = set()
+    mcp_json = repo_path / ".mcp.json"
+    if mcp_json.is_file():
+        try:
+            _mcp_data = json.loads(mcp_json.read_text())
+            _mcp_extra = set((_mcp_data.get("mcpServers") or {}).keys())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("could not parse %s: %s", mcp_json, exc)
+
     return Repo(
         id=repo_path.name,
         name=repo_path.name,
@@ -133,7 +143,7 @@ def _scan_one(repo_path: Path, accent: str) -> Repo | None:
         agent_memory=list(fs.agent_memory.keys()),
         contexts=list(fs.contexts.keys()),
         plugins=sorted(settings["plugins"].keys()),
-        mcp=sorted(settings["mcpServers"].keys()),
+        mcp=sorted(set(settings["mcpServers"].keys()) | _mcp_extra),
         root_files=_scan_root_files(repo_path),
         permissions=Permissions(
             allow=len(perms["allow"]),

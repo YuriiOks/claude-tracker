@@ -8,7 +8,8 @@
   },
   "statusLine": {
     "type": "command",
-    "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/status-line.sh"],
+    "command": "bash",
+    "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/status-line.sh"],
     "refreshInterval": 3000
   },
   "permissions": {
@@ -58,7 +59,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start-banner.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/session-start-banner.sh"]
           }
         ]
       }
@@ -70,7 +72,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-compact-invariants.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/post-compact-invariants.sh"]
           }
         ]
       }
@@ -82,7 +85,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-stop-checklist.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/pre-stop-checklist.sh"]
           }
         ]
       },
@@ -92,7 +96,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-draft-errors.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-draft-errors.sh"]
           }
         ]
       }
@@ -106,7 +111,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"],
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-eslint.sh"],
             "continueOnBlock": true
           }
         ]
@@ -118,7 +124,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-track-failures.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-track-failures.sh"]
           }
         ]
       },
@@ -129,7 +136,8 @@
         "hooks": [
           {
             "type": "command",
-            "args": ["bash", "${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-ruff.sh"]
+            "command": "bash",
+            "args": ["${CLAUDE_PROJECT_DIR}/.claude/hooks/post-tool-use-ruff.sh"]
           }
         ]
       }

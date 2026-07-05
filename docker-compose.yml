@@ -32,6 +32,8 @@ services:
       # but REPO_ROOTS is container paths (e.g. /host/home/...). Backend
       # translates by replacing HOST_HOME prefix with /host/home.
       HOST_HOME: ${REPO_PARENT_HOST:-${HOME}}
+      OTEL_INGEST_URL: http://localhost:47821/v1/logs
+      OTEL_METRICS_URL: http://localhost:47821/v1/metrics
     ports:
       - "127.0.0.1:47821:8765"
     volumes:
@@ -46,9 +48,9 @@ services:
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8765/api/health', timeout=2).status==200 else 1)"]
       interval: 15s
-      timeout: 3s
+      timeout: 5s
       retries: 4
-      start_period: 5s
+      start_period: 30s
 
   frontend:
     build:
@@ -66,7 +68,7 @@ services:
       VITE_HMR_CLIENT_PORT: "47820"
       CHOKIDAR_USEPOLLING: "true"
     ports:
-      - "127.0.0.1:47820:5173"
+      - "47820:5173"
     volumes:
       # Source mount for HMR; node_modules stays in the container layer
       - ./src:/app/src:ro

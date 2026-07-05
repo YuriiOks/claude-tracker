@@ -19,6 +19,7 @@ const HeatmapPage    = lazy(() => import('./components/Misc').then(m => ({ defau
 const CostPage       = lazy(() => import('./components/Misc').then(m => ({ default: m.CostPage })));
 const DiffPage       = lazy(() => import('./components/Misc').then(m => ({ default: m.DiffPage })));
 const Graph          = lazy(() => import('./components/Graph'));
+const MonitoringPage = lazy(() => import('./components/Monitoring'));
 const RepoDetail     = lazy(() => import('./components/RepoDetail'));
 const AgentDetail    = lazy(() => import('./components/AgentDetail'));
 const TweaksPanel    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweaksPanel })));
@@ -40,7 +41,7 @@ const TWEAK_DEFAULTS = {
   reposLayout: 'board',
 };
 
-function ReposView({ repos, onOpen, layout }) {
+function ReposView({ repos, onOpen, layout, liveAgents }) {
   const [local, setLocal] = useState(layout || 'grid');
   useEffect(() => setLocal(layout || 'grid'), [layout]);
   return (
@@ -58,7 +59,7 @@ function ReposView({ repos, onOpen, layout }) {
           ]}
         />}
       />
-      <ReposPage repos={repos} onOpen={onOpen} layout={local} />
+      <ReposPage repos={repos} onOpen={onOpen} layout={local} liveAgents={liveAgents} />
     </>
   );
 }
@@ -151,7 +152,7 @@ function App() {
   }, [route, allRepos]);
 
   const openRepo = (id) => setRoute({ page: 'repo', repoId: id });
-  const openAgent = (name, kind) => setRoute({ page: 'agent', name, kind: kind || 'agent' });
+  const openAgent = (name, kind, repoId) => setRoute({ page: 'agent', name, kind: kind || 'agent', repoId: repoId || null });
 
   // F16: crumbs derived from the same ROUTES registry that Sidebar uses
   const crumbs = useMemo(() => {
@@ -173,11 +174,11 @@ function App() {
   const renderPage = () => {
     switch (route.page) {
       case 'dashboard':
-        return <Dashboard repos={repos} sessions={sessions} liveEvents={liveEvents} onOpen={openRepo} setRoute={setRoute} />;
+        return <Dashboard repos={repos} sessions={sessions} liveEvents={liveEvents} onOpen={openRepo} setRoute={setRoute} liveAgents={liveAgents} />;
       case 'repos':
-        return <ReposView repos={repos} onOpen={openRepo} layout={tweaks.reposLayout} />;
+        return <ReposView repos={repos} onOpen={openRepo} layout={tweaks.reposLayout} liveAgents={liveAgents} />;
       case 'live':
-        return <LivePage liveEvents={liveEvents} repos={repos} onOpen={openRepo} />;
+        return <LivePage liveEvents={liveEvents} repos={repos} onOpen={openRepo} repoFilter={route.repoId || null} liveAgents={liveAgents} />;
       case 'sessions':
         return <SessionsPage sessions={sessions} repos={repos} />;
       case 'agents':
@@ -187,14 +188,16 @@ function App() {
       case 'heatmap':
         return <HeatmapPage repos={repos} />;
       case 'cost':
-        return <CostPage repos={repos} />;
+        return <CostPage repos={repos} setRoute={setRoute} />;
       case 'permissions':
         return <PermissionsPanel scope="all repos" />;
       case 'plugins':
         // F7: use the real global scope (plugins/mcp loaded via useGlobal), not a hardcoded mock
-        return <PluginsPanel repo={globalScope} />;
+        return <PluginsPanel repo={globalScope} onOpen={openAgent} />;
       case 'diff':
         return <DiffPage />;
+      case 'monitoring':
+        return <MonitoringPage />;
       case 'repo': {
         const r = allRepos.find(rr => rr.id === route.repoId);
         if (!r) {
@@ -207,6 +210,7 @@ function App() {
             repo={r}
             sessions={sessions}
             liveEvents={liveEvents}
+            liveAgents={liveAgents}
             tab={route.tab || 'overview'}
             onTabChange={(tab) => setRoute({ page: 'repo', repoId: r.id, tab })}
             // In-repo drill-in carries repoId so URL is /repos/:id/<tab>/:name
@@ -216,7 +220,7 @@ function App() {
       }
       case 'agent': {
         // Back target: in-repo → repo's matching tab; global → /agents
-        const KIND_TAB = { agent: 'agents', skill: 'skills', command: 'commands', rule: 'rules' };
+        const KIND_TAB = { agent: 'agents', skill: 'skills', command: 'commands', rule: 'rules', plugin: 'plugins', mcp: 'plugins' };
         const back = route.repoId
           ? { page: 'repo', repoId: route.repoId, tab: KIND_TAB[route.kind] || 'agents' }
           : { page: 'agents' };

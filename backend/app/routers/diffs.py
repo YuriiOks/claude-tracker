@@ -2,7 +2,9 @@
 across all tracked repos, derived from LiveEventRow tool events + git numstat)."""
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -16,6 +18,7 @@ from app.models.session_event import LiveEventRow
 from app.models.session_summary import SessionSummaryRow
 from app.schemas.session import Diff, DiffHunk, DiffLine, RecentDiffItem
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["diffs"])
 
 
@@ -28,6 +31,13 @@ def _git_diff(repo: Path, file_relative: str) -> list[DiffHunk]:
             timeout=4,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        logger.warning("git diff failed to run for %s/%s", repo, file_relative)
+        return []
+    if out.returncode != 0:
+        logger.warning(
+            "git diff exited %d for %s/%s: %s",
+            out.returncode, repo, file_relative, out.stderr.strip(),
+        )
         return []
     hunks: list[DiffHunk] = []
     current: DiffHunk | None = None
@@ -124,7 +134,6 @@ async def file_diff(
     db_mod._ensure_engine()
     sm = db_mod._sessionmaker
     assert sm is not None
-    target_host = str(repo_path / path)  # container path; matches what we store after translate
     agent = ""
     session_short = ""
     async with sm() as session:
@@ -176,6 +185,10 @@ def _git_numstat(repo: Path, rel: str) -> tuple[int, int] | None:
             timeout=2,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        logger.warning("git numstat failed to run for %s/%s", repo, rel)
+        return None
+    if out.returncode != 0:
+        logger.warning("git numstat exited %d for %s/%s: %s", out.returncode, repo, rel, out.stderr.strip())
         return None
     line = out.stdout.strip().split("\n", 1)[0] if out.stdout else ""
     if not line:
@@ -221,6 +234,10 @@ def _git_status_porcelain(repo: Path) -> list[str]:
             capture_output=True, text=True, timeout=4,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired):
+        logger.warning("git status failed to run for %s", repo)
+        return []
+    if out.returncode != 0:
+        logger.warning("git status exited %d for %s: %s", out.returncode, repo, out.stderr.strip())
         return []
     paths: list[str] = []
     for line in out.stdout.splitlines():
@@ -232,6 +249,34 @@ def _git_status_porcelain(repo: Path) -> list[str]:
             rest = rest.split(" -> ", 1)[1]
         paths.append(rest)
     return paths
+
+
+def _diff_items_for_repo(
+    repo_name: str, repo_path: Path, window_start: datetime
+) -> list[RecentDiffItem]:
+    # Blocking per-repo work (git status + numstat + file stat) -- run via
+    # asyncio.to_thread, one call per repo, gathered concurrently so N repos
+    # do not serialize N subprocess round-trips on the event loop.
+    items: list[RecentDiffItem] = []
+    for rel in _git_status_porcelain(repo_path):
+        stat = _git_numstat(repo_path, rel)
+        if stat is None or stat == (0, 0):
+            continue
+        try:
+            mtime = (repo_path / rel).stat().st_mtime
+            ts = datetime.fromtimestamp(mtime, tz=UTC)
+        except OSError:
+            # File was deleted on disk (still in git status as `D`).
+            # Fall back to now() so it sorts to the top -- recent
+            # deletion is recent activity.
+            ts = datetime.now(tz=UTC)
+        if ts < window_start:
+            continue
+        items.append(RecentDiffItem(
+            ts=ts, file=rel, repo=repo_name,
+            adds=stat[0], dels=stat[1], agent="",
+        ))
+    return items
 
 
 @router.get("/diffs/list", response_model=list[RecentDiffItem])
@@ -291,26 +336,13 @@ async def list_diffs() -> list[RecentDiffItem]:
     #    Files whose mtime falls outside the window are dropped — they're
     #    stale uncommitted work (e.g. months-old PDFs git thinks changed),
     #    not "recent diffs" in any useful sense.
-    items: list[RecentDiffItem] = []
-    for repo_name, repo_path in repo_paths_by_name.items():
-        for rel in _git_status_porcelain(repo_path):
-            stat = _git_numstat(repo_path, rel)
-            if stat is None or stat == (0, 0):
-                continue
-            try:
-                mtime = (repo_path / rel).stat().st_mtime
-                ts = datetime.fromtimestamp(mtime, tz=UTC)
-            except OSError:
-                # File was deleted on disk (still in git status as `D`).
-                # Fall back to now() so it sorts to the top — recent
-                # deletion is recent activity.
-                ts = datetime.now(tz=UTC)
-            if ts < window_start:
-                continue
-            items.append(RecentDiffItem(
-                ts=ts, file=rel, repo=repo_name,
-                adds=stat[0], dels=stat[1], agent="",
-            ))
+    results = await asyncio.gather(
+        *(
+            asyncio.to_thread(_diff_items_for_repo, repo_name, repo_path, window_start)
+            for repo_name, repo_path in repo_paths_by_name.items()
+        )
+    )
+    items: list[RecentDiffItem] = [item for repo_items in results for item in repo_items]
 
     items.sort(key=lambda x: x.ts, reverse=True)
     items = items[:30]

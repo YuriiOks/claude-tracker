@@ -27,7 +27,7 @@ async def _ingest_loop():
             r = await ingest_all(since_hours=24)
             logger.info(
                 "ingest tick: new=%s updated=%s skipped=%s events=%s in %ss",
-                r.get("new_summaries"), r.get("updated_summaries"),
+                r.get("new"), r.get("updated"),
                 r.get("skipped"), r.get("events"), r.get("elapsed_s"),
             )
         except Exception as e:  # noqa: BLE001
@@ -38,14 +38,14 @@ async def _ingest_loop():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
-    from app.services.live_stream import start_watcher, stop_watcher
     from app.services.ingest import ingest_all
+    from app.services.live_stream import start_watcher, stop_watcher
 
     # First-time bootstrap: full ingest so the dashboard has data on first paint.
     try:
         r = await ingest_all()
         logger.info("bootstrap ingest: %s new, %s updated, %s events",
-                    r.get("new_summaries"), r.get("updated_summaries"), r.get("events"))
+                    r.get("new"), r.get("updated"), r.get("events"))
     except Exception as e:  # noqa: BLE001
         logger.warning("bootstrap ingest failed: %s", e)
 
@@ -56,8 +56,10 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         ingest_task.cancel()
-        try: await ingest_task
-        except (asyncio.CancelledError, Exception): pass
+        try:
+            await ingest_task
+        except (asyncio.CancelledError, Exception):
+            pass
         await stop_watcher()
         logger.info("claude-tracker backend stopped")
 
@@ -86,17 +88,19 @@ def create_app() -> FastAPI:
         agents,
         cost,
         diffs,
+        files,
         health,
         integrations,
         live,
         live_agents,
+        otel_ingest,
         permissions,
         plugins,
         repos,
         sessions,
-        user,
-        files,
         stats,
+        telemetry,
+        user,
     )
     app.include_router(health.router, prefix="/api")
     app.include_router(repos.router, prefix="/api")
@@ -111,7 +115,9 @@ def create_app() -> FastAPI:
     app.include_router(user.router, prefix="/api")
     app.include_router(files.router, prefix="/api")
     app.include_router(stats.router, prefix="/api")
-    app.include_router(live.router)  # live.py declares full paths (/api + /ws)
+    app.include_router(telemetry.router, prefix="/api")
+    app.include_router(live.router)         # live.py declares full paths (/api + /ws)
+    app.include_router(otel_ingest.router)  # full paths: /v1/logs, /v1/metrics
 
     return app
 

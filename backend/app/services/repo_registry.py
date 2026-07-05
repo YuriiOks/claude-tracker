@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import threading
 from pathlib import Path
 
 from app.config import get_settings
@@ -19,6 +21,12 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 _RUNTIME_FILE_NAME = "tracked-repos.json"
+
+# Guards the read-modify-write in add_repo/remove_repo. These are plain sync
+# functions called from async route handlers without an await point, but a
+# thread lock is used (rather than asyncio.Lock) so the guarantee holds even
+# if a caller ever moves this onto a worker thread.
+_registry_lock = threading.Lock()
 
 
 def _runtime_file() -> Path:
@@ -42,7 +50,9 @@ def _read_runtime() -> list[str]:
 def _write_runtime(paths: list[str]) -> None:
     f = _runtime_file()
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(sorted(set(paths)), indent=2))
+    tmp = f.with_suffix(f"{f.suffix}.tmp.{os.getpid()}.{threading.get_ident()}")
+    tmp.write_text(json.dumps(sorted(set(paths)), indent=2))
+    os.replace(tmp, f)
 
 
 def all_repo_paths() -> list[Path]:
@@ -61,24 +71,26 @@ def all_repo_paths() -> list[Path]:
 
 def add_repo(path: str) -> bool:
     """Append a path to the runtime file. Returns True if newly added."""
-    paths = _read_runtime()
-    if path in paths:
-        return False
-    # Also skip if already in env REPO_ROOTS
-    settings = get_settings()
-    env_paths = [str(p) for p in settings.repo_paths]
-    if path in env_paths:
-        return False
-    paths.append(path)
-    _write_runtime(paths)
-    return True
+    with _registry_lock:
+        paths = _read_runtime()
+        if path in paths:
+            return False
+        # Also skip if already in env REPO_ROOTS
+        settings = get_settings()
+        env_paths = [str(p) for p in settings.repo_paths]
+        if path in env_paths:
+            return False
+        paths.append(path)
+        _write_runtime(paths)
+        return True
 
 
 def remove_repo(path: str) -> bool:
     """Remove a path from the runtime file (env entries can't be removed)."""
-    paths = _read_runtime()
-    if path not in paths:
-        return False
-    paths.remove(path)
-    _write_runtime(paths)
-    return True
+    with _registry_lock:
+        paths = _read_runtime()
+        if path not in paths:
+            return False
+        paths.remove(path)
+        _write_runtime(paths)
+        return True

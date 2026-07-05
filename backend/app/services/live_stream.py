@@ -97,7 +97,13 @@ _offsets: dict[Path, int] = defaultdict(int)
 
 
 def _tail_new_lines(path: Path) -> list[str]:
-    """Read any unread bytes from path; return complete lines."""
+    """Read any unread bytes from path; return complete lines.
+
+    Only advances the byte offset up to the last complete newline. A
+    trailing partial line (e.g. a concurrent writer mid-flush) is left
+    unread so it gets re-read whole on the next tick instead of being
+    parsed as JSON and dropped.
+    """
     try:
         size = path.stat().st_size
     except OSError:
@@ -111,16 +117,19 @@ def _tail_new_lines(path: Path) -> list[str]:
         else:
             return []
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
+        with path.open("rb") as fh:
             fh.seek(offset)
             chunk = fh.read()
     except OSError:
         return []
-    _offsets[path] = offset + len(chunk.encode("utf-8", errors="replace"))
-    # If the chunk doesn't end with newline, we shouldn't emit the trailing
-    # partial line — but for simplicity we return all lines and trust that
-    # JSONL writers flush whole records (they do in practice).
-    return [ln for ln in chunk.splitlines() if ln.strip()]
+    last_nl = chunk.rfind(b"\n")
+    if last_nl == -1:
+        # No complete line yet; leave the offset untouched.
+        return []
+    complete, _partial = chunk[: last_nl + 1], chunk[last_nl + 1 :]
+    _offsets[path] = offset + last_nl + 1
+    text = complete.decode("utf-8", errors="replace")
+    return [ln for ln in text.splitlines() if ln.strip()]
 
 
 async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
@@ -159,29 +168,8 @@ def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
 
     t = obj.get("type", "")
     cwd = obj.get("cwd")
-    repo = "unknown"
-    if cwd:
-        from app.config import get_settings
-        settings = get_settings()
-        # JSONL events record HOST paths; REPO_ROOTS is CONTAINER paths.
-        # Translate before matching so docker users don't see "unknown".
-        cwd_translated = settings.translate_host_path(cwd)
-        for rp in repo_paths:
-            try:
-                if cwd_translated.is_relative_to(rp):
-                    repo = rp.name
-                    break
-            except (TypeError, ValueError):
-                continue
-        # Fallback: if no tracked repo matched, surface the leaf folder name
-        # instead of "unknown" so the UI is still readable.
-        if repo == "unknown":
-            try:
-                leaf = Path(cwd).name
-                if leaf:
-                    repo = leaf
-            except Exception:
-                pass
+    from app.services.jsonl_parser import _repo_from_cwd
+    repo = _repo_from_cwd(cwd, repo_paths)
     raw_ts = obj.get("timestamp")
     ts = None
     if raw_ts:
@@ -237,11 +225,9 @@ def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
 
 
 async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
-    if not projects_dir.is_dir():  # noqa: ASYNC240
+    while not projects_dir.is_dir():  # noqa: ASYNC240
         logger.info("projects_dir missing, watcher idle: %s", projects_dir)
-        # Keep the task alive so cancellation works cleanly.
-        while True:  # noqa: ASYNC110
-            await asyncio.sleep(60)
+        await asyncio.sleep(60)
 
     # Seed offsets from current file sizes so we don't replay history.
     for f in projects_dir.rglob("*.jsonl"):  # noqa: ASYNC240

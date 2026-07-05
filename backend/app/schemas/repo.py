@@ -21,6 +21,7 @@ class RepoStats(_AliasModel):
     cost_week: float = Field(default=0.0, alias="costWeek")
     files_edited: int = Field(default=0, alias="filesEdited")
     avg_session: str = Field(default="—", alias="avgSession")
+    spark: list[int] = Field(default_factory=list)
 
 
 class Repo(_AliasModel):

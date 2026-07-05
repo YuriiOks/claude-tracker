@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
+from app.models.session_hour import SessionHourRow
 from app.models.session_summary import SessionSummaryRow
 from app.services.live_agents import get_tracker
 
@@ -49,10 +51,39 @@ async def dashboard_stats() -> dict:
 
     async with _sessionmaker() as session:
         # ---- Sessions today / yesterday ----
-        sessions_today = (await session.execute(
-            select(func.count(SessionSummaryRow.session_id))
-            .where(SessionSummaryRow.started_at >= today_start)
-        )).scalar() or 0
+        # Include status="running" so a session that started yesterday but is
+        # still active today is counted (same logic as repo_stats.py).
+        today_id_rows = (await session.execute(
+            select(SessionSummaryRow.session_id)
+            .where(
+                or_(
+                    SessionSummaryRow.started_at >= today_start,
+                    # Only count running sessions active today — avoids stale
+                    # unclosed sessions from previous days inflating the count.
+                    (
+                        (SessionSummaryRow.status == "running")
+                        & (SessionSummaryRow.last_event_at >= today_start)
+                    ),
+                )
+            )
+        )).scalars().all()
+        sessions_today = len(today_id_rows)
+        # Dedup against the live tracker: the DB query above already counts
+        # running sessions active today, so only add a tracker entry if its
+        # session was NOT already counted there (matched on the 8-char
+        # sessionId prefix the tracker exposes, see live_agents.snapshot).
+        # This avoids double-counting every active repo by >=1.
+        today_id_prefixes = {sid[:8] for sid in today_id_rows}
+        for entry in active_snapshot:
+            started_raw = entry.get("startedAt") or ""
+            try:
+                started = datetime.fromisoformat(started_raw)
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=UTC)
+                if started >= today_start and entry.get("sessionId") not in today_id_prefixes:
+                    sessions_today += 1
+            except (ValueError, TypeError):
+                pass
         sessions_yesterday = (await session.execute(
             select(func.count(SessionSummaryRow.session_id))
             .where(SessionSummaryRow.started_at >= yesterday_start,
@@ -132,4 +163,77 @@ async def dashboard_stats() -> dict:
         "asOf": now.isoformat(),
         "bucketStart": spark_start.isoformat(),
         "bucketSpanHours": 24,
+    }
+
+
+@router.get("/stats/heatmap")
+async def heatmap_stats(tz: str = "UTC") -> dict:
+    """7×24 session-count grid for the last 7 rolling days.
+
+    Buckets sessions by LOCAL time (tz query param, e.g. "America/Sao_Paulo").
+    Returns grid[day_index][hour] where day_index 0 = 6 days ago, 6 = today.
+    Also returns per-repo 48h intensity arrays for the per-repo section.
+    Each cell is a count of sessions active in that local hour.
+    """
+    from app.db import _ensure_engine, _sessionmaker
+    _ensure_engine()
+    if _sessionmaker is None:
+        raise RuntimeError("DB not initialised")
+
+    try:
+        local_tz = ZoneInfo(tz)
+    except (ZoneInfoNotFoundError, KeyError):
+        local_tz = UTC
+
+    now = datetime.now(tz=UTC)
+    local_now = now.astimezone(local_tz)
+
+    # 7-day rolling window in local time, ending today.
+    local_week_ago = (local_now - timedelta(days=6)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    # Convert back to UTC for the DB WHERE clause.
+    week_ago_utc = local_week_ago.astimezone(UTC)
+    fortyeight_ago = now - timedelta(hours=48)
+
+    async with _sessionmaker() as session:
+        rows = (await session.execute(
+            select(SessionHourRow.repo, SessionHourRow.hour_ts, SessionHourRow.tokens)
+            .where(
+                SessionHourRow.hour_ts >= week_ago_utc,
+                SessionHourRow.tokens > 0,
+            )
+        )).all()
+
+    # Build 7×24 grid — one row per (session × local hour) from session_hour.
+    grid = [[0] * 24 for _ in range(7)]
+    token_grid = [[0] * 24 for _ in range(7)]
+    repo_48h: dict[str, list[int]] = {}
+    repo_tokens_48h: dict[str, list[int]] = {}
+
+    for repo_name, hour_ts, tokens in rows:
+        ts_utc = hour_ts if hour_ts.tzinfo else hour_ts.replace(tzinfo=UTC)
+        ts_local = ts_utc.astimezone(local_tz)
+        day_delta = (ts_local.date() - local_week_ago.date()).days
+        if 0 <= day_delta < 7:
+            grid[day_delta][ts_local.hour] += 1
+            token_grid[day_delta][ts_local.hour] += tokens or 0
+        # 48h intensity
+        if ts_utc >= fortyeight_ago:
+            if repo_name not in repo_48h:
+                repo_48h[repo_name] = [0] * 48
+                repo_tokens_48h[repo_name] = [0] * 48
+            h_delta = int((ts_utc - fortyeight_ago).total_seconds() // 3600)
+            if 0 <= h_delta < 48:
+                repo_48h[repo_name][h_delta] += 1
+                repo_tokens_48h[repo_name][h_delta] += tokens or 0
+
+    return {
+        "grid": grid,
+        "tokenGrid": token_grid,
+        "dayLabels": [(local_week_ago + timedelta(days=i)).strftime("%a") for i in range(7)],
+        "weekStart": local_week_ago.isoformat(),
+        "repo48h": repo_48h,
+        "repoTokens48h": repo_tokens_48h,
+        "asOf": now.isoformat(),
     }

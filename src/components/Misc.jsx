@@ -1,56 +1,141 @@
 import { useState } from 'react';
 import Icon from '../icons';
 import { Metric, PageHead } from './Common';
-import { useDiff, useAgents, useRecentDiffs, useFileDiff } from '../api';
-import { MODEL_PRICING_USD_PER_M } from '../data';
+import { useDiff, useCost, useRecentDiffs, useFileDiff, useHeatmap } from '../api';
 import { fmtAgo } from '../utils/time';
 
+const WEEKS_PER_MONTH = 4.33;
+const TOP_AGENTS_LIMIT = 8;
+
 export const HeatmapPage = ({ repos }) => {
-  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const { data: heatmapData, loading: heatmapLoading } = useHeatmap();
+  const [mode, setMode] = useState('tokens');
+  // The PRNG grid below is a demo fallback for `VITE_USE_MOCKS=1` only. In
+  // real mode, no grid + not loading means genuinely no activity data —
+  // it must never be dressed up as real stats (see `noRealData`).
+  const isMockMode = import.meta.env.VITE_USE_MOCKS === '1';
+
   const seed = (i, j) => Math.sin(i * 12.9898 + j * 78.233) * 43758.5453;
-  const lvl = (i, j) => {
+  const lvlPrng = (i, j) => {
     const v = Math.abs(seed(i, j) % 1);
     if (j >= 9 && j <= 19 && i < 5) return v > .8 ? 4 : v > .5 ? 3 : v > .2 ? 2 : 1;
     if (j < 7 || j > 22) return v > .92 ? 1 : 0;
     return v > .85 ? 2 : v > .6 ? 1 : 0;
   };
+
+  // Real data: heatmapData.grid[dayIndex][hour] = count, tokenGrid = token sums
+  // dayLabels: ['Mon','Tue',...] with index 0 = 7 days ago
+  const days = heatmapData?.dayLabels || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const realGrid = heatmapData?.grid || null;
+
+  // Active grid switches between session counts and token sums based on mode
+  const activeGrid = (mode === 'tokens' && heatmapData?.tokenGrid) ? heatmapData.tokenGrid : realGrid;
+  // Percentile-based thresholds — adapt to actual data distribution.
+  // Collect sorted non-zero values; compute 25th/50th/75th breakpoints.
+  const _nonZero = activeGrid ? activeGrid.flat().filter(v => v > 0).sort((a, b) => a - b) : [];
+  const _pct = p => _nonZero.length ? _nonZero[Math.min(Math.floor(p * _nonZero.length), _nonZero.length - 1)] : 0;
+  const [p25, p50, p75] = [_pct(0.25), _pct(0.5), _pct(0.75)];
+
+  // No grid, not loading, not a mock build → there's simply no activity data
+  // yet. Render an empty state instead of fabricated stats.
+  const noRealData = !activeGrid && !heatmapLoading && !isMockMode;
+
+  const lvlReal = (i, j) => {
+    if (!activeGrid) {
+      // While loading, show empty cells — avoids a PRNG flash before real
+      // data arrives. Outside of mock mode, stay empty rather than fabricate.
+      if (heatmapLoading || !isMockMode) return 0;
+      return lvlPrng(i, j);
+    }
+    const v = activeGrid[i]?.[j] ?? 0;
+    if (v === 0) return 0;
+    // Each level covers ~25% of active hours. Highest percentile = brightest cell.
+    return v >= p75 ? 4 : v >= p50 ? 3 : v >= p25 ? 2 : 1;
+  };
+
+  // Compute grid metrics from lvlReal (uses real data when available, PRNG demo in mock mode)
+  const totalCells = days.length * 24;
+  const grid = days.map((_, i) => Array.from({ length: 24 }, (_, j) => lvlReal(i, j)));
+
+  // Peak hour: find (day, hour) with highest level
+  let peakDay = 0, peakHour = 14, peakVal = -1;
+  grid.forEach((row, i) => row.forEach((v, j) => {
+    if (v > peakVal) { peakVal = v; peakDay = i; peakHour = j; }
+  }));
+  const peakLabel = `${String(peakHour).padStart(2, '0')}:00`;
+  const peakDelta = `${days[peakDay]} · level ${peakVal}`;
+
+  // Day totals for quietest/most-active
+  const dayTotals = grid.map((row, i) => ({ day: days[i], total: row.reduce((a, v) => a + v, 0) }));
+  const quietestDay = dayTotals.reduce((a, b) => b.total < a.total ? b : a).day;
+  const mostActiveDay = dayTotals.reduce((a, b) => b.total > a.total ? b : a);
+
+  // Real week total from the active grid (raw values, not levels)
+  const realWeekTotal = activeGrid ? activeGrid.flat().reduce((a, v) => a + v, 0) : 0;
+  const fmtWeekTotal = mode === 'tokens'
+    ? realWeekTotal >= 1_000_000 ? `${(realWeekTotal / 1_000_000).toFixed(1)}M tokens`
+      : realWeekTotal >= 1_000 ? `${Math.round(realWeekTotal / 1_000)}k tokens`
+      : `${realWeekTotal} tokens`
+    : `${realWeekTotal} session${realWeekTotal !== 1 ? 's' : ''}`;
+
+  // Timezone
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   return (
     <>
-      <PageHead title="Activity heatmap" sub="When does Claude actually run? Each cell is one hour. Darker = more sessions." />
-      <div className="grid grid-cols-3 mb-4">
-        <Metric label="Peak hour" value="14:00" delta="Wed · 12 sessions" accent="cyan" />
-        <Metric label="Quietest day" value="Sunday" accent="purple" />
-        <Metric label="Most active" value="Wed" delta="38 sessions this week" accent="gold" />
-      </div>
-      <div className="card-frame">
-        <div className="card-frame-head">
-          <h2 className="section-title"><Icon name="clock" />This week · UTC+1</h2>
-          <span className="frame-meta">168 cells</span>
-          <div className="row gap-xs" style={{ fontSize: '.6rem', color: 'var(--muted)', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
-            <span style={{marginRight:4}}>Less</span>
-            {[0,1,2,3,4].map(l => <span key={l} className="heat-cell legend-sw" data-l={l || ''}></span>)}
-            <span style={{marginLeft:4}}>More</span>
-          </div>
+      <PageHead title="Activity heatmap" sub="When does Claude actually run? Each cell is one hour. Darker = more activity." />
+      {noRealData ? (
+        <div className="card-frame">
+          <div className="empty" style={{ padding: '2rem' }}>No activity data yet — run ingest or wait for sessions to be recorded.</div>
         </div>
-        <div style={{ padding: '1rem 1.2rem' }}>
-          {days.map((d, i) => (
-            <div key={d} className="row gap-sm mb-2">
-              <span style={{ width: 36, fontSize: '.62rem', color: 'var(--muted)' }}>{d}</span>
-              <div style={{ flex: 1 }}>
-                <div className="heat" style={{ marginTop: 0 }}>
-                  {Array.from({ length: 24 }).map((_, j) => {
-                    const l = lvl(i, j);
-                    return <div key={j} className="heat-cell" data-l={l || ''} title={`${d} ${String(j).padStart(2, '0')}:00 — ${l * 3} sessions`}></div>;
-                  })}
-                </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 mb-4">
+            <Metric label="Peak hour" value={peakLabel} delta={peakDelta} accent="cyan" />
+            <Metric label="Quietest day" value={quietestDay} accent="purple" />
+            <Metric label="Most active" value={mostActiveDay.day} delta={`${fmtWeekTotal} this week`} accent="gold" />
+          </div>
+          <div className="card-frame">
+            <div className="card-frame-head">
+              <h2 className="section-title"><Icon name="clock" />This week · {tz}</h2>
+              <span className="frame-meta">{totalCells} cells</span>
+              <div className="seg" style={{ fontSize: '.62rem' }}>
+                <button className={mode === 'sessions' ? 'active' : ''} onClick={() => setMode('sessions')}>sessions</button>
+                <button className={mode === 'tokens' ? 'active' : ''} onClick={() => setMode('tokens')}>tokens</button>
+              </div>
+              <div className="row gap-xs" style={{ fontSize: '.6rem', color: 'var(--muted)', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+                <span style={{marginRight:4}}>Less</span>
+                {[0,1,2,3,4].map(l => <span key={l} className="heat-cell legend-sw" data-l={l || ''}></span>)}
+                <span style={{marginLeft:4}}>More</span>
               </div>
             </div>
-          ))}
-          <div className="heat-axis" style={{ paddingLeft: 44 }}>
-            {Array.from({ length: 24 }).map((_, j) => <span key={j}>{j % 6 === 0 ? j : ''}</span>)}
+            <div style={{ padding: '1rem 1.2rem' }}>
+              {days.map((d, i) => (
+                <div key={d} className="row gap-sm mb-2">
+                  <span style={{ width: 36, fontSize: '.62rem', color: 'var(--muted)' }}>{d}</span>
+                  <div style={{ flex: 1 }}>
+                    <div className="heat" style={{ marginTop: 0 }}>
+                      {Array.from({ length: 24 }).map((_, j) => {
+                        const l = lvlReal(i, j);
+                        const rawVal = activeGrid ? (activeGrid[i]?.[j] ?? 0) : 0;
+                        const tipVal = mode === 'tokens'
+                          ? rawVal >= 1_000_000 ? `${(rawVal / 1_000_000).toFixed(1)}M tokens`
+                            : rawVal >= 1_000 ? `${(rawVal / 1_000).toFixed(0)}k tokens`
+                            : `${rawVal} tokens`
+                          : `${rawVal} session${rawVal !== 1 ? 's' : ''}`;
+                        return <div key={j} className="heat-cell" data-l={l || ''} data-tip={`${d} ${String(j).padStart(2,'0')}:00 — ${tipVal}`}></div>;
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <div className="heat-axis" style={{ paddingLeft: 44 }}>
+                {Array.from({ length: 24 }).map((_, j) => <span key={j}>{j % 6 === 0 ? j : ''}</span>)}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       <div className="card-frame mt-4">
         <div className="card-frame-head">
@@ -68,22 +153,35 @@ export const HeatmapPage = ({ repos }) => {
                 <span className="bg bg-m">{r.stats.sessionsWeek} sessions</span>
               </div>
               <div className="heat" style={{ gridTemplateColumns: 'repeat(48, 1fr)', '--cell-accent': `var(--${r.accent})` }}>
-                {Array.from({ length: 48 }).map((_, j) => {
-                  const v = Math.abs(Math.sin(r.id.charCodeAt(0) + j * 0.7));
-                  const l = v > .8 ? 4 : v > .6 ? 3 : v > .4 ? 2 : v > .2 ? 1 : 0;
-                  return <div key={j} className="heat-cell repo-cell" data-l={l || ''}></div>;
-                })}
+                {(() => {
+                  const repoSpark = mode === 'tokens'
+                    ? (heatmapData?.repoTokens48h?.[r.id] ?? heatmapData?.repo48h?.[r.id])
+                    : heatmapData?.repo48h?.[r.id];
+                  if (!repoSpark) return Array.from({ length: 48 }).map((_, j) => (
+                    <div key={j} className="heat-cell repo-cell" data-l=""></div>
+                  ));
+                  const rNonZero = repoSpark.filter(v => v > 0).sort((a, b) => a - b);
+                  const rPct = p => rNonZero.length ? rNonZero[Math.min(Math.floor(p * rNonZero.length), rNonZero.length - 1)] : 0;
+                  const [rp25, rp50, rp75] = [rPct(0.25), rPct(0.5), rPct(0.75)];
+                  return Array.from({ length: 48 }).map((_, j) => {
+                    const v = repoSpark[j] ?? 0;
+                    const l = v === 0 ? 0 : v >= rp75 ? 4 : v >= rp50 ? 3 : v >= rp25 ? 2 : 1;
+                    return <div key={j} className="heat-cell repo-cell" data-l={l || ''}></div>;
+                  });
+                })()}
               </div>
             </div>
           ))}
+          {repos.length === 0 && <div className="empty">No repos tracked yet.</div>}
         </div>
       </div>
     </>
   );
 };
 
-export const CostPage = ({ repos }) => {
-  const { data: AGENT_META } = useAgents();
+export const CostPage = ({ repos, setRoute }) => {
+  const { data: costData } = useCost(7);
+  const byAgent = costData?.byAgent || [];
   const totalCost = repos.reduce((a, r) => a + r.stats.costWeek, 0);
   const totalTokens = repos.reduce((a, r) => a + r.stats.tokensWeek, 0);
   const max = Math.max(...repos.map(r => r.stats.costWeek), 1);
@@ -100,7 +198,7 @@ export const CostPage = ({ repos }) => {
           value={`$${(totalCost / Math.max(1, repos.reduce((a, r) => a + r.stats.sessionsWeek, 0))).toFixed(2)}`}
           accent="cyan"
         />
-        <Metric label="Projected month" value={`$${(totalCost * 4.3).toFixed(0)}`} accent="purple" />
+        <Metric label="Projected month" value={`$${(totalCost * WEEKS_PER_MONTH).toFixed(0)}`} accent="purple" />
       </div>
 
       <div className="card-frame">
@@ -132,28 +230,28 @@ export const CostPage = ({ repos }) => {
               </div>
             </div>
           ))}
+          {repos.length === 0 && <div className="empty">No repos tracked yet.</div>}
         </div>
       </div>
 
       <div className="card-frame mt-4">
         <div className="card-frame-head">
           <h2 className="section-title"><Icon name="zap" />Top spenders by agent</h2>
-          <span className="frame-meta">top 8</span>
+          <span className="frame-meta">top {TOP_AGENTS_LIMIT} · 7 days</span>
         </div>
         <div className="list" style={{ border: 'none', borderRadius: 0 }}>
-          <div className="list-head" style={{ gridTemplateColumns: '1.5fr 1fr 90px 90px 70px' }}>
-            <span>Agent</span><span>Repo</span><span>Calls</span><span>Tokens</span><span>Cost</span>
+          <div className="list-head" style={{ gridTemplateColumns: '2fr 90px 110px 70px' }}>
+            <span>Agent</span><span>Calls</span><span>Tokens</span><span>Cost</span>
           </div>
-          {Object.entries(AGENT_META || {}).slice(0, 8).map(([name, m]) => (
-            <div key={name} className="list-row clickable" style={{ gridTemplateColumns: '1.5fr 1fr 90px 90px 70px' }}>
-              <span className="row gap-sm"><Icon name="bot" size={12} /><span className="tb">{name}</span></span>
-              <span style={{ color: 'var(--muted)' }}>{m.repo}</span>
-              <span className="tc">{m.callsToday}</span>
-              <span className="tg">{((m.callsToday * m.avgTokens) / 1000).toFixed(0)}k</span>
-              {/* F11: pricing from MODEL_PRICING_USD_PER_M (was hardcoded * 8) */}
-              <span className="tgr">${((m.callsToday * m.avgTokens / 1e6) * MODEL_PRICING_USD_PER_M.default).toFixed(2)}</span>
+          {byAgent.slice(0, TOP_AGENTS_LIMIT).map(a => (
+            <div key={a.agent} className={"list-row" + (setRoute ? " clickable" : "")} style={{ gridTemplateColumns: '2fr 90px 110px 70px' }} onClick={setRoute ? () => setRoute({ page: 'agent', name: a.agent, kind: 'agent', repoId: null }) : undefined}>
+              <span className="row gap-sm"><Icon name="bot" size={12} /><span className="tb">{a.agent}</span></span>
+              <span className="tc">{a.calls}</span>
+              <span className="tg">{a.tokens >= 1_000_000 ? (a.tokens / 1_000_000).toFixed(1) + 'M' : (a.tokens / 1000).toFixed(0) + 'k'}</span>
+              <span className="tgr">${a.cost.toFixed(2)}</span>
             </div>
           ))}
+          {byAgent.length === 0 && <div className="empty">No agent data yet — run ingest first.</div>}
         </div>
       </div>
     </>
@@ -174,7 +272,10 @@ export const DiffPage = () => {
   // The headline shows whichever diff is "active": the user pick if any,
   // otherwise the most-recent diff from /api/diffs/recent.
   const D = selected ? pickedDiff : defaultDiff;
-  if (!D && !pickedLoading) return <div className="empty">No recent diff captured yet.</div>;
+  // A 404 here (e.g. the file is already committed, no diff to show) must
+  // only blank the detail pane — the page shell and recent-diffs list below
+  // stay mounted so the user can still navigate.
+  const noDiff = !D && !pickedLoading;
 
   const adds = (D?.hunks || []).reduce((a, h) => a + h.lines.filter(l => l.type === 'add').length, 0);
   const dels = (D?.hunks || []).reduce((a, h) => a + h.lines.filter(l => l.type === 'del').length, 0);
@@ -201,6 +302,18 @@ export const DiffPage = () => {
       {pickedLoading && !pickedDiff && (
         <div className="empty" style={{ minHeight: 60 }}>Loading diff…</div>
       )}
+      {noDiff && (
+        <div className="row gap-sm mb-3" style={{ alignItems: 'center' }}>
+          <div className="empty" style={{ minHeight: 60, flex: 1 }}>
+            {selected ? "No diff for this file — it's already committed, nothing pending." : 'No recent diff captured yet.'}
+          </div>
+          {selected && (
+            <button className="link-btn" onClick={() => setSelected(null)} title="Return to the most recent diff">
+              Show latest →
+            </button>
+          )}
+        </div>
+      )}
       {D && (
         <div className="diff">
           <div className="diff-header">
@@ -224,7 +337,7 @@ export const DiffPage = () => {
       <div className="card-frame mt-4">
         <div className="card-frame-head">
           <h2 className="section-title"><Icon name="diff" />Recent diffs across repos</h2>
-          <span className="frame-meta">last 72h</span>
+          <span className="frame-meta">{recentDiffs?.length ?? 0} files</span>
         </div>
         <div className="list" style={{ border: 'none', borderRadius: 0 }}>
           <div className="list-head" style={{ gridTemplateColumns: '90px 1fr 110px 90px 90px' }}>
@@ -248,6 +361,7 @@ export const DiffPage = () => {
               </div>
             );
           })}
+          {(recentDiffs || []).length === 0 && <div className="empty">No diffs captured yet.</div>}
         </div>
       </div>
     </>

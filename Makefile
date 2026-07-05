@@ -35,7 +35,10 @@ install:
 	npm install
 
 dev:
-	@echo "Starting backend on :8765 and frontend on :5173 (Ctrl-C to stop both)."
+	@LAN_IP=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "?"); \
+	 echo "Starting backend :8765 and frontend :5173 (Ctrl-C to stop both)."; \
+	 echo "  → local:   http://localhost:5173"; \
+	 echo "  → network: http://$$LAN_IP:5173"
 	@trap 'kill 0' EXIT; \
 	  ( cd $(BACKEND_DIR) && $(UV) run uvicorn app.main:app --reload --port 8765 ) & \
 	  npm run dev & \
@@ -73,8 +76,9 @@ COMPOSE := docker compose
 docker-up:
 	@test -f .env.docker || (echo "→ .env.docker not found. Copy .env.docker.example and edit REPO_ROOTS for your machine." && exit 1)
 	$(COMPOSE) up -d --build
-	@echo "→ frontend: http://localhost:47820"
-	@echo "→ backend:  http://localhost:47821/api/health"
+	@LAN_IP=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "?"); \
+	 echo "→ local:   http://localhost:47820"; \
+	 echo "→ network: http://$$LAN_IP:47820  ← open on phone"
 
 docker-down:
 	$(COMPOSE) down

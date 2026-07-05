@@ -23,6 +23,7 @@ export const ROUTES = [
   { id: 'permissions', label: 'Permissions Audit', icon: 'shield' },
   { id: 'plugins',     label: 'Plugins & MCP',     icon: 'plug' },
   { id: 'diff',        label: 'Recent Diffs',      icon: 'diff' },
+  { id: 'monitoring',  label: 'Monitoring',         icon: 'zap' },
 ];
 
 // Lookup helper for breadcrumb building.
