@@ -28,12 +28,24 @@ async def recent(n: int = 60, repo: str | None = None) -> list[LiveEvent]:
         ts = r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=UTC)
         delta_s = int((ts - now).total_seconds())
         payload = json.loads(r.payload) if r.payload else {}
-        # id/ts are DB-derived, not part of the JSONL payload — strip any
-        # accidental collision so they cannot shadow the values below.
+        # id/ts/sessionId are DB-derived, not part of the JSONL payload —
+        # strip any accidental collision so they cannot shadow the values
+        # below. sessionId comes from the row's own session_id column (the
+        # same value ingest.py stamped on every LiveEventRow) rather than the
+        # payload, so cold-start rows carry it just like WS pushes do.
         payload.pop("id", None)
         payload.pop("ts", None)
+        payload.pop("sessionId", None)
         out.append(
-            LiveEvent(id=r.id, ts=ts.isoformat(), t=delta_s, repo=r.repo, kind=r.kind, **payload)
+            LiveEvent(
+                id=r.id,
+                ts=ts.isoformat(),
+                t=delta_s,
+                repo=r.repo,
+                kind=r.kind,
+                session_id=r.session_id,
+                **payload,
+            )
         )
     return out
 

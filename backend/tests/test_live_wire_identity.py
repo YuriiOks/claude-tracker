@@ -143,3 +143,96 @@ def test_line_to_event_omits_session_id_when_absent() -> None:
     ev = _line_to_event(obj, [Path("/tmp/myrepo")])
     assert ev is not None
     assert "sessionId" not in ev.payload
+
+
+@pytest.mark.asyncio
+async def test_recent_endpoint_includes_session_id_from_row() -> None:
+    """R-BE-29 — /api/live/recent must carry sessionId (LiveEvent.session_id,
+    alias sessionId), sourced from the persisted row's own session_id column
+    rather than the JSONL payload, so cold-start rows attribute correctly.
+    """
+    import app.db as db_mod
+    from app.models.session_event import LiveEventRow
+
+    db_mod._engine = None
+    db_mod._sessionmaker = None
+    await db_mod.init_db()
+    async with db_mod._sessionmaker() as session:
+        session.add(
+            LiveEventRow(
+                session_id="sess-abc123",
+                repo="demo",
+                ts=datetime(2026, 5, 10, 10, 0, 0),
+                kind="tool",
+                payload=json.dumps({"tool": "Read", "target": "x"}),
+            )
+        )
+        await session.commit()
+
+    from app.main import create_app
+
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+        res = await c.get("/api/live/recent")
+    assert res.status_code == 200
+    body = res.json()
+    assert len(body) == 1
+    assert body[0]["sessionId"] == "sess-abc123"
+
+
+@pytest.mark.asyncio
+async def test_emit_for_changes_derives_delegate_from_agent_name(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R-BE-27 — the live tailer's delegate "from" must be derived from the
+    transcript's agentName (mirroring jsonl_parser.parse_jsonl), not
+    hardcoded to "main".
+    """
+    import asyncio
+
+    from app import config
+    from app.services.live_agents import get_tracker
+    from app.services.live_stream import Hub, _emit_for_changes
+
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    jsonl = tmp_path / "abc.jsonl"
+    lines = [
+        {
+            "type": "agent-name",
+            "agentName": "backend-engineer",
+            "sessionId": "sess-456",
+            "cwd": str(repo),
+            "timestamp": "2026-05-10T10:00:00Z",
+        },
+        {
+            "type": "assistant",
+            "sessionId": "sess-456",
+            "cwd": str(repo),
+            "timestamp": "2026-05-10T10:00:01Z",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "name": "Task",
+                        "input": {"subagent_type": "react-engineer", "prompt": "wire it up"},
+                    }
+                ]
+            },
+        },
+    ]
+    jsonl.write_text("\n".join(json.dumps(ln) for ln in lines) + "\n")
+
+    monkeypatch.setenv("REPO_ROOTS", str(repo))
+    config.get_settings.cache_clear()
+    await get_tracker().reset()
+
+    hub = Hub()
+    queue = await hub.subscribe()
+    await _emit_for_changes([jsonl], hub)
+
+    ev = await asyncio.wait_for(queue.get(), timeout=1.0)
+    assert ev.kind == "delegate"
+    assert ev.payload["from"] == "backend-engineer"
+    assert ev.payload["to"] == "react-engineer"

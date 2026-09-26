@@ -21,6 +21,7 @@ class LiveEvent(BaseModel):
     t: int = 0
     repo: str
     kind: EventKind
+    session_id: str | None = Field(default=None, alias="sessionId")
     agent: str | None = None
     msg: str | None = None
     tool: str | None = None

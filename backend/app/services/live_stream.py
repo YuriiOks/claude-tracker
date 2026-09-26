@@ -102,6 +102,13 @@ def get_hub() -> Hub:
 
 _offsets: dict[Path, int] = defaultdict(int)
 
+# Last-seen `agentName` (from a "agent-name" JSONL record) per tailed file —
+# mirrors jsonl_parser.parse_jsonl's per-file `agent_name` local, which is
+# used as the delegate "from" for the persisted path. The live tailer reads
+# a file incrementally across multiple watcher ticks, so this has to be kept
+# across calls instead of as a loop-local.
+_agent_names: dict[Path, str] = {}
+
 
 def _tail_new_lines(path: Path) -> list[str]:
     """Read any unread bytes from path; return complete lines.
@@ -156,7 +163,12 @@ async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
                 obj = json.loads(raw)
             except json.JSONDecodeError:
                 continue
-            ev = _line_to_event(obj, repo_paths)
+            if obj.get("type") == "agent-name":
+                name = obj.get("agentName")
+                if name:
+                    _agent_names[path] = name
+                continue
+            ev = _line_to_event(obj, repo_paths, agent_name=_agent_names.get(path))
             if ev is not None:
                 session_id = obj.get("sessionId")
                 if session_id:
@@ -172,7 +184,9 @@ async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
                 await hub.broadcast(ev)
 
 
-def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
+def _line_to_event(
+    obj: dict, repo_paths: list[Path], agent_name: str | None = None
+) -> ParsedEvent | None:
     """Convert one JSONL record to a ParsedEvent, or None to skip."""
     from datetime import datetime
 
@@ -215,7 +229,7 @@ def _line_to_event(obj: dict, repo_paths: list[Path]) -> ParsedEvent | None:
                         repo,
                         "delegate",
                         {
-                            "from": "main",
+                            "from": agent_name or "main",
                             "to": str(ti.get("subagent_type") or ti.get("description", "")),
                             "msg": str(ti.get("prompt", ""))[:140],
                         },
