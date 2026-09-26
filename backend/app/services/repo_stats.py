@@ -12,6 +12,7 @@ from sqlalchemy import func, or_, select
 from app.models.session_summary import SessionSummaryRow
 from app.schemas.repo import RepoStats
 from app.services.live_agents import get_tracker
+from app.services.stats_window import window_predicate
 
 
 def _fmt_avg(seconds: float | None) -> str:
@@ -35,9 +36,11 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
 
     now = datetime.now(tz=UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    yesterday = today - timedelta(days=1)
     # Rolling 7-day window — more meaningful than ISO Mon-Sun (which on
     # a fresh Monday would show zero activity for everyone).
     week_start = now - timedelta(days=7)
+    last_week_start = now - timedelta(days=14)
 
     out: dict[str, RepoStats] = {}
     async with _sessionmaker() as session:
@@ -85,9 +88,22 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
             except ValueError:
                 pass
 
+        # Yesterday's sessions per repo — mirrors stats.py's global
+        # sessions_yesterday (started_at only; no running-status check, since
+        # a session still running today is already captured by "today").
+        yesterday_rows = (await session.execute(
+            select(SessionSummaryRow.repo, func.count(SessionSummaryRow.session_id))
+            .where(SessionSummaryRow.started_at >= yesterday,
+                   SessionSummaryRow.started_at < today)
+            .group_by(SessionSummaryRow.repo)
+        )).all()
+        yesterday_map = {repo_name: n for repo_name, n in yesterday_rows}
+
         # Week aggregates per repo (sessions, tokens, cost, edits, avg duration).
-        # Include any session active within the window: either started this week
-        # OR still running/updated this week (long-running sessions).
+        # A session is attributed to "this week" by its last activity, not its
+        # start time (see stats_window.window_predicate) — the same rule the
+        # global /stats/dashboard aggregate uses, so a long-running session
+        # doesn't get its full total counted here while excluded there.
         week_rows = (await session.execute(
             select(
                 SessionSummaryRow.repo,
@@ -107,14 +123,25 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
                     & (SessionSummaryRow.started_at >= week_start)
                 ),
             )
-            .where(
-                or_(
-                    SessionSummaryRow.started_at >= week_start,
-                    SessionSummaryRow.last_event_at >= week_start,
-                )
-            )
+            .where(window_predicate(week_start))
             .group_by(SessionSummaryRow.repo)
         )).all()
+
+        # Prior-week aggregates per repo (tokens/cost only) so the frontend
+        # can show week-over-week deltas per repo, same window rule.
+        lastweek_rows = (await session.execute(
+            select(
+                SessionSummaryRow.repo,
+                func.coalesce(func.sum(SessionSummaryRow.tokens), 0),
+                func.coalesce(func.sum(SessionSummaryRow.cost), 0.0),
+            )
+            .where(window_predicate(last_week_start, week_start))
+            .group_by(SessionSummaryRow.repo)
+        )).all()
+        lastweek_map = {
+            repo_name: (tokens_lw, cost_lw)
+            for repo_name, tokens_lw, cost_lw in lastweek_rows
+        }
 
         # 24-bucket spark for each repo (last 24h, hourly session counts)
         spark_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
@@ -135,6 +162,7 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
 
         for repo_name, sessions_w, tokens_w, cost_w, edits_w, avg_jd in week_rows:
             avg_seconds = (avg_jd or 0) * 86400  # julianday delta → seconds
+            tokens_lw, cost_lw = lastweek_map.get(repo_name, (0, 0.0))
             out[repo_name] = RepoStats(
                 sessionsToday=today_map.get(repo_name, 0) + live_today_map.get(repo_name, 0),
                 sessionsWeek=sessions_w or 0,
@@ -143,6 +171,9 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
                 filesEdited=edits_w or 0,
                 avgSession=_fmt_avg(avg_seconds),
                 spark=spark_map.get(repo_name, [0] * 24),
+                tokensLastWeek=int(tokens_lw or 0),
+                costLastWeek=round(float(cost_lw or 0.0), 2),
+                sessionsYesterday=yesterday_map.get(repo_name, 0),
             )
 
         # Repos with sessions today but none this week (unlikely) — backfill
@@ -151,6 +182,18 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
                 out[repo_name] = RepoStats(
                     sessionsToday=n + live_today_map.get(repo_name, 0),
                     spark=spark_map.get(repo_name, [0] * 24),
+                    sessionsYesterday=yesterday_map.get(repo_name, 0),
+                )
+
+        # Repos active last week but quiet this week -- backfill so
+        # tokensLastWeek/costLastWeek are still reachable for the delta UI.
+        for repo_name, (tokens_lw, cost_lw) in lastweek_map.items():
+            if repo_name not in out:
+                out[repo_name] = RepoStats(
+                    spark=spark_map.get(repo_name, [0] * 24),
+                    sessionsYesterday=yesterday_map.get(repo_name, 0),
+                    tokensLastWeek=int(tokens_lw or 0),
+                    costLastWeek=round(float(cost_lw or 0.0), 2),
                 )
 
     # Repos only visible in the live tracker (not yet in DB at all) — stub entry

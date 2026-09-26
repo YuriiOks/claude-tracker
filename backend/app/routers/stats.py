@@ -15,6 +15,7 @@ from sqlalchemy import func, or_, select
 from app.models.session_hour import SessionHourRow
 from app.models.session_summary import SessionSummaryRow
 from app.services.live_agents import get_tracker
+from app.services.stats_window import window_predicate
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="", tags=["stats"])
@@ -91,25 +92,28 @@ async def dashboard_stats() -> dict:
         )).scalar() or 0
 
         # ---- Tokens this week / last week ----
+        # Attributed by last-event, not start time, so a long-running session
+        # that started weeks ago but is still updating today lands in "this
+        # week" here exactly like it does in repo_stats.fetch_real_stats —
+        # otherwise the global total silently disagreed with the sum of
+        # per-repo totals.
         tokens_this_week = (await session.execute(
             select(func.coalesce(func.sum(SessionSummaryRow.tokens), 0))
-            .where(SessionSummaryRow.started_at >= week_start)
+            .where(window_predicate(week_start))
         )).scalar() or 0
         tokens_last_week = (await session.execute(
             select(func.coalesce(func.sum(SessionSummaryRow.tokens), 0))
-            .where(SessionSummaryRow.started_at >= last_week_start,
-                   SessionSummaryRow.started_at < week_start)
+            .where(window_predicate(last_week_start, week_start))
         )).scalar() or 0
 
         # ---- Cost this week / last week ----
         cost_this_week = (await session.execute(
             select(func.coalesce(func.sum(SessionSummaryRow.cost), 0.0))
-            .where(SessionSummaryRow.started_at >= week_start)
+            .where(window_predicate(week_start))
         )).scalar() or 0.0
         cost_last_week = (await session.execute(
             select(func.coalesce(func.sum(SessionSummaryRow.cost), 0.0))
-            .where(SessionSummaryRow.started_at >= last_week_start,
-                   SessionSummaryRow.started_at < week_start)
+            .where(window_predicate(last_week_start, week_start))
         )).scalar() or 0.0
 
         # ---- 24-hour sparkline buckets ----
@@ -119,6 +123,15 @@ async def dashboard_stats() -> dict:
             select(SessionSummaryRow.started_at, SessionSummaryRow.tokens,
                    SessionSummaryRow.cost)
             .where(SessionSummaryRow.started_at >= spark_start)
+        )).all()
+
+        # ---- "Active in editor" sparkline: sessions whose [started_at,
+        # last_event_at] interval overlaps each hourly bucket (not just
+        # session-start counts, which is what buckets_sessions measures).
+        active_rows = (await session.execute(
+            select(SessionSummaryRow.started_at, SessionSummaryRow.last_event_at)
+            .where(SessionSummaryRow.last_event_at >= spark_start,
+                   SessionSummaryRow.started_at <= now)
         )).all()
 
     # Build hourly buckets in local order (oldest first)
@@ -132,6 +145,15 @@ async def dashboard_stats() -> dict:
             buckets_sessions[delta_h] += 1
             buckets_tokens[delta_h] += row[1] or 0
             buckets_cost[delta_h] += row[2] or 0.0
+
+    buckets_active = [0] * 24
+    for started, last_event in active_rows:
+        s = started if started.tzinfo else started.replace(tzinfo=UTC)
+        e = last_event if last_event.tzinfo else last_event.replace(tzinfo=UTC)
+        for i in range(24):
+            bucket_start = spark_start + timedelta(hours=i)
+            if s < bucket_start + timedelta(hours=1) and e >= bucket_start:
+                buckets_active[i] += 1
 
     # Already a rolling 7-day total, no projection needed.
     projected_tokens_eow = int(tokens_this_week)
@@ -158,7 +180,7 @@ async def dashboard_stats() -> dict:
         },
         "active": {
             "count": active_count,
-            "spark": buckets_sessions,  # reuse — visually meaningful
+            "spark": buckets_active,
         },
         "asOf": now.isoformat(),
         "bucketStart": spark_start.isoformat(),

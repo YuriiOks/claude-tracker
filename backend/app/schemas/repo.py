@@ -22,6 +22,12 @@ class RepoStats(_AliasModel):
     files_edited: int = Field(default=0, alias="filesEdited")
     avg_session: str = Field(default="—", alias="avgSession")
     spark: list[int] = Field(default_factory=list)
+    # Prior-period aggregates, additive -- let the frontend show week-over-week
+    # and day-over-day deltas per repo (mirrors the same fields on
+    # /stats/dashboard). Same window rule as *_week: see stats_window.py.
+    tokens_last_week: int = Field(default=0, alias="tokensLastWeek")
+    cost_last_week: float = Field(default=0.0, alias="costLastWeek")
+    sessions_yesterday: int = Field(default=0, alias="sessionsYesterday")
 
 
 class Repo(_AliasModel):
