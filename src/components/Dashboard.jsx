@@ -47,7 +47,9 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
   // `sessions` object) must fall back, not throw past the single root
   // ErrorBoundary and take down the whole app.
   const sessionsToday = stats?.sessions?.today ?? fallback.sessions;
-  const sessionsDelta = stats?.sessions ? fmtDelta(stats.sessions.deltaPct) : null;
+  const sessionsDelta = stats?.sessions
+    ? (fmtDelta(stats.sessions.deltaPct) ?? (stats.sessions.today > 0 ? `+${stats.sessions.today} new` : null))
+    : null;
   const tokensThisWeek = stats?.tokens?.thisWeek ?? fallback.tokens;
   const tokensDisplay  = fmtCount(tokensThisWeek);
   const tokensDelta    = stats?.tokens ? fmtDelta(stats.tokens.deltaPct) : null;
@@ -91,6 +93,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
           deltaLabel="vs yesterday"
           accent="cyan"
           points={stats?.sessions?.spark}
+          caption="last 24h"
         />
         <Metric
           label="tokens this week"
@@ -100,6 +103,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
           deltaLabel="vs last week"
           accent="gold"
           points={stats?.tokens?.spark}
+          caption="last 24h"
         />
         <Metric
           label="spend this week"
@@ -109,6 +113,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
           deltaLabel="vs last week"
           accent="green"
           points={stats?.cost?.spark}
+          caption="last 24h"
         />
         <Metric
           label="active in editor"
@@ -117,6 +122,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
           deltaLabel="repos live now"
           accent="purple"
           points={stats?.active?.spark}
+          caption="last 24h"
         />
       </div>
 

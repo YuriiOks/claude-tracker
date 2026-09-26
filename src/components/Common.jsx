@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Icon from '../icons';
 
 export const Crumbs = ({ items }) => (
@@ -49,34 +50,50 @@ function sparkPoints(seed, n = 14, vol = 0.6) {
 
 export { sparkPoints };
 
-export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent = 'cyan', kicker, points, sub }) => {
-  // Normalise real-data points into [0,1] so the SVG geometry stays the same
-  // shape regardless of metric magnitude. Falls back to the deterministic
-  // pseudo-random walk when no points provided.
-  const pts = (() => {
-    if (!points || points.length === 0) return sparkPoints(label + String(value), 24, 0.45);
-    const max = Math.max(...points, 1);
-    if (max === 0) return points.map(() => 0.05);
-    return points.map(v => Math.max(0.05, Math.min(0.95, v / max)));
-  })();
+export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent = 'cyan', kicker, points, sub, caption }) => {
+  // Real points render as-is (normalised into [0,1] for consistent SVG
+  // geometry); missing/empty points render an honest "no data" placeholder
+  // instead of a fabricated pseudo-random walk.
+  const hasPoints = !!(points && points.length > 0);
+  const pts = hasPoints
+    ? (() => {
+        const max = Math.max(...points, 1);
+        if (max === 0) return points.map(() => 0.05);
+        return points.map(v => Math.max(0.05, Math.min(0.95, v / max)));
+      })()
+    : [];
   const W = 118, H = 38;
   // A single-point series has no interval to divide by — duplicate it so
   // the geometry degenerates into a flat line instead of Infinity/NaN.
-  const gpts = pts.length > 1 ? pts : [pts[0] ?? 0.5, pts[0] ?? 0.5];
-  const step = W / (gpts.length - 1);
-  const ys = gpts.map(p => H - p * (H - 2) - 1);
-  const linePath = gpts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ');
-  const areaPath = `${linePath} L${W},${H} L0,${H} Z`;
-  const lastX = (gpts.length - 1) * step;
-  const lastY = ys[ys.length - 1];
+  const gpts = hasPoints ? (pts.length > 1 ? pts : [pts[0] ?? 0.5, pts[0] ?? 0.5]) : [];
+  const step = hasPoints ? W / (gpts.length - 1) : 0;
+  const ys = hasPoints ? gpts.map(p => H - p * (H - 2) - 1) : [];
+  const linePath = hasPoints
+    ? gpts.map((p, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${ys[i].toFixed(1)}`).join(' ')
+    : '';
+  const areaPath = hasPoints ? `${linePath} L${W},${H} L0,${H} Z` : '';
+  const lastX = hasPoints ? (gpts.length - 1) * step : 0;
+  const lastY = hasPoints ? ys[ys.length - 1] : 0;
 
   let pathLen = 0;
-  for (let i = 1; i < gpts.length; i++) {
-    const dx = step;
-    const dy = ys[i] - ys[i - 1];
-    pathLen += Math.sqrt(dx * dx + dy * dy);
+  if (hasPoints) {
+    for (let i = 1; i < gpts.length; i++) {
+      const dx = step;
+      const dy = ys[i] - ys[i - 1];
+      pathLen += Math.sqrt(dx * dx + dy * dy);
+    }
+    pathLen = Math.ceil(pathLen);
   }
-  pathLen = Math.ceil(pathLen);
+  // Tracer dot only makes sense when the series actually moves — a flat
+  // real series (e.g. all-zero) shouldn't animate a dot along a flat line.
+  const hasVariance = hasPoints && Math.max(...points) !== Math.min(...points);
+
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const handleSparkMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const i = Math.round((e.clientX - rect.left) / rect.width * (points.length - 1));
+    setHoverIdx(Math.max(0, Math.min(points.length - 1, i)));
+  };
 
   const display = value;
 
@@ -91,29 +108,54 @@ export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent =
           {prefix && <span className="prefix">{prefix}</span>}
           {display}{unit && <span className="unit">{unit}</span>}
         </div>
-        <svg className="metric-spark" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id={`sparkFill-${accent}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={`var(--${accent})`} stopOpacity="0.35" />
-              <stop offset="100%" stopColor={`var(--${accent})`} stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path className="area" d={areaPath} style={{ fill: `url(#sparkFill-${accent})` }} />
-          <path className="line" d={linePath} style={{ strokeDasharray: pathLen, strokeDashoffset: pathLen, '--pathLen': pathLen }} />
-          {/* Tracer dot — rides the full path start→end, repeats forever.
-              Synced with sparkDraw on first paint, then loops indefinitely. */}
-          <circle className="dot-tracer" r="2.4" fill={`var(--${accent})`}>
-            <animateMotion
-              dur="2.6s"
-              path={linePath}
-              repeatCount="indefinite"
-              rotate="0"
-              calcMode="linear"
-            />
-          </circle>
-          <circle className="dot-pulse" cx={lastX} cy={lastY} r="2.2" />
-          <circle className="dot" cx={lastX} cy={lastY} r="2.2" />
-        </svg>
+        <span style={{ position: 'relative' }}>
+          <svg
+            className="metric-spark"
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            onMouseMove={hasPoints ? handleSparkMove : undefined}
+            onMouseLeave={hasPoints ? () => setHoverIdx(null) : undefined}
+          >
+            {hasPoints ? (
+              <>
+                <defs>
+                  <linearGradient id={`sparkFill-${accent}`} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={`var(--${accent})`} stopOpacity="0.35" />
+                    <stop offset="100%" stopColor={`var(--${accent})`} stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <path className="area" d={areaPath} style={{ fill: `url(#sparkFill-${accent})` }} />
+                <path className="line" d={linePath} style={{ strokeDasharray: pathLen, strokeDashoffset: pathLen, '--pathLen': pathLen }} />
+                {/* Tracer dot — rides the full path start→end, repeats forever.
+                    Synced with sparkDraw on first paint, then loops indefinitely. */}
+                {hasVariance && (
+                  <circle className="dot-tracer" r="2.4" fill={`var(--${accent})`}>
+                    <animateMotion
+                      dur="2.6s"
+                      path={linePath}
+                      repeatCount="indefinite"
+                      rotate="0"
+                      calcMode="linear"
+                    />
+                  </circle>
+                )}
+                <circle className="dot-pulse" cx={lastX} cy={lastY} r="2.2" />
+                <circle className="dot" cx={lastX} cy={lastY} r="2.2" />
+              </>
+            ) : (
+              <>
+                <title>no history data</title>
+                <path d="M0,30 L118,30" className="line" strokeDasharray="3 4" opacity="0.35" fill="none" />
+              </>
+            )}
+          </svg>
+          {hasPoints && hoverIdx != null && (
+            <div style={{ position: 'absolute', bottom: '100%', right: 0, background: 'var(--card)', border: '1px solid var(--brd)', borderRadius: 4, padding: '2px 6px', fontSize: 10, fontFamily: 'Fira Code, monospace', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+              {points[hoverIdx]} · -{points.length - 1 - hoverIdx}h
+            </div>
+          )}
+        </span>
       </div>
       <div className="metric-foot">
         {delta && (
@@ -123,6 +165,7 @@ export const Metric = ({ label, value, unit, prefix, delta, deltaLabel, accent =
         )}
         {deltaLabel && <div className="delta-label">{deltaLabel}</div>}
         {sub && <div className="metric-sub">{sub}</div>}
+        {caption && <div className="delta-label" style={{ marginTop: 2 }}>{caption}</div>}
       </div>
     </div>
   );

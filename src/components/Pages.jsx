@@ -3,7 +3,7 @@ import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
-import { usePermissions, useGlobal } from "../api";
+import { usePermissions, useGlobal, useLiveStatus } from "../api";
 import PermissionsKanban from "./PermissionsKanban";
 import { PLUGIN_REGISTRY } from '../data';
 
@@ -63,6 +63,17 @@ export const LivePage = ({ liveEvents, repos, onOpen, repoFilter = null, liveAge
   const last60 = events.filter(e => e.t >= -60);
   const eventsPerMin = last60.length;
   const toolsPerMin = last60.filter(e => e.kind === 'tool' || e.kind === 'command').length;
+  const streamStatus = useLiveStatus();
+  // Real per-minute history for the last 20 minutes, bucketed from `t`
+  // (seconds-ago) instead of a single instantaneous count.
+  const buckets = (kinds) => {
+    const out = Array(20).fill(0);
+    for (const e of events) {
+      const m = Math.floor(-e.t / 60);
+      if (m >= 0 && m < 20 && (!kinds || kinds.includes(e.kind))) out[19 - m]++;
+    }
+    return out;
+  };
   return (
   <>
     <PageHead title="Live activity feed" sub="Real-time stream of every tool call, agent invocation, skill load and permission check across all tracked repos. Updates as Claude works." actions={<span className="live-pill"><span className="dot"></span>streaming</span>} />
@@ -72,10 +83,10 @@ export const LivePage = ({ liveEvents, repos, onOpen, repoFilter = null, liveAge
       </div>
     )}
     <div className="grid grid-cols-4 mb-4">
-      <Metric label="Active repos" value={filteredRepos.filter(r => r.isActive).length} accent="green" />
-      <Metric label="Tools / min" value={toolsPerMin} accent="cyan" />
-      <Metric label="Events / min" value={eventsPerMin} accent="gold" />
-      <Metric label="Events buffered" value={events.length} accent="purple" />
+      <Metric label="Active repos" value={filteredRepos.filter(r => r.isActive).length} accent="green" caption="live now" />
+      <Metric label="Tools / min" value={toolsPerMin} accent="cyan" points={buckets(['tool', 'command'])} caption="last 20 min" />
+      <Metric label="Events / min" value={eventsPerMin} accent="gold" points={buckets(null)} caption="last 20 min" />
+      <Metric label="Stream" value={streamStatus} accent={streamStatus === 'live' ? 'green' : 'gold'} caption={`${events.length} events buffered`} />
     </div>
 
     <div className="mb-4">
