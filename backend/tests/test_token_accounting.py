@@ -37,6 +37,8 @@ import httpx
 import pytest
 from sqlalchemy import select
 
+import app.db as db_mod  # read db_mod._sessionmaker at call time; _reset_db() rebinds it
+
 FIXTURE_ROOT = Path(__file__).parent / "fixtures" / "token_accounting" / "project"
 
 MAIN_TOKENS = 450_000
@@ -177,9 +179,8 @@ async def test_session_tokens_are_exact_deduped_sum(tmp_path: Path) -> None:
     result = await ingest_all()
     assert result["new"] >= 4  # main + continuation + direct + workflow
 
-    from app.db import _sessionmaker
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         main = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
         cont = await session.get(SessionSummaryRow, "22222222-2222-2222-2222-222222222222")
         sc_rows = (await session.execute(select(SubagentCallRow))).scalars().all()
@@ -281,9 +282,8 @@ async def test_reingest_is_idempotent(tmp_path: Path) -> None:
 
     first = await ingest_all()
 
-    from app.db import _sessionmaker
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         main_before = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
         tokens_before = main_before.tokens
         sc_count_before = len((await session.execute(select(SubagentCallRow))).scalars().all())
@@ -294,7 +294,7 @@ async def test_reingest_is_idempotent(tmp_path: Path) -> None:
     assert second["updated"] == 0
     assert second["skipped"] >= first["new"]
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         main_after = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
         sc_count_after = len((await session.execute(select(SubagentCallRow))).scalars().all())
         ledger_count_after = len((await session.execute(select(MessageLedgerRow))).scalars().all())
@@ -319,11 +319,8 @@ async def test_version_bump_self_heals_stale_db(tmp_path: Path) -> None:
     from app.models.session_summary import SessionSummaryRow
 
     await init_db()
-    # Import AFTER init_db(): _reset_db() cleared the module global, and a
-    # from-import before init_db() would capture None.
-    from app.db import _sessionmaker
     now = datetime.now(tz=UTC)
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         session.add(SessionSummaryRow(
             session_id="11111111-1111-1111-1111-111111111111",
             repo="myrepo-project",
@@ -343,7 +340,7 @@ async def test_version_bump_self_heals_stale_db(tmp_path: Path) -> None:
 
     await ingest_all()
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         main = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
         meta = await session.get(IngestMetaRow, SINGLETON_ID)
 
@@ -388,13 +385,12 @@ async def test_growing_file_keeps_cross_file_dedup_exact(tmp_path: Path) -> None
     os.utime(b_path, (epoch - 100, epoch - 100))
     os.utime(a_path, (epoch - 90, epoch - 90))
 
-    from app.db import _sessionmaker
     from app.models.session_summary import SessionSummaryRow
     from app.services.ingest import ingest_all
 
     await ingest_all()
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         a_row = await session.get(SessionSummaryRow, a_sid)
         b_row = await session.get(SessionSummaryRow, b_sid)
     assert a_row.tokens == 15_000
@@ -410,7 +406,7 @@ async def test_growing_file_keeps_cross_file_dedup_exact(tmp_path: Path) -> None
 
     await ingest_all()
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         a_row = await session.get(SessionSummaryRow, a_sid)
         b_row = await session.get(SessionSummaryRow, b_sid)
 
@@ -453,9 +449,8 @@ async def test_interrupted_rebuild_does_not_advance_version(
     with pytest.raises(RuntimeError, match="simulated crash mid-rebuild"):
         await ingest_mod.ingest_all()
 
-    from app.db import _sessionmaker
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         meta = await session.get(IngestMetaRow, SINGLETON_ID)
     # Not written at all, or (belt-and-suspenders) not advanced -- either
     # way the DB must still look stale to the next call.
@@ -469,7 +464,7 @@ async def test_interrupted_rebuild_does_not_advance_version(
 
     from app.models.session_summary import SessionSummaryRow
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         main = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
         meta_after = await session.get(IngestMetaRow, SINGLETON_ID)
 
@@ -505,14 +500,13 @@ async def test_contested_id_reclaimed_when_owner_file_deleted(tmp_path: Path) ->
     epoch = time.time()
     os.utime(x_path, (epoch - 100, epoch - 100))
 
-    from app.db import _sessionmaker
     from app.models.message_ledger import MessageLedgerRow
     from app.models.session_summary import SessionSummaryRow
     from app.services.ingest import ingest_all
 
     await ingest_all()
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         owner = (await session.execute(
             select(MessageLedgerRow).where(MessageLedgerRow.message_id == "will-move-001")
         )).scalar_one()
@@ -530,7 +524,7 @@ async def test_contested_id_reclaimed_when_owner_file_deleted(tmp_path: Path) ->
 
     await ingest_all()
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         y_row = await session.get(SessionSummaryRow, y_sid)
         owner_after = (await session.execute(
             select(MessageLedgerRow).where(MessageLedgerRow.message_id == "will-move-001")
@@ -562,7 +556,6 @@ async def test_ledger_lookup_chunks_past_sqlite_variable_limit(tmp_path: Path) -
     lines += [_assistant_line(sid, cwd, now, f"chunk-msg-{i:05d}", 100, 50) for i in range(n)]
     path.write_text("\n".join(lines) + "\n")
 
-    from app.db import _sessionmaker
     from app.models.message_ledger import MessageLedgerRow
     from app.models.session_summary import SessionSummaryRow
     from app.services.ingest import ingest_all
@@ -570,7 +563,7 @@ async def test_ledger_lookup_chunks_past_sqlite_variable_limit(tmp_path: Path) -
     result = await ingest_all()
     assert result["new"] >= 1
 
-    async with _sessionmaker() as session:
+    async with db_mod._sessionmaker() as session:
         row = await session.get(SessionSummaryRow, sid)
         ledger_rows = (await session.execute(
             select(MessageLedgerRow).where(MessageLedgerRow.message_id.like("chunk-msg-%"))
