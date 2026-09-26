@@ -33,15 +33,26 @@ function AgentResults({ query, onResults }) {
 
 export default function CommandPalette({ repos = [], setRoute }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef(null);
+  // Element that had focus when ⌘K was pressed (may not be triggerRef, e.g.
+  // keyboard-only users invoking it from anywhere) — restored on close.
+  const openerRef = useRef(null);
+
+  const closePalette = () => {
+    setOpen(false);
+    const restoreTo = openerRef.current || triggerRef.current;
+    restoreTo?.focus();
+  };
 
   // Global ⌘K / Ctrl+K opens the palette from anywhere on desktop.
   useEffect(() => {
     const onKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
+        openerRef.current = document.activeElement;
         setOpen(true);
       } else if (e.key === 'Escape' && open) {
-        setOpen(false);
+        closePalette();
       }
     };
     window.addEventListener('keydown', onKeyDown);
@@ -50,7 +61,13 @@ export default function CommandPalette({ repos = [], setRoute }) {
 
   return (
     <>
-      <button type="button" className="search-box" onClick={() => setOpen(true)} aria-label="Open command palette">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="search-box"
+        onClick={() => { openerRef.current = document.activeElement; setOpen(true); }}
+        aria-label="Open command palette"
+      >
         <Icon name="search" size={12} />
         <span className="search-box-placeholder">Search agents, skills, files…</span>
         <kbd>⌘K</kbd>
@@ -58,7 +75,7 @@ export default function CommandPalette({ repos = [], setRoute }) {
       {/* Mounted fresh on every open (and unmounted on close) so query/
           activeIndex reset naturally via initial useState — no "sync state
           from a prop change" effect needed. */}
-      {open && <PaletteBody repos={repos} setRoute={setRoute} onClose={() => setOpen(false)} />}
+      {open && <PaletteBody repos={repos} setRoute={setRoute} onClose={closePalette} />}
     </>
   );
 }
@@ -68,10 +85,30 @@ function PaletteBody({ repos, setRoute, onClose }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [agentItems, setAgentItems] = useState([]);
   const inputRef = useRef(null);
+  const panelRef = useRef(null);
 
   // Focus on mount (imperative DOM call, not setState — no cascading-render
   // warning) so the just-opened input is immediately typeable.
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // Focus trap: Tab/Shift+Tab cycle within the panel instead of escaping to
+  // the page behind the overlay.
+  const trapTab = (e) => {
+    if (e.key !== 'Tab' || !panelRef.current) return;
+    const focusables = panelRef.current.querySelectorAll(
+      'input, button, [href], [tabindex]:not([tabindex="-1"])',
+    );
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const routeItems = useMemo(() => ROUTES.map(r => ({
     type: 'route',
@@ -114,6 +151,7 @@ function PaletteBody({ repos, setRoute, onClose }) {
   };
 
   const onKeyDown = (e) => {
+    trapTab(e);
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setActiveIndex(Math.min(safeIndex + 1, items.length - 1));
@@ -133,22 +171,24 @@ function PaletteBody({ repos, setRoute, onClose }) {
       <AgentResults query={query} onResults={setAgentItems} />
       <div className="cmdk-overlay" onMouseDown={onClose}>
         <div
+          ref={panelRef}
           className="cmdk-panel"
-          role="combobox"
-          aria-expanded="true"
-          aria-owns="cmdk-listbox"
-          aria-haspopup="listbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Command palette"
           onMouseDown={(e) => e.stopPropagation()}
         >
           <div className="cmdk-input-row">
             <Icon name="search" size={13} />
             <input
               ref={inputRef}
+              role="combobox"
               value={query}
               onChange={onChangeQuery}
               onKeyDown={onKeyDown}
               placeholder="Jump to a page, repo, agent…"
               aria-autocomplete="list"
+              aria-expanded="true"
               aria-controls="cmdk-listbox"
               aria-activedescendant={items[safeIndex] ? `cmdk-opt-${safeIndex}` : undefined}
             />

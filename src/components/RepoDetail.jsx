@@ -248,8 +248,8 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => {
           return (
           <div
             key={s.id}
-            className="list-row"
-            style={{ gridTemplateColumns: '60px 1fr 100px 70px 60px', cursor: clickable ? undefined : 'default' }}
+            className={'list-row' + (clickable ? '' : ' static-row')}
+            style={{ gridTemplateColumns: '60px 1fr 100px 70px 60px' }}
             {...(clickable ? {
               role: 'button',
               tabIndex: 0,
@@ -445,6 +445,11 @@ const RepoDetail = ({ repo, sessions, liveEvents, liveAgents, onOpen, tab = 'ove
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
   const repoSessions = sessions.filter(s => s.repo === repo.id);
+  // Mirrors RepoMcp's own fallback-to-global logic so the tab badge count
+  // always matches what the panel actually renders.
+  const { data: globalForMcp } = useGlobal();
+  const repoMcp = repo.mcp || [];
+  const mcpCount = repoMcp.length > 0 ? repoMcp.length : (globalForMcp?.mcp || []).length;
 
   return (
     <>
@@ -517,7 +522,7 @@ const RepoDetail = ({ repo, sessions, liveEvents, liveAgents, onOpen, tab = 'ove
           { id: 'rules', label: 'Rules', icon: 'book', count: (repo.rules || []).length },
           { id: 'permissions', label: 'Permissions', icon: 'shield' },
           { id: 'plugins', label: 'Plugins / MCP', icon: 'plug' },
-          { id: 'mcp', label: 'MCP', icon: 'cpu', count: (repo.mcp || []).length },
+          { id: 'mcp', label: 'MCP', icon: 'cpu', count: mcpCount },
           ...(repo.id !== 'global' ? [{ id: 'graph', label: 'Live Graph', icon: 'cpu' }] : []),
         ]}
         value={tab}

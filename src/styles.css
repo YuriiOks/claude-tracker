@@ -1206,6 +1206,10 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 }
 .list-row:hover{background:var(--hover);}
 .list-row:last-child{border-bottom:none;}
+/* Non-interactive rows (e.g. a session with no linked agent) — default
+   cursor instead of the row-is-clickable pointer. */
+.list-row.static-row, .session-row.static-row{ cursor:default; }
+.list-row.static-row:hover, .session-row.static-row:hover{ background:none; }
 /* Selected row in DiffPage's recent-diffs list: subtle accent tint + left
    border so the user can see which file's diff is currently displayed
    above the list. Works in both themes via --cyan tokens. */
@@ -3764,6 +3768,7 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   cursor:pointer; margin-left:.15rem;
 }
 .backend-status-retry:hover{ opacity:.8; }
+.backend-status-retry:disabled{ opacity:.5; cursor:default; }
 
 .backend-status.bs-offline{
   background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); color:var(--red);
@@ -3778,8 +3783,17 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 }
 .backend-status.bs-mock .dot{ background:var(--cyan); }
 
+/* Compact form on narrow viewports: keep the colored dot + Retry control
+   visible (so offline state is still actionable) but visually hide the
+   text label — it stays in the DOM (sr-only-style clip) for screen
+   readers instead of disappearing outright. Tightened padding/gap keeps
+   the topbar from overflowing at phone widths. */
 @media(max-width:800px){
-  .backend-status{ display:none; }
+  .backend-status{ padding:.25rem .4rem; gap:.25rem; }
+  .backend-status-label{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
 }
 
 /* ---- Command palette trigger (search-box is now a <button>) ---- */
@@ -3793,7 +3807,10 @@ button.search-box{
 
 /* ---- Command palette overlay ---- */
 .cmdk-overlay{
-  position:fixed; inset:0; z-index:200;
+  /* Above everything, including TweaksPanel's .twk-panel (2147483646) and
+     .modal-backdrop (2000) — the command palette is a modal and must never
+     render underneath another overlay. */
+  position:fixed; inset:0; z-index:2147483647;
   background:rgba(0,0,0,.45);
   display:flex; align-items:flex-start; justify-content:center;
   padding-top:12vh;

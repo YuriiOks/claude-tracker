@@ -59,13 +59,15 @@ function _setBackendState(s) {
 }
 function _reportFetchResult(ok) {
   if (USE_MOCKS) return;
+  _setRetrying(false);
   if (ok) {
     _lastOkAt = Date.now();
     _setBackendState('online');
-  } else if (_backendState !== 'online') {
-    // Only degrade to offline/stale if we're not already known-online — a
-    // single blip on one path shouldn't flip a healthy app to "offline"
-    // while other paths are succeeding.
+  } else {
+    // The most recent result wins: a failure always degrades the state,
+    // even from 'online' — otherwise a backend that dies after the first
+    // successful load stays marked 'online' forever and the offline pill
+    // never appears.
     _setBackendState(_hasAnyCache ? 'stale' : 'offline');
   }
 }
@@ -83,8 +85,30 @@ export function useBackendStatus() {
 // action in the UI re-triggers every mounted fetch hook at once.
 let _retryVersion = 0;
 const _retrySubs = new Set();
+
+// True from the moment retryFetches() fires until the first fetch result
+// (success or failure) comes back in — gives the UI an in-flight guard so
+// "Retry" can't be mashed while a round is still outstanding.
+let _retrying = false;
+const _retryingSubs = new Set();
+function _setRetrying(v) {
+  if (_retrying === v) return;
+  _retrying = v;
+  _retryingSubs.forEach(fn => fn(_retrying));
+}
+
+export function useRetrying() {
+  const [v, setV] = useState(_retrying);
+  useEffect(() => {
+    _retryingSubs.add(setV);
+    return () => _retryingSubs.delete(setV);
+  }, []);
+  return v;
+}
+
 export function retryFetches() {
   _retryVersion += 1;
+  _setRetrying(true);
   _retrySubs.forEach(fn => fn(_retryVersion));
 }
 

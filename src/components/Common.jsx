@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Icon from '../icons';
-import { useBackendStatus, retryFetches } from '../api';
+import { useBackendStatus, useRetrying, retryFetches } from '../api';
 import CommandPalette from './CommandPalette';
 
 // Crumb items are { label, route } — `route` is a route object passed
@@ -32,6 +32,7 @@ export const Crumbs = ({ items, setRoute }) => (
 // screen readers hear a state transition, not just sighted users.
 export const BackendStatusPill = () => {
   const { state } = useBackendStatus();
+  const retrying = useRetrying();
   if (state === 'online') return null;
   const cfg = {
     mock: { label: 'MOCK DATA', cls: 'bs-mock' },
@@ -42,10 +43,13 @@ export const BackendStatusPill = () => {
   return (
     <div className={'backend-status ' + cfg.cls} role="status" aria-live="polite">
       <span className="dot"></span>
-      <span>{cfg.label}</span>
+      {/* Full label on desktop; visually collapses to just the dot + retry
+          on narrow viewports (see .backend-status media query) but stays in
+          the accessibility tree via sr-only so screen readers always hear it. */}
+      <span className="backend-status-label">{cfg.label}</span>
       {state === 'offline' && (
-        <button type="button" className="backend-status-retry" onClick={() => retryFetches()}>
-          Retry
+        <button type="button" className="backend-status-retry" onClick={() => retryFetches()} disabled={retrying}>
+          {retrying ? 'Retrying…' : 'Retry'}
         </button>
       )}
     </div>
