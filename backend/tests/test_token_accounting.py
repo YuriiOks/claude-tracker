@@ -274,11 +274,14 @@ async def test_version_bump_self_heals_stale_db(tmp_path: Path) -> None:
     _materialize_fixture(tmp_path)
     _reset_db()
 
-    from app.db import _sessionmaker, init_db
+    from app.db import init_db
     from app.models.ingest_meta import SINGLETON_ID, IngestMetaRow
     from app.models.session_summary import SessionSummaryRow
 
     await init_db()
+    # Import AFTER init_db(): _reset_db() cleared the module global, and a
+    # from-import before init_db() would capture None.
+    from app.db import _sessionmaker
     now = datetime.now(tz=UTC)
     async with _sessionmaker() as session:
         session.add(SessionSummaryRow(
