@@ -24,6 +24,31 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Gate the decorative neural-bg canvas until the React app has painted
+       (Track C: kill pre-mount flash). Releasing .bg-ready via `unset`
+       lets the per-theme opacity rules in styles.css apply again. */
+    #neuralBg { visibility: hidden; opacity: 0 !important; transition: opacity .4s ease; }
+    #neuralBg.bg-ready { visibility: visible; opacity: unset !important; }
+
+    /* Critical first-paint CSS (Track C, round 2). In dev mode styles.css is
+       injected by Vite AFTER the JS module graph loads, so without these the
+       first paint is a flat --bg rectangle and the real background + app shell
+       snap in later (visible blink). Values MUST mirror styles.css #bg-fill —
+       keep both sites in sync. */
+    #bg-fill{ position:fixed; inset:0; z-index:-1; pointer-events:none; }
+    [data-theme="light"] #bg-fill{
+      background:
+        radial-gradient(1200px 800px at 0% 0%, rgba(217,119,6,.10), transparent 60%),
+        radial-gradient(900px 700px at 100% 100%, rgba(8,145,178,.06), transparent 55%),
+        #fff7ed;
+    }
+    [data-theme="dark"] #bg-fill{ background:#070b14; }
+    /* Fade the app shell in on mount instead of snapping (pure CSS: the
+       :empty rule stops matching the moment React renders into #root). */
+    #root{ transition: opacity .25s ease; }
+    #root:empty{ opacity: 0; }
+  </style>
 </head>
 <body>
   <div id="bg-fill" aria-hidden="true"></div>
@@ -173,7 +198,20 @@
         start() { if (!raf) { resize(); seed(); tick(); } },
         stop() { cancelAnimationFrame(raf); raf = null; ctx.clearRect(0, 0, canvas.width, canvas.height); },
       };
-      window.__neuralBg.start();
+
+      // Do not start animating until the React app has painted -- starting
+      // the rAF loop at parse time makes the particle graph flash as a
+      // standalone old interface before #root mounts. Gate on app-ready,
+      // with a fallback timer so the background is never permanently dead.
+      let started = false;
+      function begin() {
+        if (started) return;
+        started = true;
+        canvas.classList.add('bg-ready');
+        window.__neuralBg.start();
+      }
+      window.addEventListener('claude-tracker:app-ready', begin, { once: true });
+      setTimeout(begin, 4000);
     })();
   </script>
 
