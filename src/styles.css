@@ -119,6 +119,8 @@ html,body{
 
 /* Solid background fill — sits below the neural canvas so nets are visible.
    #root used to paint the bg color, but its z:2 covered the canvas. */
+/* NOTE: #bg-fill background values are MIRRORED as critical CSS in index.html
+   (first-paint anti-flash). Change them in BOTH places. */
 #bg-fill{
   position:fixed; inset:0; z-index:-1; pointer-events:none;
 }
@@ -1905,7 +1907,7 @@ body{ color:var(--gm-text) !important; }
 /* ---- Glass panes: cards, metrics, frames — glass material + neu depth
    so they read as pillowy frosted glass rather than flat translucent
    rectangles. Rest = raised-sm, hover = the fuller raised recipe. ---- */
-.cd, .metric, .card-frame{
+.cd, .metric, .card-frame, .nebula-wrap{
   background:var(--gm-pane) !important;
   backdrop-filter:blur(20px) saturate(170%) !important;
   -webkit-backdrop-filter:blur(20px) saturate(170%) !important;
@@ -3266,85 +3268,6 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .pk-status-err    { color:var(--del);  background:var(--del-bg); }
 
 /* ── LiveGraph component ─────────────────────────────────────────────────────── */
-.lg-wrap { padding: .5rem 0; }
-.lg-svg { display: block; width: 100%; max-height: min(520px, calc(100vh - 260px)); border-radius: 8px; background: var(--bg); border: 1px solid var(--brd2); }
-
-/* Pulsing ring on active center node */
-@keyframes lgRingPulse {
-  0%, 100% { stroke-opacity: 0.18; r: 54; }
-  50%       { stroke-opacity: 0.42; r: 58; }
-}
-.lg-ring-pulse { animation: lgRingPulse 1.8s ease-in-out infinite; }
-
-/* Marching-ants animation on active connection lines */
-@keyframes lgLineMarch {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: -20; }
-}
-.lg-line-pulse { animation: lgLineMarch 1.4s linear infinite; }
-
-/* Hot satellite glow */
-@keyframes lgSatPop {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.7; }
-}
-.lg-sat-hot circle:first-child { animation: lgSatPop 1.2s ease-in-out infinite; }
-
-/* Idle state */
-.lg-idle {
-  border: 1px solid var(--brd2);
-  border-radius: 8px;
-  background: var(--bg);
-  padding: 1.25rem 1rem;
-}
-.lg-idle-header {
-  display: flex; align-items: center; gap: .5rem;
-  margin-bottom: 1.25rem;
-  font-size: .72rem; color: var(--muted); font-family: var(--font);
-}
-.lg-idle-dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--muted);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--muted) 20%, transparent);
-}
-.lg-idle-title { color: var(--muted); }
-
-.lg-idle-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: .75rem;
-}
-.lg-idle-card {
-  display: flex; flex-direction: column; align-items: center; gap: .4rem;
-  padding: .85rem .5rem;
-  border: 1px solid var(--brd2);
-  border-radius: 7px;
-  background: var(--code-bg);
-  opacity: 0.6;
-  transition: opacity .2s;
-}
-.lg-idle-card:hover { opacity: 0.85; }
-.lg-idle-name {
-  font-size: .65rem; color: var(--txt); font-family: var(--font);
-  text-align: center; word-break: break-all;
-}
-.lg-idle-status {
-  font-size: .58rem; color: var(--muted); font-family: var(--font);
-  background: var(--bg2); padding: .1rem .35rem; border-radius: 3px;
-  border: 1px solid var(--brd2);
-}
-
-.lg-idle-empty {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: .6rem; padding: 3rem 1rem;
-  border: 1px dashed var(--brd2); border-radius: 8px;
-  text-align: center;
-}
-.lg-idle-icon { font-size: 2rem; color: var(--muted); opacity: .4; }
-.lg-idle-label { font-size: .8rem; color: var(--muted); font-family: var(--font); }
-.lg-idle-sub { font-size: .68rem; color: var(--muted); opacity: .6; }
-
-.lg-session { }
 
 /* ============================================================
    MONITORING PAGE  (src/components/Monitoring.jsx)
@@ -3777,3 +3700,19 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   .mon-panels > :first-child { grid-column: auto; }
   .mon-bar-row { grid-template-columns: 7rem 1fr 4rem; }
 }
+
+/* ── Nebula graph ── */
+.nebula-canvas{
+  position:absolute; inset:0; width:100%; height:100%;
+  display:block; cursor:grab;
+}
+.nebula-canvas:active{ cursor:grabbing; }
+
+.nebula-wrap{
+  position:relative; height:640px; overflow:hidden; border-radius:18px;
+}
+
+.nebula-caption{
+  font:10.5px var(--font); color:var(--muted); padding:6px 2px;
+}
+

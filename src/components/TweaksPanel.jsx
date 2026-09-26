@@ -36,6 +36,11 @@ const TWEAKS_STYLE = `
   .twk-toggle[data-on="1"]{background:#34c759}
   .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
   .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+  .twk-slider{position:relative;width:100%;height:16px;display:flex;align-items:center}
+  .twk-slider input[type="range"]{appearance:none;-webkit-appearance:none;width:100%;height:3px;background:rgba(0,0,0,.12);border-radius:999px;outline:none;cursor:default}
+  .twk-slider input[type="range"]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:14px;height:14px;border-radius:50%;background:#fff;border:.5px solid rgba(0,0,0,.15);box-shadow:0 1px 2px rgba(0,0,0,.25);cursor:default;margin-top:-.5px}
+  .twk-slider input[type="range"]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;border:.5px solid rgba(0,0,0,.15);box-shadow:0 1px 2px rgba(0,0,0,.25);cursor:default}
+  .twk-slider input[type="range"]::-moz-range-track{height:3px;background:rgba(0,0,0,.12);border-radius:999px}
 `;
 
 export function TweaksPanel({ title = 'Tweaks', children }) {
@@ -189,6 +194,23 @@ export function TweakToggle({ label, value, onChange }) {
       <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
         role="switch" aria-checked={!!value} onClick={() => onChange(!value)}><i /></button>
     </div>
+  );
+}
+
+export function TweakSlider({ label, value, min = 0, max = 1, step = 0.01, onChange, format }) {
+  return (
+    <TweakRow label={label} value={format ? format(value) : value.toFixed(2)}>
+      <div className="twk-slider">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+        />
+      </div>
+    </TweakRow>
   );
 }
 
