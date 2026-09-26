@@ -64,6 +64,7 @@ class ParsedEvent:
     repo: str
     kind: str  # agent_start | tool | delegate | skill | permission | command
     payload: dict = field(default_factory=dict)
+    seq: int | None = None  # Hub-assigned monotonic id, set only for live-broadcast events
 
 
 @dataclass

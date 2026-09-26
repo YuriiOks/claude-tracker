@@ -6,7 +6,7 @@ import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
 import { useAgents, useRepoEvents } from "../api";
-import LiveGraph from "./LiveGraph";
+import NebulaGraph from "./NebulaGraph";
 
 const HtmlArtifacts = ({ repo }) => {
   const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
@@ -368,7 +368,27 @@ const RepoRules = ({ repo, onOpen }) => (
   </div>
 );
 
-const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute, liveAgents }) => {
+// Mirrors Dashboard.jsx#fmtDelta -- percent-change formatting shared here so
+// per-repo metric cards read the same way as the global dashboard cards.
+const fmtDelta = (pct) => {
+  if (pct == null) return null;
+  const abs = Math.abs(pct);
+  const sign = pct < 0 ? '-' : '+';
+  if (abs >= 1000) return `${sign}${(abs / 100).toFixed(0)}x`;
+  if (abs >= 100)  return `${sign}${abs.toFixed(0)}%`;
+  return `${sign}${abs.toFixed(1)}%`;
+};
+// No deltaPct field ships from the backend for per-repo stats (unlike the
+// global /stats/dashboard endpoint) -- compute it from the raw current/prior
+// pair. Undefined when there is no prior-period baseline to compare against.
+const pctChange = (curr, prev) => (prev > 0 ? ((curr - prev) / prev) * 100 : null);
+
+// Stable reference -- an inline object literal here would change identity every
+// render (useActiveAgents polls -> re-render) and force NebulaGraph to rebuild
+// its whole sim every 1.5s (visible as nodes jumping around).
+const GRAPH_TAB_LAYERS = { commands: false, rules: false };
+
+const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
   const setTab = onTabChange || (() => {});
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
@@ -409,9 +429,29 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
 
       {!isGlobal && (
         <div className="grid grid-cols-4 mb-5 mt-4">
-          <Metric label="Sessions today" value={repo.stats.sessionsToday} accent="cyan" />
-          <Metric label="Tokens this week" value={(repo.stats.tokensWeek / 1e6).toFixed(2)} unit="M" accent="gold" />
-          <Metric label="Cost this week" value={`$${repo.stats.costWeek.toFixed(2)}`} accent="green" />
+          <Metric
+            label="Sessions today"
+            value={repo.stats.sessionsToday}
+            accent="cyan"
+            points={repo.stats.spark}
+            delta={fmtDelta(pctChange(repo.stats.sessionsToday, repo.stats.sessionsYesterday))}
+            deltaLabel="vs yesterday"
+          />
+          <Metric
+            label="Tokens this week"
+            value={(repo.stats.tokensWeek / 1e6).toFixed(2)}
+            unit="M"
+            accent="gold"
+            delta={fmtDelta(pctChange(repo.stats.tokensWeek, repo.stats.tokensLastWeek))}
+            deltaLabel="vs last week"
+          />
+          <Metric
+            label="Cost this week"
+            value={`$${repo.stats.costWeek.toFixed(2)}`}
+            accent="green"
+            delta={fmtDelta(pctChange(repo.stats.costWeek, repo.stats.costLastWeek))}
+            deltaLabel="vs last week"
+          />
           <Metric label="Avg session" value={repo.stats.avgSession} accent="purple" />
         </div>
       )}
@@ -438,7 +478,7 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
       {tab === 'rules' && <RepoRules repo={repo} onOpen={onOpen} />}
       {tab === 'permissions' && <PermissionsPanel scope={repo.id} />}
       {tab === 'plugins' && <PluginsPanel repo={repo} onOpen={onOpen} />}
-      {tab === 'graph' && <LiveGraph repo={repo} agents={liveAgents} />}
+      {tab === 'graph' && <NebulaGraph repos={[repo]} lockedRepo={repo.id} defaultLayers={GRAPH_TAB_LAYERS} onOpen={onOpen} />}
     </>
   );
 };

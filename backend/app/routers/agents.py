@@ -73,16 +73,35 @@ async def list_agents() -> dict[str, AgentMeta]:
 
         # Per-agent stats from SubagentCallRow
         sc_rows = (await session.execute(select(SubagentCallRow))).scalars().all()
+        calls_week: Counter[str] = Counter()
+        calls_total: Counter[str] = Counter()
+        by_agent: dict[str, list[SubagentCallRow]] = defaultdict(list)
         for sc in sc_rows:
             ts = sc.started_at if sc.started_at.tzinfo else sc.started_at.replace(tzinfo=UTC)
+            calls_total[sc.agent_type] += 1
+            by_agent[sc.agent_type].append(sc)
             if ts >= today_start:
                 calls_today[sc.agent_type] += 1
             if ts >= week_start:
+                calls_week[sc.agent_type] += 1
                 tokens_per_agent[sc.agent_type].append(sc.tokens)
 
     for name, m in meta.items():
         m["delegates"] = sorted(delegate_map.get(name, set()))
         m["callsToday"] = calls_today.get(name, 0)
+        m["callsWeek"] = calls_week.get(name, 0)
+        m["callsTotal"] = calls_total.get(name, 0)
+        recent = sorted(by_agent.get(name, []), key=lambda r: r.started_at, reverse=True)[:8]
+        m["recentCalls"] = [
+            {
+                "repo": r.repo,
+                "tokens": int(r.tokens or 0),
+                "cost": float(r.cost or 0.0),
+                "startedAt": (r.started_at if r.started_at.tzinfo else r.started_at.replace(tzinfo=UTC)).isoformat(),
+                "sessionId": (r.session_id or "")[:8],
+            }
+            for r in recent
+        ]
         toks = tokens_per_agent.get(name, [])
         m["avgTokens"] = int(sum(toks) / len(toks)) if toks else 0
 

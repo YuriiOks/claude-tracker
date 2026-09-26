@@ -482,13 +482,50 @@ export function useOtelEvents(n = 200, kind = '') {
   return useFetch(`/api/otel/events${qs}`, MOCK.OTEL_EVENTS);
 }
 
+// Live-connection status, shared across every useLiveEvents() consumer via a
+// tiny pub/sub -- useLiveEvents() itself keeps returning a plain array so
+// existing consumers (App.jsx, Dashboard) are untouched; screens that want
+// the status (e.g. LivePage) opt in via useLiveStatus().
+let _liveStatus = 'polling';
+const _statusSubs = new Set();
+function _setLiveStatus(s) { _liveStatus = s; _statusSubs.forEach(fn => fn(s)); }
+
+export function useLiveStatus() {
+  const [s, setS] = useState(_liveStatus);
+  useEffect(() => {
+    _statusSubs.add(setS);
+    return () => _statusSubs.delete(setS);
+  }, []);
+  return s;
+}
+
+// Build a dedup key for an event. `id` alone is not a safe key: REST rows
+// stamp it from the DB pk while WS rows stamp it from a per-process seq that
+// resets on backend restart -- different numbering spaces that can collide
+// and silently drop events. Always key on payload identity instead (mirrors
+// NebulaGraph.jsx's eventDedupKey).
+function _eventKey(e) {
+  return `${e.ts ?? e.t}|${e.kind}|${e.tool ?? e.to ?? e.skill ?? e.cmd ?? ''}|${e.target ?? ''}`;
+}
+
+// Map an event to a comparable number for chronological sort. Real backend
+// rows carry `ts` as an ISO-8601 string (Date.parse -> ms epoch); a bare
+// number is used as-is. Mock rows have no `ts`, only a relative numeric `t`
+// (seconds-from-now) -- fall back to that, and to 0 if neither is present.
+function _eventTime(e) {
+  if (e.ts != null) return typeof e.ts === 'number' ? e.ts : Date.parse(e.ts);
+  return e.t ?? 0;
+}
+
 export function useLiveEvents() {
   const [events, setEvents] = useState(USE_MOCKS ? MOCK.LIVE_EVENTS_SEED.map(e => ({ ...e })) : []);
   const tickRef = useRef(0);
+  const seenRef = useRef(new Set());
 
   // Mock cycle (preserves the original demo behaviour).
   useEffect(() => {
     if (!USE_MOCKS) return undefined;
+    _setLiveStatus('mock');
     const speedMap = { slow: 5500, normal: 2400, fast: 900 };
     let timer;
     // Recursive setTimeout (not setInterval) so each tick re-reads
@@ -516,10 +553,33 @@ export function useLiveEvents() {
     let ws;
     let cancelled = false;
     let backoff = 1000;
+    let isFirstOpen = true;
+
+    _setLiveStatus('polling');
+
+    // Shared by cold-start and reconnect: append only unseen rows, sort by
+    // timestamp, cap the ring buffer. On an empty buffer this degenerates to
+    // a plain load, so the happy-path behaviour is unchanged.
+    const mergeRows = (rows) => {
+      setEvents(prev => {
+        const merged = [...prev];
+        for (const row of rows) {
+          const k = _eventKey(row);
+          if (seenRef.current.has(k)) continue;
+          seenRef.current.add(k);
+          merged.push(row);
+        }
+        merged.sort((a, b) => _eventTime(a) - _eventTime(b));
+        return merged.slice(-60);
+      });
+    };
 
     fetch('/api/live/recent?n=60')
       .then(r => (r.ok ? r.json() : []))
-      .then(j => { if (!cancelled) setEvents(Array.isArray(j) ? j : []); })
+      .then(j => {
+        if (cancelled) return;
+        mergeRows(Array.isArray(j) ? j : []);
+      })
       .catch(() => {});
 
     const connect = () => {
@@ -529,12 +589,36 @@ export function useLiveEvents() {
       ws.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
+          const k = _eventKey(data);
+          if (seenRef.current.has(k)) return;
+          seenRef.current.add(k);
+          if (seenRef.current.size > 1000) {
+            seenRef.current = new Set([...seenRef.current].slice(-300));
+          }
           setEvents(prev => [...prev, data].slice(-60));
         } catch { /* ignore */ }
       };
-      ws.onopen = () => { backoff = 1000; };
+      ws.onopen = () => {
+        backoff = 1000;
+        _setLiveStatus('live');
+        if (isFirstOpen) {
+          isFirstOpen = false;
+          return;
+        }
+        // Composite keys are stable across REST and WS sources (no id-space
+        // collisions), so a reconnect only needs the merge-fetch to backfill
+        // whatever the WS gap dropped -- no key surgery required first.
+        fetch('/api/live/recent?n=60')
+          .then(r => (r.ok ? r.json() : []))
+          .then(rows => {
+            if (cancelled || !Array.isArray(rows)) return;
+            mergeRows(rows);
+          })
+          .catch(() => {});
+      };
       ws.onclose = () => {
         if (cancelled) return;
+        _setLiveStatus('reconnecting');
         setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 15000);
       };

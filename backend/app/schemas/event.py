@@ -16,9 +16,12 @@ EventKind = Literal[
 
 class LiveEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    id: int | None = None
+    ts: str | None = None  # absolute ISO-8601; t stays the pre-existing relative-seconds field
     t: int = 0
     repo: str
     kind: EventKind
+    session_id: str | None = Field(default=None, alias="sessionId")
     agent: str | None = None
     msg: str | None = None
     tool: str | None = None

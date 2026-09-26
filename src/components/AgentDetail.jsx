@@ -101,39 +101,30 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
 
   // Resolve repo first so the memos below can reference it. command/rule
   // kinds use a slightly different fallback chain but we share resolution.
+  // Repo resolution: explicit repoId wins; otherwise find the repo that
+  // actually OWNS this item (its agents/skills/commands/rules list contains
+  // the name) so a bare /agents/:name link loads the right .claude/ file and
+  // scope instead of falling back to global (where the file does not exist).
+  const KIND_LIST = { agent: "agents", skill: "skills", command: "commands", rule: "rules" };
+  const ownsName = (r) => (r?.[KIND_LIST[kind] || "agents"] || []).includes(name);
   const repo = (repoId && (repos || []).find(r => r.id === repoId))
+    || (repos || []).find(r => r.id !== "global" && ownsName(r))
     || (repos || []).find(r => r.id === "global")
     || (repos || [])[0];
 
   const repoIdFinal = repo?.id ?? null;
 
   // Derive real "Recent invocations" from sessions filtered by agent name.
+  // Real invocation stats come from the backend subagent_call table via
+  // AGENT_META (callsToday/callsWeek/callsTotal/recentCalls). The session
+  // list only ever contains "main" sessions, so deriving counts from it
+  // silently reads 0 for every sub-agent -- kept ONLY as mock-mode fallback.
   const invocations = useMemo(() => {
     const all = (sessions || []).filter(s => s && s.agent === name);
     const scoped = repoIdFinal ? all.filter(s => s.repo === repoIdFinal) : all;
     return scoped.slice(0, 8);
   }, [sessions, name, repoIdFinal]);
 
-  const todayCount = useMemo(() => {
-    if (!sessions) return null;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const cutoff = today.getTime();
-    const matches = sessions.filter(s => s && s.agent === name);
-    if (matches.length === 0) return 0;
-    const parseable = matches.filter(s => !Number.isNaN(new Date(s.started).getTime()));
-    if (parseable.length === 0) return null;
-    return parseable.filter(s => new Date(s.started).getTime() >= cutoff).length;
-  }, [sessions, name]);
-
-  const weekCount = useMemo(() => {
-    if (!sessions) return null;
-    const cutoff = Date.now() - 7 * 86400 * 1000;
-    const matches = sessions.filter(s => s && s.agent === name);
-    if (matches.length === 0) return 0;
-    const parseable = matches.filter(s => !Number.isNaN(new Date(s.started).getTime()));
-    if (parseable.length === 0) return null;
-    return parseable.filter(s => new Date(s.started).getTime() >= cutoff).length;
-  }, [sessions, name]);
 
   // Now safe to dispatch on kind — every hook has run.
   if (kind === "plugin" || kind === "mcp") {
@@ -178,9 +169,29 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
     delegates: [],
   };
   const isAgent = kind === "agent";
+  // Root/front-door agents (orchestrators) run as the session main agent and
+  // dispatch to specialists -- they are never themselves spawned as subagents,
+  // so subagent_call has zero rows for them by nature. Detect by name +
+  // zero real invocations so we explain rather than show a misleading 0.
+  const isRootAgent = isAgent
+    && (meta.callsTotal ?? 0) === 0
+    && /orchestrat|coordinator|front.?door/i.test(name);
+
 
   // No reliable token data on sessions yet — display "—" when missing.
   const avgTokensK = meta.avgTokens ? (meta.avgTokens / 1000).toFixed(1) : null;
+
+  const displayInvocations = (meta.recentCalls && meta.recentCalls.length)
+    ? meta.recentCalls.map((c, i) => ({
+        id: `${c.sessionId || "call"}-${i}`,
+        started: c.startedAt,
+        task: `${((c.tokens || 0) / 1000).toFixed(1)}k tokens · session ${c.sessionId}`,
+        repo: c.repo,
+        status: "done",
+        cost: c.cost,
+      }))
+    : invocations;
+
 
   return (
     <>
@@ -199,10 +210,14 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
       />
 
       <div className="grid grid-cols-4 mb-4">
-        <Metric label="Calls today" value={todayCount == null ? '—' : todayCount} accent="cyan" />
+        <Metric label="Calls today" value={isRootAgent ? "—" : (meta.callsToday ?? "—")} accent="cyan" />
         <Metric label="Avg tokens" value={avgTokensK == null ? '—' : avgTokensK} unit={avgTokensK == null ? '' : 'k'} accent="gold" />
-        <Metric label="Calls this week" value={weekCount == null ? '—' : weekCount} accent="purple" />
-        <Metric label="Invocations" value={invocations.length} accent="green" />
+        <Metric label="Calls this week" value={isRootAgent ? "—" : (meta.callsWeek ?? "—")} accent="purple" />
+        <Metric
+          label="Invocations"
+          value={isRootAgent ? "—" : (meta.callsTotal ?? displayInvocations.length)}
+          accent="green"
+        />
       </div>
 
       <div className="split">
@@ -230,8 +245,14 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
         <div>
           <h2 className="section-title mb-3"><Icon name="zap" />Recent invocations</h2>
           <div className="list">
-            {invocations.length === 0 && <div className="empty">No invocations yet.</div>}
-            {invocations.map((inv) => (
+            {displayInvocations.length === 0 && (
+              <div className="empty">
+                {isRootAgent
+                  ? "Root agent — runs as the session\u2019s main agent and dispatches to specialists. Its work shows up under the repo\u2019s live sessions, not as subagent invocations, so there are no invocation rows to count."
+                  : "No invocations yet."}
+              </div>
+            )}
+            {displayInvocations.map((inv) => (
               <div key={inv.id} className="list-row" style={{ gridTemplateColumns: '60px 1fr 80px 60px' }}>
                 <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{timeAgo(inv.started)}</span>
                 <div>
@@ -268,7 +289,7 @@ const AgentDetail = ({ name, kind, repos, repoId, onBack, setRoute }) => {
                   <span className="sb-repo-dot" style={{ '--accent': repo.accent || 'var(--cyan)' }}></span>
                   <span className="tb">{repo.name}</span>
                 </div>
-                <span className="bg bg-m">{weekCount == null ? '—' : `${weekCount} this week`}</span>
+                <span className="bg bg-m">{`${meta.callsWeek ?? 0} this week`}</span>
               </div>
             </div>
           ) : (
