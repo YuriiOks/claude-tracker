@@ -3709,7 +3709,8 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .nebula-canvas:active{ cursor:grabbing; }
 
 .nebula-wrap{
-  position:relative; height:640px; overflow:hidden; border-radius:18px;
+  position:relative; height:640px; max-height:min(640px, calc(100vh - 260px));
+  overflow:hidden; border-radius:18px;
 }
 
 .nebula-caption{

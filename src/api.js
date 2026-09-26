@@ -508,6 +508,15 @@ function _eventKey(e) {
   return `${e.ts ?? e.t}|${e.kind}|${e.tool ?? e.to ?? e.skill ?? e.cmd ?? ''}|${e.target ?? ''}`;
 }
 
+// Map an event to a comparable number for chronological sort. Real backend
+// rows carry `ts` as an ISO-8601 string (Date.parse -> ms epoch); a bare
+// number is used as-is. Mock rows have no `ts`, only a relative numeric `t`
+// (seconds-from-now) -- fall back to that, and to 0 if neither is present.
+function _eventTime(e) {
+  if (e.ts != null) return typeof e.ts === 'number' ? e.ts : Date.parse(e.ts);
+  return e.t ?? 0;
+}
+
 export function useLiveEvents() {
   const [events, setEvents] = useState(USE_MOCKS ? MOCK.LIVE_EVENTS_SEED.map(e => ({ ...e })) : []);
   const tickRef = useRef(0);
@@ -560,7 +569,7 @@ export function useLiveEvents() {
           seenRef.current.add(k);
           merged.push(row);
         }
-        merged.sort((a, b) => (a.ts ?? a.t) - (b.ts ?? b.t));
+        merged.sort((a, b) => _eventTime(a) - _eventTime(b));
         return merged.slice(-60);
       });
     };
