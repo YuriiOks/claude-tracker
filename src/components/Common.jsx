@@ -1,29 +1,69 @@
 import { useState } from 'react';
 import Icon from '../icons';
+import { useBackendStatus, useRetrying, retryFetches } from '../api';
+import CommandPalette from './CommandPalette';
 
-export const Crumbs = ({ items }) => (
-  <div className="crumbs">
+// Crumb items are { label, route } — `route` is a route object passed
+// straight to setRoute(), or null/undefined for the current (non-clickable)
+// segment, which is always the last one.
+export const Crumbs = ({ items, setRoute }) => (
+  <nav className="crumbs" aria-label="Breadcrumb">
     <span className="crumb-prompt">›</span>
-    {items.map((c, i) => (
-      <span key={i}>
-        {i > 0 && <span className="sep" aria-hidden="true">/</span>}
-        <span className={i === items.length - 1 ? 'now' : ''}>{c}</span>
-      </span>
-    ))}
-  </div>
+    {items.map((c, i) => {
+      const clickable = !!c.route && setRoute && i !== items.length - 1;
+      return (
+        <span key={i}>
+          {i > 0 && <span className="sep" aria-hidden="true">/</span>}
+          {clickable ? (
+            <button type="button" className="crumb-link" onClick={() => setRoute(c.route)}>
+              {c.label}
+            </button>
+          ) : (
+            <span className={i === items.length - 1 ? 'now' : ''}>{c.label}</span>
+          )}
+        </span>
+      );
+    })}
+  </nav>
 );
 
-export const Topbar = ({ crumbs, theme, setTheme, allLive, onOpenTweaks }) => (
+// R-UX-2: honest data-state pill. Renders nothing when everything's fine
+// (online, or mock mode is its own explicit pill anyway). aria-live so
+// screen readers hear a state transition, not just sighted users.
+export const BackendStatusPill = () => {
+  const { state } = useBackendStatus();
+  const retrying = useRetrying();
+  if (state === 'online') return null;
+  const cfg = {
+    mock: { label: 'MOCK DATA', cls: 'bs-mock' },
+    stale: { label: 'cached · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), cls: 'bs-stale' },
+    offline: { label: 'Backend unreachable — showing sample/cached data', cls: 'bs-offline' },
+  }[state];
+  if (!cfg) return null;
+  return (
+    <div className={'backend-status ' + cfg.cls} role="status" aria-live="polite">
+      <span className="dot"></span>
+      {/* Full label on desktop; visually collapses to just the dot + retry
+          on narrow viewports (see .backend-status media query) but stays in
+          the accessibility tree via sr-only so screen readers always hear it. */}
+      <span className="backend-status-label">{cfg.label}</span>
+      {state === 'offline' && (
+        <button type="button" className="backend-status-retry" onClick={() => retryFetches()} disabled={retrying}>
+          {retrying ? 'Retrying…' : 'Retry'}
+        </button>
+      )}
+    </div>
+  );
+};
+
+export const Topbar = ({ crumbs, setRoute, theme, setTheme, allLive, onOpenTweaks, repos }) => (
   <div className="topbar">
-    <Crumbs items={crumbs} />
+    <Crumbs items={crumbs} setRoute={setRoute} />
+    <BackendStatusPill />
     {allLive > 0 && (
       <div className="live-pill"><span className="dot"></span>{allLive} live</div>
     )}
-    <div className="search-box">
-      <Icon name="search" size={12} />
-      <input placeholder="Search agents, skills, files…" />
-      <kbd>⌘K</kbd>
-    </div>
+    <CommandPalette repos={repos} setRoute={setRoute} />
     <button className="icon-btn" title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
       onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
       <Icon name={theme === 'dark' ? 'sun' : 'moon'} />

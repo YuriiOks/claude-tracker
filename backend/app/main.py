@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.db import init_db
@@ -19,9 +20,22 @@ INGEST_INTERVAL_SEC = 30
 
 
 async def _ingest_loop():
-    """Run incremental ingest every INGEST_INTERVAL_SEC. Logs and continues
-    on error so a transient parse failure doesn't kill the loop."""
+    """Run a one-time full bootstrap ingest, then incremental ingest every
+    INGEST_INTERVAL_SEC. The bootstrap lives here (not in `lifespan`) so the
+    app can start serving requests — including /api/health — immediately
+    instead of blocking startup on a full-corpus walk. Bootstrap and the
+    periodic ticks share this single task/coroutine, so they never run
+    concurrently. Logs and continues on error so a transient parse failure
+    doesn't kill the loop."""
     from app.services.ingest import ingest_all
+
+    try:
+        r = await ingest_all()
+        logger.info("bootstrap ingest: %s new, %s updated, %s events",
+                    r.get("new"), r.get("updated"), r.get("events"))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("bootstrap ingest failed: %s", e)
+
     while True:
         try:
             r = await ingest_all(since_hours=24)
@@ -38,16 +52,7 @@ async def _ingest_loop():
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
-    from app.services.ingest import ingest_all
     from app.services.live_stream import start_watcher, stop_watcher
-
-    # First-time bootstrap: full ingest so the dashboard has data on first paint.
-    try:
-        r = await ingest_all()
-        logger.info("bootstrap ingest: %s new, %s updated, %s events",
-                    r.get("new"), r.get("updated"), r.get("events"))
-    except Exception as e:  # noqa: BLE001
-        logger.warning("bootstrap ingest failed: %s", e)
 
     await start_watcher()
     ingest_task = asyncio.create_task(_ingest_loop())
@@ -57,7 +62,14 @@ async def lifespan(_: FastAPI):
     finally:
         ingest_task.cancel()
         try:
-            await ingest_task
+            # Bound the wait — a long synchronous parse inside the ingest
+            # loop won't observe cancellation until its next await point, so
+            # an unbounded `await ingest_task` here can stall graceful
+            # shutdown indefinitely. Abandon the task after a grace period
+            # instead of blocking process exit on it.
+            await asyncio.wait_for(ingest_task, timeout=5)
+        except TimeoutError:
+            logger.warning("ingest task did not stop within 5s; abandoning it")
         except (asyncio.CancelledError, Exception):
             pass
         await stop_watcher()
@@ -82,6 +94,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Added after CORS so it ends up outermost (Starlette's add_middleware
+    # prepends) — it compresses the final HTTP response body including any
+    # CORS headers already set. GZipMiddleware only intercepts scope["type"]
+    # == "http", so /ws/live WebSocket traffic passes through untouched.
+    app.add_middleware(GZipMiddleware, minimum_size=500)
 
     # Routers
     from app.routers import (

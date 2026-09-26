@@ -85,6 +85,11 @@
   --tone-amber:#fbbf24;
 }
 
+/* Sidebar collapse is a class toggle (set by App.jsx from sidebarCollapsed
+   state, itself seeded/tracked from matchMedia(max-width:800px)) so the
+   mobile media query below always wins over a manual desktop collapse. */
+html.sidebar-collapsed{ --sb-w:var(--sb-w-collapsed); }
+
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{
   height:100%;
@@ -1201,6 +1206,10 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 }
 .list-row:hover{background:var(--hover);}
 .list-row:last-child{border-bottom:none;}
+/* Non-interactive rows (e.g. a session with no linked agent) — default
+   cursor instead of the row-is-clickable pointer. */
+.list-row.static-row, .session-row.static-row{ cursor:default; }
+.list-row.static-row:hover, .session-row.static-row:hover{ background:none; }
 /* Selected row in DiffPage's recent-diffs list: subtle accent tint + left
    border so the user can see which file's diff is currently displayed
    above the list. Works in both themes via --cyan tokens. */
@@ -1412,11 +1421,26 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 .divider{height:1px; background:var(--brd2); margin:.7rem 0;}
 
 @media(max-width:800px){
-  :root{--sb-w:60px;}
-  .sb-name, .sb-tag, .sb-section, .sb-item span:not(.badge), .sb-foot{display:none;}
+  /* Sidebar itself is driven to collapsed state in JS (matchMedia sync), so
+     --sb-w already resolves to --sb-w-collapsed via html.sidebar-collapsed.
+     These rules only hide leftover text nodes if collapsed state hasn't
+     applied yet, and must never touch .sb-repo-dot (the tracked-repo status
+     dot) or repo buttons render blank. */
+  .sb-name, .sb-tag, .sb-section, .sb-item span:not(.badge):not(.sb-repo-dot), .sb-foot{display:none;}
   .sb-item{justify-content:center; padding:.55rem;}
-  .search-box{width:auto; flex:1; max-width:200px;}
-  .search-box kbd{display:none;}
+
+  /* Topbar: search field has no room next to crumbs + theme/settings
+     buttons at phone widths, so it's hidden entirely rather than clipped
+     off-screen. */
+  .search-box{display:none;}
+
+  /* Tab bar (RepoDetail) and wide .list/table containers overflow their
+     narrow column below 800px -- scroll horizontally instead of silently
+     clipping. */
+  .tabs{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tab{ flex-shrink:0; }
+  .list{ overflow-x:auto; }
+  .list-row{ min-width:max-content; }
 }
 
 /* ============== CARD FRAME — section wrapper ============== */
@@ -3716,4 +3740,119 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .nebula-caption{
   font:10.5px var(--font); color:var(--muted); padding:6px 2px;
 }
+
+/* ===================================================================
+   M0 ROUND 2 — honest data state, clickable crumbs, ⌘K palette
+   =================================================================== */
+
+/* ---- Clickable breadcrumbs (R-UX-8) ---- */
+.crumb-link{
+  background:none; border:none; padding:0; margin:0;
+  font:inherit; color:inherit; text-transform:inherit; letter-spacing:inherit;
+  cursor:pointer;
+}
+.crumb-link:hover, .crumb-link:focus-visible{ color:var(--cyan); text-decoration:underline; }
+.crumb-link:focus-visible{ outline:2px solid color-mix(in srgb, var(--cyan) 60%, transparent); outline-offset:2px; border-radius:2px; }
+
+/* ---- Backend status pill (R-UX-2) ---- */
+.backend-status{
+  display:flex; align-items:center; gap:.4rem;
+  padding:.25rem .6rem; border-radius:99px;
+  font-size:.62rem; font-weight:600; letter-spacing:.04em;
+  font-family:var(--font); white-space:nowrap;
+}
+.backend-status .dot{ width:6px; height:6px; border-radius:50%; flex:none; }
+.backend-status-retry{
+  background:none; border:1px solid currentColor; border-radius:99px;
+  color:inherit; font:inherit; font-size:.58rem; padding:.05rem .45rem;
+  cursor:pointer; margin-left:.15rem;
+}
+.backend-status-retry:hover{ opacity:.8; }
+.backend-status-retry:disabled{ opacity:.5; cursor:default; }
+
+.backend-status.bs-offline{
+  background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); color:var(--red);
+}
+.backend-status.bs-offline .dot{ background:var(--red); }
+.backend-status.bs-stale{
+  background:var(--dim); border:1px solid var(--brd2); color:var(--muted);
+}
+.backend-status.bs-stale .dot{ background:var(--gold); }
+.backend-status.bs-mock{
+  background:var(--dim); border:1px solid var(--brd2); color:var(--cyan);
+}
+.backend-status.bs-mock .dot{ background:var(--cyan); }
+
+/* Compact form on narrow viewports: keep the colored dot + Retry control
+   visible (so offline state is still actionable) but visually hide the
+   text label — it stays in the DOM (sr-only-style clip) for screen
+   readers instead of disappearing outright. Tightened padding/gap keeps
+   the topbar from overflowing at phone widths. */
+@media(max-width:800px){
+  .backend-status{ padding:.25rem .4rem; gap:.25rem; }
+  .backend-status-label{
+    position:absolute; width:1px; height:1px; padding:0; margin:-1px;
+    overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;
+  }
+}
+
+/* ---- Command palette trigger (search-box is now a <button>) ---- */
+button.search-box{
+  cursor:pointer; text-align:left; font:inherit;
+}
+.search-box-placeholder{
+  flex:1; color:var(--muted); font-family:var(--font); font-size:.72rem;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ---- Command palette overlay ---- */
+.cmdk-overlay{
+  /* Above everything, including TweaksPanel's .twk-panel (2147483646) and
+     .modal-backdrop (2000) — the command palette is a modal and must never
+     render underneath another overlay. */
+  position:fixed; inset:0; z-index:2147483647;
+  background:rgba(0,0,0,.45);
+  display:flex; align-items:flex-start; justify-content:center;
+  padding-top:12vh;
+}
+[data-theme="light"] .cmdk-overlay{ background:rgba(41,38,27,.25); }
+
+.cmdk-panel{
+  width:min(560px, 92vw); max-height:60vh;
+  background:var(--card); border:1px solid var(--brd2);
+  border-radius:12px; box-shadow:var(--shadow-hover);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.cmdk-input-row{
+  display:flex; align-items:center; gap:.5rem;
+  padding:.7rem .85rem; border-bottom:1px solid var(--brd2);
+}
+.cmdk-input-row svg{ width:13px; height:13px; stroke:var(--muted); fill:none; stroke-width:2; flex:none; }
+.cmdk-input-row input{
+  flex:1; background:none; border:none; outline:none;
+  color:var(--txt-bright); font-family:var(--font); font-size:.82rem;
+}
+.cmdk-input-row input::placeholder{ color:var(--muted); }
+.cmdk-input-row kbd{
+  font-size:.58rem; padding:.1rem .35rem; border-radius:3px;
+  border:1px solid var(--brd2); color:var(--muted); flex:none;
+}
+.cmdk-list{
+  list-style:none; margin:0; padding:.35rem; overflow-y:auto;
+}
+.cmdk-empty{
+  padding:.9rem; text-align:center; color:var(--muted); font-size:.72rem; font-family:var(--font);
+}
+.cmdk-item{
+  display:flex; align-items:center; gap:.55rem;
+  padding:.5rem .6rem; border-radius:7px; cursor:pointer;
+  font-family:var(--font); font-size:.75rem; color:var(--txt);
+}
+.cmdk-item svg{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; flex:none; opacity:.8; }
+.cmdk-item-label{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cmdk-item-sub{ font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; flex:none; }
+.cmdk-item.active, .cmdk-item:hover{
+  background:var(--hover); color:var(--txt-bright);
+}
+.cmdk-item.active .cmdk-item-sub{ color:var(--cyan); }
 

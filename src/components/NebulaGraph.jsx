@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAgents, useFileSizes, useActiveAgents, useLiveEvents } from "../api";
+import { useAgents, useFileSizes } from "../api";
 // Control rail removed per user feedback -- the graph runs on these tuned defaults.
 const CONTROL_DEFAULTS = {
   glow: .75, fog: .5, cometFlow: .55, nodeSize: 1,
@@ -708,7 +708,11 @@ function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, com
   ctx.restore();
 }
 
-export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, selectedRepo: controlledRepo, layers: controlledLayers }) {
+// R-LAT-4: liveEvents/liveAgents are owned by App's single app-wide poller/WS
+// (useLiveEvents/useActiveAgents) and threaded down via Graph.jsx / RepoDetail.jsx.
+// Don't reintroduce a second useActiveAgents(1.5s)/useLiveEvents() call here --
+// that was a real duplicate poller, not just an inefficiency.
+export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, selectedRepo: controlledRepo, layers: controlledLayers, liveEvents = [], liveAgents = [] }) {
   // Selection is fully derived: locked (RepoDetail) > controlled (Graph page chips) > first repo.
   const selectedRepo = lockedRepo ?? controlledRepo ?? repos[0]?.id;
   const layersKey = JSON.stringify(defaultLayers ?? null);
@@ -729,8 +733,7 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
   const { data: AGENT_META } = useAgents();
   const FILE_SIZES = useFileSizes();
   const repo = lockedRepo ? repos.find(r => r.id === lockedRepo) : (repos.find(r => r.id === selectedRepo) || repos[0]);
-  const liveRows = useActiveAgents(1500);
-  const liveEvents = useLiveEvents();
+  const liveRows = liveAgents;
 
   const { nodes: builtNodes, edges: builtEdges } = useMemo(
     () => buildGraph(repo, layers, AGENT_META, FILE_SIZES),

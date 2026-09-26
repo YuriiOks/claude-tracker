@@ -5,8 +5,9 @@ import MarkdownPanel from './MarkdownPanel';
 import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
-import { useAgents, useRepoEvents } from "../api";
+import { useAgents, useRepoEvents, useGlobal } from "../api";
 import NebulaGraph from "./NebulaGraph";
+import { MCP_REGISTRY } from "../data";
 
 const HtmlArtifacts = ({ repo }) => {
   const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
@@ -241,8 +242,21 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => {
 
       <h2 className="section-title mt-5 mb-3"><Icon name="clock" />Sessions in this repo</h2>
       <div className="list">
-        {repoSessions.length > 0 ? repoSessions.slice(0, 10).map(s => (
-          <div key={s.id} className="list-row" style={{ gridTemplateColumns: '60px 1fr 100px 70px 60px' }}>
+        {repoSessions.length > 0 ? repoSessions.slice(0, 10).map(s => {
+          const openAgent = () => s.agent && onOpen && onOpen(s.agent, 'agent');
+          const clickable = Boolean(s.agent);
+          return (
+          <div
+            key={s.id}
+            className={'list-row' + (clickable ? '' : ' static-row')}
+            style={{ gridTemplateColumns: '60px 1fr 100px 70px 60px' }}
+            {...(clickable ? {
+              role: 'button',
+              tabIndex: 0,
+              onClick: openAgent,
+              onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openAgent(); } },
+            } : {})}
+          >
             <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{s.started}</span>
             <div>
               <div style={{ fontSize: '.74rem', color: 'var(--txt-bright)' }}>{s.task}</div>
@@ -252,7 +266,8 @@ const RepoOverview = ({ repo, repoSessions, repoEvents, onOpen }) => {
             <span className="tg" style={{ fontSize: '.7rem' }}>${s.cost.toFixed(2)}</span>
             <span className="bg bg-m">{s.edits} edits</span>
           </div>
-        )) : <div className="empty">No sessions yet</div>}
+          );
+        }) : <div className="empty">No sessions yet</div>}
       </div>
     </div>
 
@@ -368,6 +383,43 @@ const RepoRules = ({ repo, onOpen }) => (
   </div>
 );
 
+// Mirrors PluginsPanel's fallback: per-repo MCP lists are usually empty in
+// real installs (Claude Code stores MCP servers in ~/.claude.json, not in
+// <repo>/.claude/settings.json), so fall back to the global scope when the
+// repo itself has none.
+const RepoMcp = ({ repo, onOpen }) => {
+  const { data: G } = useGlobal();
+  const repoMcp = repo.mcp || [];
+  const mcp = repoMcp.length > 0 ? repoMcp : (G?.mcp || []);
+  const fromGlobal = repoMcp.length === 0 && mcp.length > 0;
+  return (
+    <>
+      {fromGlobal && (
+        <div className="mb-3" style={{ fontSize: '.7rem', color: 'var(--muted)' }}>
+          No repo-scoped MCP servers — showing global (~/.claude) servers.
+        </div>
+      )}
+      <div className="grid grid-cols-2">
+        {mcp.map(m => {
+          const info = MCP_REGISTRY[m] || { desc: 'MCP server' };
+          return (
+            <div key={m} className="cd clickable" onClick={() => onOpen && onOpen(m, 'mcp')}>
+              <div className="row between mb-2">
+                <div className="row gap-sm"><Icon name="cpu" size={14} /><h3 className="tb">{m}</h3></div>
+                <span className="bg bg-p">mcp</span>
+              </div>
+              <p style={{ fontSize: '.72rem', color: 'var(--txt)' }}>{info.desc}</p>
+              <div className="divider"></div>
+              <span className="status status-running" style={{ fontSize: '.62rem' }}><span className="dot"></span>connected</span>
+            </div>
+          );
+        })}
+        {mcp.length === 0 && <div className="empty">No MCP servers connected.</div>}
+      </div>
+    </>
+  );
+};
+
 // Mirrors Dashboard.jsx#fmtDelta -- percent-change formatting shared here so
 // per-repo metric cards read the same way as the global dashboard cards.
 const fmtDelta = (pct) => {
@@ -388,11 +440,16 @@ const pctChange = (curr, prev) => (prev > 0 ? ((curr - prev) / prev) * 100 : nul
 // its whole sim every 1.5s (visible as nodes jumping around).
 const GRAPH_TAB_LAYERS = { commands: false, rules: false };
 
-const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
+const RepoDetail = ({ repo, sessions, liveEvents, liveAgents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
   const setTab = onTabChange || (() => {});
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
   const repoSessions = sessions.filter(s => s.repo === repo.id);
+  // Mirrors RepoMcp's own fallback-to-global logic so the tab badge count
+  // always matches what the panel actually renders.
+  const { data: globalForMcp } = useGlobal();
+  const repoMcp = repo.mcp || [];
+  const mcpCount = repoMcp.length > 0 ? repoMcp.length : (globalForMcp?.mcp || []).length;
 
   return (
     <>
@@ -465,6 +522,7 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
           { id: 'rules', label: 'Rules', icon: 'book', count: (repo.rules || []).length },
           { id: 'permissions', label: 'Permissions', icon: 'shield' },
           { id: 'plugins', label: 'Plugins / MCP', icon: 'plug' },
+          { id: 'mcp', label: 'MCP', icon: 'cpu', count: mcpCount },
           ...(repo.id !== 'global' ? [{ id: 'graph', label: 'Live Graph', icon: 'cpu' }] : []),
         ]}
         value={tab}
@@ -478,7 +536,8 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
       {tab === 'rules' && <RepoRules repo={repo} onOpen={onOpen} />}
       {tab === 'permissions' && <PermissionsPanel scope={repo.id} />}
       {tab === 'plugins' && <PluginsPanel repo={repo} onOpen={onOpen} />}
-      {tab === 'graph' && <NebulaGraph repos={[repo]} lockedRepo={repo.id} defaultLayers={GRAPH_TAB_LAYERS} onOpen={onOpen} />}
+      {tab === 'mcp' && <RepoMcp repo={repo} onOpen={onOpen} />}
+      {tab === 'graph' && <NebulaGraph repos={[repo]} lockedRepo={repo.id} defaultLayers={GRAPH_TAB_LAYERS} onOpen={onOpen} liveEvents={liveEvents} liveAgents={liveAgents} />}
     </>
   );
 };

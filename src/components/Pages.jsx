@@ -7,7 +7,7 @@ import { usePermissions, useGlobal, useLiveStatus } from "../api";
 import PermissionsKanban from "./PermissionsKanban";
 import { PLUGIN_REGISTRY } from '../data';
 
-export const SessionsPage = ({ sessions, repos }) => {
+export const SessionsPage = ({ sessions, repos, onOpen }) => {
   const [filter, setFilter] = useState('all');
   const filtered = filter === 'all' ? sessions : sessions.filter(s => s.repo === filter);
   return (
@@ -34,7 +34,17 @@ export const SessionsPage = ({ sessions, repos }) => {
           {filtered.map(s => {
             const repo = repos.find(r => r.id === s.repo);
             return (
-              <div key={s.id} className="list-row clickable" style={{ gridTemplateColumns: '90px 100px 1.5fr 120px 90px 70px 70px' }}>
+              <div
+                key={s.id}
+                className="list-row clickable"
+                style={{ gridTemplateColumns: '90px 100px 1.5fr 120px 90px 70px 70px' }}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpen && onOpen(s.repo)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen && onOpen(s.repo); }
+                }}
+              >
                 <span className="mono" style={{ fontSize: '.66rem', color: 'var(--muted)' }}>{s.started}</span>
                 <span className="row gap-xs"><span className="sb-repo-dot" style={{ '--accent': repo?.accent || 'var(--cyan)', width: 6, height: 6 }}></span>{s.repo}</span>
                 <div>
