@@ -16,46 +16,98 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 logger = logging.getLogger(__name__)
 
-# Rough USD per million tokens (input, output), keyed by (family, version).
-# NOTE: this is a static table -- it needs periodic updating against real
-# Anthropic pricing (see anthropic.com/pricing). Entries for the "claude-5"
-# tier (Fable 5 / Mythos 5) are a conservative assumption -- priced at the
-# Opus tier pending official published rates -- not authoritative figures.
-_PRICING: dict[tuple[str, str], tuple[float, float]] = {
-    ("opus", "4-7"): (15.0, 75.0),
-    ("opus", "4-5"): (15.0, 75.0),
-    ("opus", "4-1"): (15.0, 75.0),
-    ("opus", "4-8"): (15.0, 75.0),
-    ("opus", "4"): (15.0, 75.0),
-    ("opus", "3-5"): (15.0, 75.0),
-    ("opus", "3"): (15.0, 75.0),
-    ("sonnet", "4-5"): (3.0, 15.0),
-    ("sonnet", "4"): (3.0, 15.0),
-    ("sonnet", "3-7"): (3.0, 15.0),
-    ("sonnet", "3-5"): (3.0, 15.0),
-    ("sonnet", "3"): (3.0, 15.0),
-    ("sonnet", "5"): (3.0, 15.0),
-    ("haiku", "4-5"): (0.80, 4.0),
-    ("haiku", "3-5"): (0.80, 4.0),
-    ("haiku", "3"): (0.25, 1.25),
-    # Claude 5 family -- see NOTE above.
-    ("fable", "5"): (15.0, 75.0),
-    ("mythos", "5"): (15.0, 75.0),
+
+class ModelPrice(NamedTuple):
+    """USD per million tokens, plus the cache-read (hit) multiplier applied
+    against `input` -- most models bill a cache-read hit at 0.1x the base
+    input price, but a few current-generation models get a steeper discount
+    (see the source cited below), so it's per-model rather than a global
+    constant.
+    """
+
+    input: float
+    output: float
+    cache_read_mult: float = 0.1
+
+
+# USD per million tokens, keyed by (family, version). Cache-WRITE multipliers
+# (5m-TTL = 1.25x input, 1h-TTL = 2.0x input) are uniform across every model
+# in the verified table below and are applied directly in the cost formula
+# rather than stored per-entry.
+#
+# Verified live against https://docs.anthropic.com/en/docs/about-claude/pricing
+# (fetched 2026-09-27) for every entry annotated "verified 2026-09-27" below.
+# Unannotated entries (older Claude 3.x tiers) are carried over from before
+# this pass -- they no longer appear on the current pricing page (likely
+# retired/legacy-only) and are NOT present in any of the owner's real
+# transcripts, so they're left as-is rather than guessed at: UNVERIFIED.
+_PRICING: dict[tuple[str, str], ModelPrice] = {
+    # --- verified 2026-09-27 (already matched the prior static entry, no change) ---
+    ("opus", "4-1"): ModelPrice(15.0, 75.0),
+    ("opus", "4"): ModelPrice(15.0, 75.0),
+    ("sonnet", "4-5"): ModelPrice(3.0, 15.0),
+    ("sonnet", "4"): ModelPrice(3.0, 15.0),
+    ("haiku", "3-5"): ModelPrice(0.80, 4.0),
+    # --- verified 2026-09-27 (corrects prior wrong/guessed entries) ---
+    ("opus", "4-8"): ModelPrice(5.0, 25.0),  # was wrongly (15,75) -- copy of Opus 4's rate
+    ("opus", "4-7"): ModelPrice(5.0, 25.0),  # was wrongly (15,75)
+    ("opus", "4-6"): ModelPrice(5.0, 25.0),  # new -- previously fell through to family default
+    ("opus", "4-5"): ModelPrice(5.0, 25.0),  # was wrongly (15,75)
+    ("opus", "5"): ModelPrice(5.0, 25.0),  # new -- 2nd-highest-volume real model id
+    ("opus", "5-5"): ModelPrice(4.0, 20.0, cache_read_mult=0.05),  # new; discounted cache-read
+    ("sonnet", "5"): ModelPrice(2.0, 10.0),  # was wrongly (3,15) -- highest-volume real model id
+    ("sonnet", "4-6"): ModelPrice(3.0, 15.0),  # new exact entry (was already correct via family default)
+    ("haiku", "4-5"): ModelPrice(1.0, 5.0),  # was wrongly (0.80,4.0) -- a copy-paste of Haiku 3.5's rate
+    ("fable", "5"): ModelPrice(10.0, 50.0),  # was a conservative Opus-tier guess (15,75); now confirmed
+    ("fable", "5-1"): ModelPrice(10.0, 50.0, cache_read_mult=0.025),  # new; discounted cache-read
+    ("mythos", "5"): ModelPrice(10.0, 50.0),  # was a conservative Opus-tier guess (15,75); now confirmed
+    ("mythos", "5-1"): ModelPrice(10.0, 50.0, cache_read_mult=0.025),  # new; discounted cache-read
+    # --- UNVERIFIED: not present on the current pricing page, not present in
+    # any real transcript in this corpus (grep confirmed zero matches for
+    # opus-3*/sonnet-3*/haiku-3 as of 2026-09-27) -- carried over rather than
+    # guessed at.
+    ("opus", "3-5"): ModelPrice(15.0, 75.0),
+    ("opus", "3"): ModelPrice(15.0, 75.0),
+    ("sonnet", "3-7"): ModelPrice(3.0, 15.0),
+    ("sonnet", "3-5"): ModelPrice(3.0, 15.0),
+    ("sonnet", "3"): ModelPrice(3.0, 15.0),
+    ("haiku", "3"): ModelPrice(0.25, 1.25),
 }
 # Fallback for a recognized family whose specific version is not yet listed
 # above (e.g. a brand-new dated release) -- keeps the right cost tier instead
-# of silently dropping to the global default.
-_FAMILY_DEFAULT: dict[str, tuple[float, float]] = {
-    "opus": (15.0, 75.0),
-    "sonnet": (3.0, 15.0),
-    "haiku": (0.80, 4.0),
-    "fable": (15.0, 75.0),
-    "mythos": (15.0, 75.0),
+# of silently dropping to the global default. Verified 2026-09-27 against the
+# same pricing page as the table above.
+_FAMILY_DEFAULT: dict[str, ModelPrice] = {
+    "opus": ModelPrice(5.0, 25.0),
+    "sonnet": ModelPrice(2.0, 10.0),
+    "haiku": ModelPrice(1.0, 5.0),
+    "fable": ModelPrice(10.0, 50.0, cache_read_mult=0.025),
+    "mythos": ModelPrice(10.0, 50.0, cache_read_mult=0.025),
 }
-_DEFAULT_PRICE = (3.0, 15.0)
+_DEFAULT_PRICE = ModelPrice(3.0, 15.0)  # Sonnet-tier -- see _price()'s warning-on-fallback below
+
+# Populated once per distinct unmatched model id so the same unrecognized
+# model doesn't spam the log on every turn/tick -- see _price().
+_warned_unknown_models: set[str] = set()
+
+
+def _warn_unknown_model_once(model: str | None) -> None:
+    key = model or "<missing>"
+    if key in _warned_unknown_models:
+        return
+    _warned_unknown_models.add(key)
+    logger.warning(
+        "unrecognized model id %r -- pricing at Sonnet-tier defaults "
+        "($%.2f/$%.2f per MTok in/out); add a _PRICING entry once real "
+        "rates are confirmed (see jsonl_parser.py's _PRICING table)",
+        key,
+        _DEFAULT_PRICE.input,
+        _DEFAULT_PRICE.output,
+    )
 
 
 @dataclass
@@ -153,12 +205,14 @@ _MODEL_RE = re.compile(
 )
 
 
-def _price(model: str | None) -> tuple[float, float]:
+def _price(model: str | None) -> ModelPrice:
     if not model:
+        _warn_unknown_model_once(model)
         return _DEFAULT_PRICE
     m = model.lower()
     match = _MODEL_RE.search(m)
     if not match:
+        _warn_unknown_model_once(model)
         return _DEFAULT_PRICE
     family = match.group("family")
     version_raw = match.group("pre") or match.group("post") or ""
@@ -258,20 +312,42 @@ def parse_jsonl(
                     in_tok = int(usage.get("input_tokens", 0) or 0)
                     out_tok = int(usage.get("output_tokens", 0) or 0)
                     cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+                    cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
                     # Headline tokens = generation work (input + output + cache_creation).
-                    # cache_read_input_tokens is intentionally excluded from both tokens
-                    # and cost (not even bound to a variable): long-lived sessions can
-                    # re-read the same 80k-token cached system prompt thousands of times --
-                    # a single 8h session can easily accumulate 670M cache_read tokens
-                    # against just 1.3M output, inflating BOTH figures by ~100x in a way
-                    # that does not reflect actual generation effort. Excluding it from
-                    # both keeps the dashboard story consistent: tokens × avg-rate ≈ cost.
+                    # cache_read_input_tokens is intentionally excluded from the TOKEN
+                    # count (though it IS billed, see cost below): long-lived sessions
+                    # can re-read the same 80k-token cached system prompt thousands of
+                    # times -- a single 8h session can easily accumulate 670M cache_read
+                    # tokens against just 1.3M output, inflating the headline "tokens"
+                    # figure by ~100x in a way that does not reflect actual generation
+                    # effort. This keeps the dashboard's token story consistent with
+                    # Claude Code's own definition (input + output + cache writes) while
+                    # still charging real dollars for cache reads in `cost` below.
                     turn_tokens = in_tok + out_tok + cache_write
-                    input_price, output_price = _price(model_seen)
-                    turn_cost = (in_tok / 1_000_000) * input_price
-                    turn_cost += (out_tok / 1_000_000) * output_price
-                    # Cache write (one-time) is 25% more expensive than input.
-                    turn_cost += (cache_write / 1_000_000) * input_price * 1.25
+                    price = _price(model_seen)
+                    turn_cost = (in_tok / 1_000_000) * price.input
+                    turn_cost += (out_tok / 1_000_000) * price.output
+                    # Cache writes: Anthropic bills the 5-minute-TTL tier at 1.25x
+                    # input and the 1-hour-TTL tier at 2x input -- real usage is
+                    # overwhelmingly 1h-TTL, so blending everything at the flat 1.25x
+                    # rate understated cost. Split by TTL when the API tells us
+                    # (usage.cache_creation.{ephemeral_1h,ephemeral_5m}_input_tokens),
+                    # falling back to the flat 1.25x-of-the-summed-total only for the
+                    # older/rarer response shape that omits the sub-object entirely.
+                    cache_detail = usage.get("cache_creation")
+                    if isinstance(cache_detail, dict):
+                        cache_1h = int(cache_detail.get("ephemeral_1h_input_tokens", 0) or 0)
+                        cache_5m = int(cache_detail.get("ephemeral_5m_input_tokens", 0) or 0)
+                        turn_cost += (cache_1h / 1_000_000) * price.input * 2.0
+                        turn_cost += (cache_5m / 1_000_000) * price.input * 1.25
+                    else:
+                        turn_cost += (cache_write / 1_000_000) * price.input * 1.25
+                    # Cache reads are billed too (at a model-specific fraction of the
+                    # input rate -- see ModelPrice.cache_read_mult) even though they're
+                    # excluded from the token headline above: a dashboard cost figure
+                    # that ignores them is a floor, not real spend, on any session that
+                    # uses prompt caching (effectively all Claude Code sessions).
+                    turn_cost += (cache_read / 1_000_000) * price.input * price.cache_read_mult
                     tokens += turn_tokens
                     cost += turn_cost
                     hour_key = None

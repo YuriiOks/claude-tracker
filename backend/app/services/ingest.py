@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 # already-ingested rows wrong (e.g. the workflow-agent routing fix below).
 # ingest_all() compares this against app.models.ingest_meta.IngestMetaRow and
 # does a one-time full rebuild of the JSONL-derived tables when it's behind.
-INGEST_VERSION = 2
+# v3: cost now bills cache_read_input_tokens (at a model-specific fraction of
+# input price) and splits cache-write billing by TTL tier
+# (ephemeral_1h/ephemeral_5m) instead of a flat 1.25x -- see
+# jsonl_parser.py's _PRICING table and the cost formula in parse_jsonl().
+INGEST_VERSION = 3
 
 # Internal Claude Code system files stored in subagents/ that are NOT user-invoked
 # Task() calls: context compaction, inline prompt suggestions, side questions, etc.
