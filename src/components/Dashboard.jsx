@@ -179,11 +179,20 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
           <div className="card-frame">
             <div className="card-frame-head">
               <h2 className="section-title"><Icon name="clock" />Recent sessions</h2>
-              <button className="link-btn">View all →</button>
+              <button className="link-btn" onClick={() => setRoute({ page: 'sessions' })}>View all →</button>
             </div>
             <div className="session-list">
               {sessions.slice(0, 5).map(s => (
-                <div key={s.id} className="session-row">
+                <div
+                  key={s.id}
+                  className="session-row"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpen(s.repo)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(s.repo); }
+                  }}
+                >
                   <span className="session-time mono">{s.started}</span>
                   <div className="session-mid">
                     <div className="session-task">{s.task}</div>
