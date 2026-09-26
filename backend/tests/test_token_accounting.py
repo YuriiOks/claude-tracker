@@ -27,6 +27,7 @@ All turns use claude-sonnet-4-5 pricing ($3/$15 per M input/output tokens).
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -122,6 +123,45 @@ def _reset_db() -> None:
 
     db_mod._engine = None
     db_mod._sessionmaker = None
+
+
+def _user_line(session_id: str, cwd: str, ts: datetime, text: str = "go") -> str:
+    return json.dumps({
+        "type": "user",
+        "sessionId": session_id,
+        "cwd": cwd,
+        "timestamp": _iso(ts),
+        "message": {"content": text},
+    })
+
+
+def _assistant_line(
+    session_id: str,
+    cwd: str,
+    ts: datetime,
+    msg_id: str,
+    in_tok: int,
+    out_tok: int,
+    model: str = "claude-sonnet-4-5",
+) -> str:
+    return json.dumps({
+        "type": "assistant",
+        "sessionId": session_id,
+        "cwd": cwd,
+        "timestamp": _iso(ts),
+        "message": {
+            "id": msg_id,
+            "model": model,
+            "content": [{"type": "text", "text": "ok"}],
+            "usage": {"input_tokens": in_tok, "output_tokens": out_tok},
+        },
+    })
+
+
+def _turn_cost(in_tok: int, out_tok: int) -> float:
+    """Mirrors jsonl_parser._price()'s claude-sonnet-4-5 rate ($3/$15 per M
+    input/output tokens) so tests can compute an exact expected cost."""
+    return (in_tok / 1_000_000) * 3.0 + (out_tok / 1_000_000) * 15.0
 
 
 @pytest.mark.asyncio
@@ -311,3 +351,231 @@ async def test_version_bump_self_heals_stale_db(tmp_path: Path) -> None:
     assert main.tokens == MAIN_TOKENS  # corrected by the forced rebuild
     assert meta is not None
     assert meta.version == INGEST_VERSION
+
+
+@pytest.mark.asyncio
+async def test_growing_file_keeps_cross_file_dedup_exact(tmp_path: Path) -> None:
+    """A file that grows across two ingest ticks (new assistant messages
+    appended, mtime bumped) re-parses itself from scratch every tick -- the
+    ledger reconciliation must re-subtract a message id another file already
+    owns on EVERY tick, not just the first, so the corpus-wide total stays
+    exact (each id counted once) as the file keeps growing.
+    """
+    _reset_db()
+    repo_dir = tmp_path / "growrepo"
+    repo_dir.mkdir()
+    proj_dir = tmp_path / "claude" / "projects" / "grow"
+    proj_dir.mkdir(parents=True)
+    cwd = str(repo_dir)
+    now = datetime.now(tz=UTC).replace(microsecond=0)
+
+    a_sid = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    b_sid = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+    a_path = proj_dir / f"{a_sid}.jsonl"
+    b_path = proj_dir / f"{b_sid}.jsonl"
+
+    # B claims "shared-cross-001" first -- it never changes again.
+    b_path.write_text(
+        _user_line(b_sid, cwd, now) + "\n"
+        + _assistant_line(b_sid, cwd, now, "shared-cross-001", 20_000, 8_000) + "\n"
+    )
+    # A starts out with only its own message.
+    a_path.write_text(
+        _user_line(a_sid, cwd, now) + "\n"
+        + _assistant_line(a_sid, cwd, now, "a-msg-001", 10_000, 5_000) + "\n"
+    )
+    epoch = time.time()
+    os.utime(b_path, (epoch - 100, epoch - 100))
+    os.utime(a_path, (epoch - 90, epoch - 90))
+
+    from app.db import _sessionmaker
+    from app.models.session_summary import SessionSummaryRow
+    from app.services.ingest import ingest_all
+
+    await ingest_all()
+
+    async with _sessionmaker() as session:
+        a_row = await session.get(SessionSummaryRow, a_sid)
+        b_row = await session.get(SessionSummaryRow, b_sid)
+    assert a_row.tokens == 15_000
+    assert b_row.tokens == 28_000
+
+    # Grow A: append a duplicate of B's message id (must stay deduped) plus
+    # a genuinely new message (must count), then bump A's mtime so the next
+    # tick reprocesses it.
+    with a_path.open("a", encoding="utf-8") as fh:
+        fh.write(_assistant_line(a_sid, cwd, now, "shared-cross-001", 20_000, 8_000) + "\n")
+        fh.write(_assistant_line(a_sid, cwd, now, "a-msg-002", 5_000, 2_000) + "\n")
+    os.utime(a_path, (epoch + 10, epoch + 10))
+
+    await ingest_all()
+
+    async with _sessionmaker() as session:
+        a_row = await session.get(SessionSummaryRow, a_sid)
+        b_row = await session.get(SessionSummaryRow, b_sid)
+
+    # A's own ids count in full; the id B already owns is subtracted back
+    # out on every re-parse, even though A re-parses itself from scratch.
+    assert a_row.tokens == 15_000 + 7_000
+    assert a_row.cost == pytest.approx(
+        _turn_cost(10_000, 5_000) + _turn_cost(5_000, 2_000), abs=1e-6
+    )
+    # B is untouched -- still owns its id, still counted exactly once total.
+    assert b_row.tokens == 28_000
+
+
+@pytest.mark.asyncio
+async def test_interrupted_rebuild_does_not_advance_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rebuild that crashes partway through (plausible at 4.5GB / 6000
+    files) must NOT leave the ingest_meta version marker advanced -- the
+    next ingest_all() call has to notice the DB is still stale and finish
+    the rebuild, instead of believing a half-populated DB is healed.
+    """
+    _materialize_fixture(tmp_path)
+    _reset_db()
+
+    import app.services.ingest as ingest_mod
+    from app.models.ingest_meta import SINGLETON_ID, IngestMetaRow
+
+    real_parse_jsonl = ingest_mod.parse_jsonl
+    calls = {"n": 0}
+
+    def _flaky_parse_jsonl(path, repo_paths):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("simulated crash mid-rebuild")
+        return real_parse_jsonl(path, repo_paths)
+
+    monkeypatch.setattr(ingest_mod, "parse_jsonl", _flaky_parse_jsonl)
+
+    with pytest.raises(RuntimeError, match="simulated crash mid-rebuild"):
+        await ingest_mod.ingest_all()
+
+    from app.db import _sessionmaker
+
+    async with _sessionmaker() as session:
+        meta = await session.get(IngestMetaRow, SINGLETON_ID)
+    # Not written at all, or (belt-and-suspenders) not advanced -- either
+    # way the DB must still look stale to the next call.
+    assert meta is None or meta.version < ingest_mod.INGEST_VERSION
+
+    # The crash is behind us -- the next call must complete the rebuild and
+    # only THEN advance the marker.
+    monkeypatch.setattr(ingest_mod, "parse_jsonl", real_parse_jsonl)
+    result = await ingest_mod.ingest_all()
+    assert result["new"] >= 4
+
+    from app.models.session_summary import SessionSummaryRow
+
+    async with _sessionmaker() as session:
+        main = await session.get(SessionSummaryRow, "11111111-1111-1111-1111-111111111111")
+        meta_after = await session.get(IngestMetaRow, SINGLETON_ID)
+
+    assert main is not None
+    assert main.tokens == MAIN_TOKENS  # the completed rebuild healed the corpus
+    assert meta_after is not None
+    assert meta_after.version == ingest_mod.INGEST_VERSION
+
+
+@pytest.mark.asyncio
+async def test_contested_id_reclaimed_when_owner_file_deleted(tmp_path: Path) -> None:
+    """If the file that originally claimed a message id is deleted or moved
+    (JSONL rotation/pruning), a later file carrying the same message id must
+    reclaim ownership instead of being subtracted to zero forever.
+    """
+    _reset_db()
+    repo_dir = tmp_path / "movedrepo"
+    repo_dir.mkdir()
+    proj_dir = tmp_path / "claude" / "projects" / "moved"
+    proj_dir.mkdir(parents=True)
+    cwd = str(repo_dir)
+    now = datetime.now(tz=UTC).replace(microsecond=0)
+
+    x_sid = "cccccccc-cccc-cccc-cccc-cccccccccccc"
+    y_sid = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    x_path = proj_dir / f"{x_sid}.jsonl"
+    y_path = proj_dir / f"{y_sid}.jsonl"
+
+    x_path.write_text(
+        _user_line(x_sid, cwd, now) + "\n"
+        + _assistant_line(x_sid, cwd, now, "will-move-001", 12_000, 6_000) + "\n"
+    )
+    epoch = time.time()
+    os.utime(x_path, (epoch - 100, epoch - 100))
+
+    from app.db import _sessionmaker
+    from app.models.message_ledger import MessageLedgerRow
+    from app.models.session_summary import SessionSummaryRow
+    from app.services.ingest import ingest_all
+
+    await ingest_all()
+
+    async with _sessionmaker() as session:
+        owner = (await session.execute(
+            select(MessageLedgerRow).where(MessageLedgerRow.message_id == "will-move-001")
+        )).scalar_one()
+    assert owner.file_path == str(x_path)
+
+    # X is deleted/rotated out from under the ledger.
+    x_path.unlink()
+
+    y_path.write_text(
+        _user_line(y_sid, cwd, now) + "\n"
+        + _assistant_line(y_sid, cwd, now, "will-move-001", 12_000, 6_000) + "\n"
+        + _assistant_line(y_sid, cwd, now, "y-msg-001", 4_000, 1_000) + "\n"
+    )
+    os.utime(y_path, (epoch - 50, epoch - 50))
+
+    await ingest_all()
+
+    async with _sessionmaker() as session:
+        y_row = await session.get(SessionSummaryRow, y_sid)
+        owner_after = (await session.execute(
+            select(MessageLedgerRow).where(MessageLedgerRow.message_id == "will-move-001")
+        )).scalar_one()
+
+    # Full credit -- NOT subtracted to zero just because X used to own it.
+    assert y_row.tokens == 18_000 + 5_000
+    assert owner_after.file_path == str(y_path)
+
+
+@pytest.mark.asyncio
+async def test_ledger_lookup_chunks_past_sqlite_variable_limit(tmp_path: Path) -> None:
+    """A single file with more assistant message ids than
+    SQLITE_MAX_VARIABLE_NUMBER (999 on some SQLite builds, lower on others)
+    must not blow up the ledger reconciliation's IN(...) lookup.
+    """
+    _reset_db()
+    repo_dir = tmp_path / "chunkrepo"
+    repo_dir.mkdir()
+    proj_dir = tmp_path / "claude" / "projects" / "chunk"
+    proj_dir.mkdir(parents=True)
+    cwd = str(repo_dir)
+    now = datetime.now(tz=UTC).replace(microsecond=0)
+
+    n = 1_200
+    sid = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+    path = proj_dir / f"{sid}.jsonl"
+    lines = [_user_line(sid, cwd, now)]
+    lines += [_assistant_line(sid, cwd, now, f"chunk-msg-{i:05d}", 100, 50) for i in range(n)]
+    path.write_text("\n".join(lines) + "\n")
+
+    from app.db import _sessionmaker
+    from app.models.message_ledger import MessageLedgerRow
+    from app.models.session_summary import SessionSummaryRow
+    from app.services.ingest import ingest_all
+
+    result = await ingest_all()
+    assert result["new"] >= 1
+
+    async with _sessionmaker() as session:
+        row = await session.get(SessionSummaryRow, sid)
+        ledger_rows = (await session.execute(
+            select(MessageLedgerRow).where(MessageLedgerRow.message_id.like("chunk-msg-%"))
+        )).scalars().all()
+
+    assert row.tokens == n * 150
+    assert row.cost == pytest.approx(n * _turn_cost(100, 50), abs=0.01)
+    assert len(ledger_rows) == n

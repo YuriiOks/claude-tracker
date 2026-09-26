@@ -55,32 +55,39 @@ def _subagent_hour_key(path: Path) -> str:
     return f"{SUBAGENT_HOUR_PREFIX}{digest}"
 
 
-def _safe_mtime(path: Path) -> float:
-    try:
-        return path.stat().st_mtime
-    except OSError:
-        return 0.0
+async def _read_ingest_version(session: AsyncSession) -> int | None:
+    """Return the stored ingest logic version, or None if no row exists yet
+    (a brand-new DB, or an existing DB from before this table existed).
+
+    Read-only -- never writes the marker. The caller must persist the new
+    version via `_mark_ingest_version` only AFTER a full rebuild walk has
+    completed without raising (see ingest_all()). Writing it any earlier
+    would tell the next startup the DB is already healed when a mid-rebuild
+    crash (plausible on a multi-GB / thousands-of-files corpus) actually
+    left it only partially rebuilt.
+    """
+    row = await session.get(IngestMetaRow, SINGLETON_ID)
+    return row.version if row is not None else None
 
 
-async def _needs_version_rebuild(session: AsyncSession) -> bool:
-    """True (and persists the bump) exactly once per INGEST_VERSION change.
-
-    A missing row means either a brand-new DB (nothing to rebuild, but a
-    rebuild of an empty table set is a no-op cost-wise) or an existing DB
-    from before this table existed (must rebuild to fix any stale rows from
-    the old derivation rules) -- both cases are handled identically by
-    forcing one rebuild pass and then recording the current version.
+async def _mark_ingest_version(session: AsyncSession, version: int) -> None:
+    """Persist the ingest logic version. Must only be called as the LAST
+    step of a full rebuild walk that has already completed without raising
+    -- see _read_ingest_version and ingest_all().
     """
     row = await session.get(IngestMetaRow, SINGLETON_ID)
     if row is None:
-        session.add(IngestMetaRow(id=SINGLETON_ID, version=INGEST_VERSION))
-        await session.commit()
-        return True
-    if row.version < INGEST_VERSION:
-        row.version = INGEST_VERSION
-        await session.commit()
-        return True
-    return False
+        session.add(IngestMetaRow(id=SINGLETON_ID, version=version))
+    else:
+        row.version = version
+    await session.commit()
+
+
+# SQLITE_MAX_VARIABLE_NUMBER defaults to 999 on older SQLite builds (some
+# ship even lower) -- a single long-running session or a big subagent
+# transcript can carry thousands of message ids, so the ledger lookup below
+# chunks its IN(...) clause instead of sending every id in one query.
+_LEDGER_LOOKUP_CHUNK = 500
 
 
 async def _reconcile_message_ledger(
@@ -108,10 +115,13 @@ async def _reconcile_message_ledger(
         return
 
     msg_ids = list(usage.keys())
-    existing = (await session.execute(
-        select(MessageLedgerRow).where(MessageLedgerRow.message_id.in_(msg_ids))
-    )).scalars().all()
-    owner_by_id = {row.message_id: row for row in existing}
+    owner_by_id: dict[str, MessageLedgerRow] = {}
+    for i in range(0, len(msg_ids), _LEDGER_LOOKUP_CHUNK):
+        chunk = msg_ids[i:i + _LEDGER_LOOKUP_CHUNK]
+        rows = (await session.execute(
+            select(MessageLedgerRow).where(MessageLedgerRow.message_id.in_(chunk))
+        )).scalars().all()
+        owner_by_id.update({row.message_id: row for row in rows})
 
     for msg_id, (turn_tokens, turn_cost, hour_key) in usage.items():
         owner = owner_by_id.get(msg_id)
@@ -122,7 +132,16 @@ async def _reconcile_message_ledger(
             continue
         if owner.file_path == file_path:
             continue  # this file already owns it -- already counted above
-        # Claimed by a different file already -- drop this file's copy.
+        if not Path(owner.file_path).exists():
+            # The previous owner's file was deleted or moved (rotation,
+            # pruning) -- reclaim ownership for the current file instead of
+            # subtracting this id to zero forever. Existence is only
+            # checked for CONTESTED ids (owner present and different from
+            # this file), so this stays cheap even on a large corpus.
+            owner.file_path = file_path
+            owner.tokens = turn_tokens
+            continue
+        # Claimed by a different, still-existing file -- drop this file's copy.
         summary.tokens -= turn_tokens
         summary.cost = round(summary.cost - turn_cost, 4)
         if hour_key is not None:
@@ -176,10 +195,19 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
     if _sessionmaker is None:
         raise RuntimeError("DB sessionmaker not initialized — call await init_db() first")
     async with _sessionmaker() as session:  # type: AsyncSession
-        if await _needs_version_rebuild(session):
+        stored_version = await _read_ingest_version(session)
+        version_rebuild = stored_version is None or stored_version < INGEST_VERSION
+        if version_rebuild:
             # A version-triggered rebuild must walk the FULL corpus, not just
-            # whatever `since_hours` window the caller asked for -- we just
-            # wiped everything below.
+            # whatever `since_hours` window the caller asked for -- we're
+            # about to wipe everything below. The version marker itself is
+            # only written at the very end of this function, after the walk
+            # completes without raising -- see the `if version_rebuild:`
+            # block below the for-loop. A crash mid-rebuild (plausible on a
+            # multi-GB / thousands-of-files corpus) must leave the marker
+            # stale/missing so the NEXT ingest_all() call detects it and
+            # rebuilds again, instead of believing a half-finished DB is
+            # already healed.
             rebuild = True
             cutoff = None
             logger.info("ingest logic version changed -> rebuilding JSONL-derived tables")
@@ -195,21 +223,29 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
             await session.execute(delete(MessageLedgerRow))
             await session.commit()
 
+        # Stat once per file and apply the cutoff filter BEFORE sorting -- a
+        # since_hours-scoped tick would otherwise stat() and sort every file
+        # in the whole corpus just to compute a sort key for files it's
+        # about to skip anyway. The mtime captured here is reused below
+        # instead of statting each surviving file a second time.
+        candidates: list[tuple[Path, float]] = []
+        for path in iter_jsonl_files(settings.projects_dir):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if cutoff and datetime.fromtimestamp(mtime, tz=UTC) < cutoff:
+                skipped += 1
+                continue
+            candidates.append((path, mtime))
+
         # Oldest-first so that when two files share an assistant message.id
         # (a resumed session copying forward earlier turns into a new file),
         # the chronologically-original file is the one that claims it in
         # message_ledger and the newer copy is the one that gets deduped —
         # otherwise ownership on a full rebuild would depend on directory
         # walk order, which is arbitrary.
-        for path in sorted(iter_jsonl_files(settings.projects_dir), key=_safe_mtime):
-            try:
-                stat = path.stat()
-            except OSError:
-                continue
-            if cutoff and datetime.fromtimestamp(stat.st_mtime, tz=UTC) < cutoff:
-                skipped += 1
-                continue
-
+        for path, mtime in sorted(candidates, key=lambda item: item[1]):
             summary, events = parse_jsonl(path, repo_paths)
             if summary is None:
                 continue
@@ -243,7 +279,7 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
                 existing_sc = (await session.execute(
                     select(SubagentCallRow).where(SubagentCallRow.file_path == str(path))
                 )).scalar_one_or_none()
-                if existing_sc and not rebuild and abs(existing_sc.file_mtime - stat.st_mtime) < 0.5:
+                if existing_sc and not rebuild and abs(existing_sc.file_mtime - mtime) < 0.5:
                     skipped += 1
                     continue
 
@@ -280,7 +316,7 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
 
             # Mark running if file was modified within last 60 seconds.
             now_ts = time.time()
-            if now_ts - stat.st_mtime < 60:
+            if now_ts - mtime < 60:
                 summary.status = "running"
 
             # Look up by the session_id extracted from JSONL content (not the
@@ -291,7 +327,7 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
             # with an existing row are, in practice, always the SAME file
             # reprocessed after it grew -- not a different file racing it.
             existing = await session.get(SessionSummaryRow, summary.session_id)
-            if existing and not rebuild and abs(existing.file_mtime - stat.st_mtime) < 0.5:
+            if existing and not rebuild and abs(existing.file_mtime - mtime) < 0.5:
                 skipped += 1
                 continue
 
@@ -374,6 +410,15 @@ async def ingest_all(since_hours: int | None = None, rebuild: bool = False) -> d
                     event_count += 1
 
             await session.commit()
+
+        if version_rebuild:
+            # Reached ONLY if the full walk above finished without raising
+            # -- an exception anywhere in the loop propagates straight out
+            # of this `async with` block, skipping this line, so the marker
+            # stays stale/missing and the next ingest_all() call rebuilds
+            # again from scratch. Marks the DB as healed for INGEST_VERSION
+            # exactly once.
+            await _mark_ingest_version(session, INGEST_VERSION)
 
     return {
         "new": new_count,
