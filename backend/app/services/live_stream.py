@@ -263,7 +263,15 @@ async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
     logger.info("live_stream watching %s (%d files seeded)", projects_dir, len(_offsets))
     try:
         async for change_set in watchfiles.awatch(
-            projects_dir, recursive=True, stop_event=None, watch_filter=lambda _ch, p: p.endswith(".jsonl")
+            projects_dir,
+            recursive=True,
+            stop_event=None,
+            watch_filter=lambda _ch, p: p.endswith(".jsonl"),
+            # watchfiles' defaults (debounce=1600ms, step=50ms) cap worst-case
+            # live-feed latency at ~1.6s. Both args are milliseconds; tighten
+            # them so /ws/live reflects new JSONL lines within ~250ms.
+            debounce=250,
+            step=25,
         ):
             paths = {Path(p) for _ch, p in change_set}
             await _emit_for_changes(paths, hub)
