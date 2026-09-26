@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from app.config import get_settings
 from app.services.repo_registry import all_repo_paths
 
 logger = logging.getLogger(__name__)
@@ -17,12 +18,30 @@ router = APIRouter(prefix="", tags=["files"])
 
 MAX_BYTES = 256 * 1024  # 256 KiB cap
 
+GLOBAL_REPO_ID = "global"
+_CLAUDE_PREFIX = ".claude/"
+
 
 def _resolve_repo(repo_id: str) -> Path:
+    # The "global" scope is ~/.claude itself (settings.claude_dir), not a
+    # tracked repo — it holds user-level agents/skills shared across repos.
+    if repo_id == GLOBAL_REPO_ID:
+        return get_settings().claude_dir
     for p in all_repo_paths():
         if p.name == repo_id:
             return p
     raise HTTPException(status_code=404, detail=f"repo not found: {repo_id}")
+
+
+def _strip_claude_prefix(rel_path: str) -> str:
+    """For repo-scoped agents/skills, AgentDetail builds paths as
+    `.claude/<rel>` (relative to the repo root). The global scope's root
+    IS claude_dir already, so that same path would double up as
+    `<claude_dir>/.claude/<rel>`. Strip at most one leading `.claude/`
+    segment so both `agents/x.md` and `.claude/agents/x.md` resolve."""
+    if rel_path.startswith(_CLAUDE_PREFIX):
+        return rel_path[len(_CLAUDE_PREFIX):]
+    return rel_path
 
 
 # IMPORTANT: this route must be declared BEFORE the catch-all `{rel_path:path}`
@@ -90,6 +109,8 @@ def _inline_css_imports(html: str, base_dir: Path, root: Path) -> str:
 @router.get("/files/{repo_id}/{rel_path:path}")
 async def get_file(repo_id: str, rel_path: str) -> dict:
     repo_root = _resolve_repo(repo_id).resolve()
+    if repo_id == GLOBAL_REPO_ID:
+        rel_path = _strip_claude_prefix(rel_path)
     target = (repo_root / rel_path).resolve()
 
     # Path-traversal guard
