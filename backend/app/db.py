@@ -47,6 +47,8 @@ async def init_db() -> None:
     # Safe before Phase A3 — the package may not yet contain modules.
     try:
         from app.models import (  # noqa: F401
+            ingest_meta,
+            message_ledger,
             otel_event,
             otel_metric,
             session_event,

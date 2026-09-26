@@ -82,6 +82,14 @@ class SessionSummary:
     file_path: str = ""
     file_mtime: float = 0.0
     hourly_tokens: dict = field(default_factory=dict)
+    # message_id -> (turn_tokens, turn_cost, hour_key). One entry per unique
+    # assistant message.id counted into tokens/cost/hourly_tokens above.
+    # Used by ingest.py to reconcile ownership when the same message.id
+    # shows up in more than one file (resumed sessions, broadcast system
+    # messages) -- see app.models.message_ledger. Messages with no id
+    # (legacy format) are never added here since they can't be deduped
+    # across files; they're always folded straight into the totals above.
+    message_usage: dict = field(default_factory=dict)
 
 
 def _ts(obj: dict) -> datetime | None:
@@ -184,8 +192,9 @@ def parse_jsonl(
     cost = 0.0
     edits = 0
     model_seen: str | None = None
-    last_assistant_msg_id: str | None = None
+    seen_message_ids: set[str] = set()
     hourly_tokens: dict = {}
+    message_usage: dict = {}
 
     try:
         fh = path.open("r", encoding="utf-8", errors="replace")
@@ -238,11 +247,13 @@ def parse_jsonl(
                 # non-delta usage object. Only fold usage in once per unique
                 # message.id -- otherwise tokens/cost get summed once per split
                 # line (measured ~7x inflation vs. a deduped baseline on a real
-                # transcript). Lines with no id (older format) always count,
-                # since we cannot tell whether they duplicate a prior turn.
-                is_new_turn = msg_id is None or msg_id != last_assistant_msg_id
+                # transcript). A set (not just "differs from the last seen id")
+                # catches non-consecutive repeats too. Lines with no id (older
+                # format) always count, since we cannot tell whether they
+                # duplicate a prior turn, and can't be cross-file deduped either.
+                is_new_turn = msg_id is None or msg_id not in seen_message_ids
                 if msg_id is not None:
-                    last_assistant_msg_id = msg_id
+                    seen_message_ids.add(msg_id)
                 if is_new_turn:
                     in_tok = int(usage.get("input_tokens", 0) or 0)
                     out_tok = int(usage.get("output_tokens", 0) or 0)
@@ -256,15 +267,19 @@ def parse_jsonl(
                     # that does not reflect actual generation effort. Excluding it from
                     # both keeps the dashboard story consistent: tokens × avg-rate ≈ cost.
                     turn_tokens = in_tok + out_tok + cache_write
+                    input_price, output_price = _price(model_seen)
+                    turn_cost = (in_tok / 1_000_000) * input_price
+                    turn_cost += (out_tok / 1_000_000) * output_price
+                    # Cache write (one-time) is 25% more expensive than input.
+                    turn_cost += (cache_write / 1_000_000) * input_price * 1.25
                     tokens += turn_tokens
+                    cost += turn_cost
+                    hour_key = None
                     if ts is not None and turn_tokens > 0:
                         hour_key = ts.replace(minute=0, second=0, microsecond=0)
                         hourly_tokens[hour_key] = hourly_tokens.get(hour_key, 0) + turn_tokens
-                    input_price, output_price = _price(model_seen)
-                    cost += (in_tok / 1_000_000) * input_price
-                    cost += (out_tok / 1_000_000) * output_price
-                    # Cache write (one-time) is 25% more expensive than input.
-                    cost += (cache_write / 1_000_000) * input_price * 1.25
+                    if msg_id is not None:
+                        message_usage[msg_id] = (turn_tokens, turn_cost, hour_key)
 
                 content = msg.get("content", [])
                 if isinstance(content, list) and ts is not None:
@@ -357,6 +372,7 @@ def parse_jsonl(
         file_mtime=mtime,
     )
     summary.hourly_tokens = hourly_tokens
+    summary.message_usage = message_usage
     return summary, events
 
 

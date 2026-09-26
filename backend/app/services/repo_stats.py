@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, or_, select
 
 from app.models.session_summary import SessionSummaryRow
+from app.models.subagent_call import SubagentCallRow
 from app.schemas.repo import RepoStats
 from app.services.live_agents import get_tracker
 from app.services.stats_window import window_predicate
@@ -143,6 +144,31 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
             for repo_name, tokens_lw, cost_lw in lastweek_rows
         }
 
+        # Direct + workflow subagent tokens/cost per repo, same two windows.
+        # SubagentCallRow has no last-event timestamp of its own (calls are
+        # short-lived), so windowed by started_at rather than
+        # window_predicate's last-event rule -- see stats.py for the same
+        # note. Folded into RepoStats after the session block closes (below).
+        sub_week_rows = (await session.execute(
+            select(
+                SubagentCallRow.repo,
+                func.coalesce(func.sum(SubagentCallRow.tokens), 0),
+                func.coalesce(func.sum(SubagentCallRow.cost), 0.0),
+            )
+            .where(SubagentCallRow.started_at >= week_start)
+            .group_by(SubagentCallRow.repo)
+        )).all()
+        sub_lastweek_rows = (await session.execute(
+            select(
+                SubagentCallRow.repo,
+                func.coalesce(func.sum(SubagentCallRow.tokens), 0),
+                func.coalesce(func.sum(SubagentCallRow.cost), 0.0),
+            )
+            .where(SubagentCallRow.started_at >= last_week_start,
+                   SubagentCallRow.started_at < week_start)
+            .group_by(SubagentCallRow.repo)
+        )).all()
+
         # 24-bucket spark for each repo (last 24h, hourly session counts)
         spark_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
         spark_rows = (await session.execute(
@@ -200,5 +226,20 @@ async def fetch_real_stats() -> dict[str, RepoStats]:
     for repo_name, live_count in live_today_map.items():
         if repo_name not in out:
             out[repo_name] = RepoStats(sessionsToday=live_count)
+
+    # Fold in direct + workflow subagent tokens/cost per repo (real spend,
+    # not its own session — see the query comment above). Never affects
+    # sessionsWeek/sessionsToday: a subagent call belongs to a session
+    # that's already counted there.
+    for repo_name, tok, cost_v in sub_week_rows:
+        if repo_name not in out:
+            out[repo_name] = RepoStats()
+        out[repo_name].tokens_week += int(tok or 0)
+        out[repo_name].cost_week = round(out[repo_name].cost_week + float(cost_v or 0.0), 2)
+    for repo_name, tok, cost_v in sub_lastweek_rows:
+        if repo_name not in out:
+            out[repo_name] = RepoStats()
+        out[repo_name].tokens_last_week += int(tok or 0)
+        out[repo_name].cost_last_week = round(out[repo_name].cost_last_week + float(cost_v or 0.0), 2)
 
     return out

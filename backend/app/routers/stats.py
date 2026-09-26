@@ -14,6 +14,8 @@ from sqlalchemy import func, or_, select
 
 from app.models.session_hour import SessionHourRow
 from app.models.session_summary import SessionSummaryRow
+from app.models.subagent_call import SubagentCallRow
+from app.services.ingest import SUBAGENT_HOUR_PREFIX
 from app.services.live_agents import get_tracker
 from app.services.stats_window import window_predicate
 
@@ -116,6 +118,36 @@ async def dashboard_stats() -> dict:
             .where(window_predicate(last_week_start, week_start))
         )).scalar() or 0.0
 
+        # ---- Fold in direct + workflow subagent tokens/cost ----
+        # SubagentCallRow has no last-event timestamp of its own (calls are
+        # short-lived — start and finish inside the same activity burst), so
+        # these are windowed by started_at rather than window_predicate's
+        # last-event rule. The two can only disagree by a call's own
+        # duration (seconds to low minutes), negligible against a 7-day
+        # window.
+        sub_tokens_this_week = (await session.execute(
+            select(func.coalesce(func.sum(SubagentCallRow.tokens), 0))
+            .where(SubagentCallRow.started_at >= week_start)
+        )).scalar() or 0
+        sub_tokens_last_week = (await session.execute(
+            select(func.coalesce(func.sum(SubagentCallRow.tokens), 0))
+            .where(SubagentCallRow.started_at >= last_week_start,
+                   SubagentCallRow.started_at < week_start)
+        )).scalar() or 0
+        sub_cost_this_week = (await session.execute(
+            select(func.coalesce(func.sum(SubagentCallRow.cost), 0.0))
+            .where(SubagentCallRow.started_at >= week_start)
+        )).scalar() or 0.0
+        sub_cost_last_week = (await session.execute(
+            select(func.coalesce(func.sum(SubagentCallRow.cost), 0.0))
+            .where(SubagentCallRow.started_at >= last_week_start,
+                   SubagentCallRow.started_at < week_start)
+        )).scalar() or 0.0
+        tokens_this_week = int(tokens_this_week) + int(sub_tokens_this_week)
+        tokens_last_week = int(tokens_last_week) + int(sub_tokens_last_week)
+        cost_this_week = float(cost_this_week) + float(sub_cost_this_week)
+        cost_last_week = float(cost_last_week) + float(sub_cost_last_week)
+
         # ---- 24-hour sparkline buckets ----
         # 24 one-hour buckets ending at the current hour
         spark_start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
@@ -123,6 +155,10 @@ async def dashboard_stats() -> dict:
             select(SessionSummaryRow.started_at, SessionSummaryRow.tokens,
                    SessionSummaryRow.cost)
             .where(SessionSummaryRow.started_at >= spark_start)
+        )).all()
+        sub_rows = (await session.execute(
+            select(SubagentCallRow.started_at, SubagentCallRow.tokens, SubagentCallRow.cost)
+            .where(SubagentCallRow.started_at >= spark_start)
         )).all()
 
         # ---- "Active in editor" sparkline: sessions whose [started_at,
@@ -145,6 +181,15 @@ async def dashboard_stats() -> dict:
             buckets_sessions[delta_h] += 1
             buckets_tokens[delta_h] += row[1] or 0
             buckets_cost[delta_h] += row[2] or 0.0
+    # Subagent/workflow spend counts toward the tokens/cost sparks (real
+    # spend, wherever it came from) but not buckets_sessions -- a subagent
+    # call is not a session of its own.
+    for sub_started, sub_tokens, sub_cost in sub_rows:
+        ts = sub_started if sub_started.tzinfo else sub_started.replace(tzinfo=UTC)
+        delta_h = int((ts - spark_start).total_seconds() // 3600)
+        if 0 <= delta_h < 24:
+            buckets_tokens[delta_h] += sub_tokens or 0
+            buckets_cost[delta_h] += sub_cost or 0.0
 
     buckets_active = [0] * 24
     for started, last_event in active_rows:
@@ -220,7 +265,8 @@ async def heatmap_stats(tz: str = "UTC") -> dict:
 
     async with _sessionmaker() as session:
         rows = (await session.execute(
-            select(SessionHourRow.repo, SessionHourRow.hour_ts, SessionHourRow.tokens)
+            select(SessionHourRow.session_id, SessionHourRow.repo,
+                   SessionHourRow.hour_ts, SessionHourRow.tokens)
             .where(
                 SessionHourRow.hour_ts >= week_ago_utc,
                 SessionHourRow.tokens > 0,
@@ -233,12 +279,20 @@ async def heatmap_stats(tz: str = "UTC") -> dict:
     repo_48h: dict[str, list[int]] = {}
     repo_tokens_48h: dict[str, list[int]] = {}
 
-    for repo_name, hour_ts, tokens in rows:
+    for hour_key, repo_name, hour_ts, tokens in rows:
+        # Subagent/workflow-agent hourly rows are keyed under a synthetic
+        # SUBAGENT_HOUR_PREFIX id (see ingest._subagent_hour_key), not a real
+        # session_id -- fold their spend into the token grids (real spend,
+        # wherever it came from) but keep them out of the plain
+        # session-activity grid/repo48h counts (a subagent call isn't "a
+        # session").
+        is_subagent = hour_key.startswith(SUBAGENT_HOUR_PREFIX)
         ts_utc = hour_ts if hour_ts.tzinfo else hour_ts.replace(tzinfo=UTC)
         ts_local = ts_utc.astimezone(local_tz)
         day_delta = (ts_local.date() - local_week_ago.date()).days
         if 0 <= day_delta < 7:
-            grid[day_delta][ts_local.hour] += 1
+            if not is_subagent:
+                grid[day_delta][ts_local.hour] += 1
             token_grid[day_delta][ts_local.hour] += tokens or 0
         # 48h intensity
         if ts_utc >= fortyeight_ago:
@@ -247,7 +301,8 @@ async def heatmap_stats(tz: str = "UTC") -> dict:
                 repo_tokens_48h[repo_name] = [0] * 48
             h_delta = int((ts_utc - fortyeight_ago).total_seconds() // 3600)
             if 0 <= h_delta < 48:
-                repo_48h[repo_name][h_delta] += 1
+                if not is_subagent:
+                    repo_48h[repo_name][h_delta] += 1
                 repo_tokens_48h[repo_name][h_delta] += tokens or 0
 
     return {

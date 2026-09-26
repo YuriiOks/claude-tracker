@@ -1,0 +1,1 @@
+{"agentType":"general-purpose","description":"test direct subagent","toolUseId":"toolu_fixture001","spawnDepth":1,"requestShape":"background","requestNonInteractive":true,"model":"sonnet"}

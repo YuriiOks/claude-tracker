@@ -1,0 +1,2 @@
+{"parentUuid": null, "isSidechain": true, "sessionId": "11111111-1111-1111-1111-111111111111", "cwd": "__CWD__", "type": "user", "timestamp": "__T_WORKFLOW_1__", "message": {"content": "[Workflow harness] verify F1"}}
+{"parentUuid": "x", "isSidechain": true, "sessionId": "11111111-1111-1111-1111-111111111111", "cwd": "__CWD__", "type": "assistant", "timestamp": "__T_WORKFLOW_2__", "message": {"id": "workflow-msg-005", "model": "claude-sonnet-4-5", "content": [{"type": "text", "text": "verified"}], "usage": {"input_tokens": 80000, "output_tokens": 20000}}}
