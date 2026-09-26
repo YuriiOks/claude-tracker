@@ -41,6 +41,29 @@ const TWEAK_DEFAULTS = {
   reposLayout: 'board',
 };
 
+// F1 fix: hydrate the saved theme on first render instead of letting the
+// theme-sync effect below overwrite it with TWEAK_DEFAULTS.theme on every
+// reload. Same localStorage key the index.html no-flash bootstrap reads.
+const THEME_STORAGE_KEY = 'claude-tracker-theme';
+function hydrateTweaks() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    return saved ? { theme: saved } : {};
+  } catch {
+    return {}; // private mode / storage disabled
+  }
+}
+
+const MOBILE_QUERY = '(max-width:800px)';
+
+// Route identity for the content-remount key: page + repoId + agent kind/name,
+// excluding `tab` so switching tabs in RepoDetail/AgentDetail doesn't remount.
+function routeIdentity(route) {
+  if (route.page === 'repo') return `repo:${route.repoId}`;
+  if (route.page === 'agent') return `agent:${route.repoId || ''}:${route.kind}:${route.name}`;
+  return `page:${route.page}`;
+}
+
 function ReposView({ repos, onOpen, layout, liveAgents }) {
   const [local, setLocal] = useState(layout || 'grid');
   useEffect(() => setLocal(layout || 'grid'), [layout]);
@@ -65,9 +88,20 @@ function ReposView({ repos, onOpen, layout, liveAgents }) {
 }
 
 function App() {
-  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS, hydrateTweaks);
   const [route, setRoute, goBack] = useRoute();  // URL routing — pushState + popstate
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // R-UX-1/R-A11Y-1: seed collapsed from the same breakpoint the CSS media
+  // query uses, and keep tracking it, so Sidebar's title/aria-label logic
+  // (which reads `collapsed`) always agrees with what's actually visible.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(
+    () => window.matchMedia(MOBILE_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_QUERY);
+    const onChange = (e) => setSidebarCollapsed(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
   const liveEvents = useLiveEvents();
   const { data: rawRepos, loading: reposLoading } = useRepos();
   const { data: globalScope } = useGlobal();
@@ -124,12 +158,12 @@ function App() {
 
   // Keep --sb-w in sync with the sidebar collapse state so backgrounds anchored
   // to var(--sb-w) (#neuralBg, #bg-fill, page-content area) reflow correctly.
-  // Widths come from CSS tokens (--sb-w-expanded / --sb-w-collapsed), not hex literals.
+  // R-UX-1: this used to be an inline style on <html>, which permanently beat
+  // the @media(max-width:800px) rule in styles.css (inline > media-qualified
+  // class, always). A class toggle lets the CSS cascade -- and the mobile
+  // media query -- win when it needs to.
   useEffect(() => {
-    document.documentElement.style.setProperty(
-      '--sb-w',
-      sidebarCollapsed ? 'var(--sb-w-collapsed)' : 'var(--sb-w-expanded)',
-    );
+    document.documentElement.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   }, [sidebarCollapsed]);
 
   const allRepos = useMemo(() => (globalScope ? [...repos, globalScope] : repos), [repos, globalScope]);
@@ -180,11 +214,14 @@ function App() {
       case 'live':
         return <LivePage liveEvents={liveEvents} repos={repos} onOpen={openRepo} repoFilter={route.repoId || null} liveAgents={liveAgents} />;
       case 'sessions':
-        return <SessionsPage sessions={sessions} repos={repos} />;
+        return <SessionsPage sessions={sessions} repos={repos} onOpen={openRepo} />;
       case 'agents':
         return <AgentsPage repos={allRepos} onOpen={openAgent} />;
       case 'graph':
-        return <Graph repos={repos} onOpen={openAgent} />;
+        // R-LAT-4: pass the app-wide live streams down instead of Graph/NebulaGraph
+        // running their own duplicate pollers (Graph 5s useActiveAgents, NebulaGraph
+        // 1.5s useActiveAgents + a second live-events WS).
+        return <Graph repos={repos} onOpen={openAgent} liveEvents={liveEvents} liveAgents={liveAgents} />;
       case 'heatmap':
         return <HeatmapPage repos={repos} />;
       case 'cost':
@@ -242,7 +279,7 @@ function App() {
           allLive={allLive}
           onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
         />
-        <div className="content" key={JSON.stringify(route)}>
+        <div className="content" key={routeIdentity(route)}>
           <Suspense fallback={<div className="empty" style={{ padding: '2rem', color: 'var(--muted)' }}>Loading…</div>}>
             {renderPage()}
           </Suspense>

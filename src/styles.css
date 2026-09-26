@@ -85,6 +85,11 @@
   --tone-amber:#fbbf24;
 }
 
+/* Sidebar collapse is a class toggle (set by App.jsx from sidebarCollapsed
+   state, itself seeded/tracked from matchMedia(max-width:800px)) so the
+   mobile media query below always wins over a manual desktop collapse. */
+html.sidebar-collapsed{ --sb-w:var(--sb-w-collapsed); }
+
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html,body{
   height:100%;
@@ -1412,11 +1417,26 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 .divider{height:1px; background:var(--brd2); margin:.7rem 0;}
 
 @media(max-width:800px){
-  :root{--sb-w:60px;}
-  .sb-name, .sb-tag, .sb-section, .sb-item span:not(.badge), .sb-foot{display:none;}
+  /* Sidebar itself is driven to collapsed state in JS (matchMedia sync), so
+     --sb-w already resolves to --sb-w-collapsed via html.sidebar-collapsed.
+     These rules only hide leftover text nodes if collapsed state hasn't
+     applied yet, and must never touch .sb-repo-dot (the tracked-repo status
+     dot) or repo buttons render blank. */
+  .sb-name, .sb-tag, .sb-section, .sb-item span:not(.badge):not(.sb-repo-dot), .sb-foot{display:none;}
   .sb-item{justify-content:center; padding:.55rem;}
-  .search-box{width:auto; flex:1; max-width:200px;}
-  .search-box kbd{display:none;}
+
+  /* Topbar: search field has no room next to crumbs + theme/settings
+     buttons at phone widths, so it's hidden entirely rather than clipped
+     off-screen. */
+  .search-box{display:none;}
+
+  /* Tab bar (RepoDetail) and wide .list/table containers overflow their
+     narrow column below 800px -- scroll horizontally instead of silently
+     clipping. */
+  .tabs{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  .tab{ flex-shrink:0; }
+  .list{ overflow-x:auto; }
+  .list-row{ min-width:max-content; }
 }
 
 /* ============== CARD FRAME — section wrapper ============== */

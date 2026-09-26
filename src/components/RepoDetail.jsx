@@ -388,7 +388,7 @@ const pctChange = (curr, prev) => (prev > 0 ? ((curr - prev) / prev) * 100 : nul
 // its whole sim every 1.5s (visible as nodes jumping around).
 const GRAPH_TAB_LAYERS = { commands: false, rules: false };
 
-const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
+const RepoDetail = ({ repo, sessions, liveEvents, liveAgents, onOpen, tab = 'overview', onTabChange, setRoute }) => {
   const setTab = onTabChange || (() => {});
   const isGlobal = repo.id === 'global';
   const repoEvents = liveEvents.filter(e => e.repo === repo.id || (isGlobal && true));
@@ -478,7 +478,7 @@ const RepoDetail = ({ repo, sessions, liveEvents, onOpen, tab = 'overview', onTa
       {tab === 'rules' && <RepoRules repo={repo} onOpen={onOpen} />}
       {tab === 'permissions' && <PermissionsPanel scope={repo.id} />}
       {tab === 'plugins' && <PluginsPanel repo={repo} onOpen={onOpen} />}
-      {tab === 'graph' && <NebulaGraph repos={[repo]} lockedRepo={repo.id} defaultLayers={GRAPH_TAB_LAYERS} onOpen={onOpen} />}
+      {tab === 'graph' && <NebulaGraph repos={[repo]} lockedRepo={repo.id} defaultLayers={GRAPH_TAB_LAYERS} onOpen={onOpen} liveEvents={liveEvents} liveAgents={liveAgents} />}
     </>
   );
 };

@@ -39,6 +39,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
               className={'sb-item' + (route.page === item.id ? ' active' : '')}
               onClick={() => setRoute({ page: item.id })}
               title={collapsed ? item.label : ''}
+              aria-label={item.label}
             >
               <Icon name={item.icon} />
               {!collapsed && <span>{item.label}</span>}
@@ -59,6 +60,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
               className={'sb-item' + (route.page === 'repo' && route.repoId === r.id ? ' active' : '')}
               onClick={() => setRoute({ page: 'repo', repoId: r.id })}
               title={collapsed ? r.name : ''}
+              aria-label={r.name}
             >
               <span className={'sb-repo-dot' + (r.isActive ? ' live' : '')}
                 style={{ '--accent': r.isActive ? 'var(--live)' : r.accent }}></span>
@@ -73,6 +75,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
             className={'sb-item sb-item-global' + (route.page === 'repo' && route.repoId === 'global' ? ' active' : '')}
             onClick={() => setRoute({ page: 'repo', repoId: 'global' })}
             title={collapsed ? '~/.claude' : ''}
+            aria-label="~/.claude"
           >
             <Icon name="hash" />
             {!collapsed && <span className="mono">~/.claude</span>}

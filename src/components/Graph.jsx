@@ -1,16 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PageHead } from './Common';
-import { useActiveAgents } from '../api';
 import NebulaGraph from './NebulaGraph';
 
 // Nebula is the sole delegation-graph renderer. The classic force-directed
 // <svg> mode was retired 2026-07-05 (git history has it) -- this file now
 // only owns the repo/layer chip state shared with the canvas.
-const Graph = ({ repos, onOpen }) => {
+// R-LAT-4: liveEvents/liveAgents come from App's single app-wide poller/WS --
+// don't add a second useActiveAgents/useLiveEvents call here.
+const Graph = ({ repos, onOpen, liveEvents, liveAgents }) => {
   const [selectedRepo, setSelectedRepo] = useState(repos[0]?.id);
   const [layers, setLayers] = useState({ agents: true, skills: true, commands: true, rules: true });
-  const liveAgentRows = useActiveAgents(5000);
-  const liveRepos = useMemo(() => new Set(liveAgentRows.map(a => a.repo)), [liveAgentRows]);
+  const liveRepos = useMemo(() => new Set(liveAgents.map(a => a.repo)), [liveAgents]);
   useEffect(() => { if (!selectedRepo && repos.length) setSelectedRepo(repos[0].id); }, [repos, selectedRepo]);
 
   const layerChip = (key, label, swatch) => (
@@ -55,7 +55,7 @@ const Graph = ({ repos, onOpen }) => {
         {layerChip('commands', 'commands', 'green')}
         {layerChip('rules', 'rules', 'purple')}
       </div>
-      <NebulaGraph repos={repos} onOpen={onOpen} selectedRepo={selectedRepo} layers={layers} />
+      <NebulaGraph repos={repos} onOpen={onOpen} selectedRepo={selectedRepo} layers={layers} liveEvents={liveEvents} liveAgents={liveAgents} />
     </>
   );
 };
