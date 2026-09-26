@@ -16,6 +16,8 @@ EventKind = Literal[
 
 class LiveEvent(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
+    id: int | None = None
+    ts: str | None = None  # absolute ISO-8601; t stays the pre-existing relative-seconds field
     t: int = 0
     repo: str
     kind: EventKind

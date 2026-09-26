@@ -30,6 +30,11 @@ class Hub:
         self._max = max_queue_per_client
         self._lock = asyncio.Lock()
         self._task: asyncio.Task | None = None
+        # Process-lifetime monotonic counter for WS wire ids. These intentionally
+        # do NOT match DB primary keys (that would require a DB round-trip on the
+        # broadcast hot path) — they only need to be unique+increasing per
+        # connection lifetime so the frontend can detect gaps/reorders on /ws/live.
+        self._seq = 0
 
     async def subscribe(self) -> asyncio.Queue[ParsedEvent]:
         q: asyncio.Queue[ParsedEvent] = asyncio.Queue(maxsize=self._max)
@@ -46,6 +51,8 @@ class Hub:
 
     async def broadcast(self, event: ParsedEvent) -> None:
         async with self._lock:
+            self._seq += 1
+            event.seq = self._seq
             dead: list[asyncio.Queue[ParsedEvent]] = []
             for q in self._subs:
                 try:
@@ -151,6 +158,9 @@ async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:
                 continue
             ev = _line_to_event(obj, repo_paths)
             if ev is not None:
+                session_id = obj.get("sessionId")
+                if session_id:
+                    ev.payload["sessionId"] = session_id
                 # Update active-agent map AND broadcast to WS subscribers.
                 await tracker.record(
                     session_id=obj.get("sessionId"),
