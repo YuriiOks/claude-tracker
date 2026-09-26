@@ -21,6 +21,15 @@ MAX_BYTES = 256 * 1024  # 256 KiB cap
 GLOBAL_REPO_ID = "global"
 _CLAUDE_PREFIX = ".claude/"
 
+# Allow-list (not deny-list) for reads under the "global" scope (~/.claude).
+# Unlike a tracked repo's `.claude/` dir — which holds no secrets worth
+# gating — claude_dir itself also contains settings.json / .credentials.json
+# / remote-settings.json / statusline.sh / projects/ transcripts / plugins/
+# / shell-snapshots/. Only the user-authored definition dirs (plus the root
+# CLAUDE.md) are reachable through the files API for repo_id="global".
+_GLOBAL_ALLOWED_DIRS = ("agents", "skills", "commands", "rules", "output-styles")
+_GLOBAL_ALLOWED_ROOT_FILES = ("CLAUDE.md",)
+
 
 def _resolve_repo(repo_id: str) -> Path:
     # The "global" scope is ~/.claude itself (settings.claude_dir), not a
@@ -42,6 +51,20 @@ def _strip_claude_prefix(rel_path: str) -> str:
     if rel_path.startswith(_CLAUDE_PREFIX):
         return rel_path[len(_CLAUDE_PREFIX):]
     return rel_path
+
+
+def _global_path_allowed(rel_path: str) -> bool:
+    """Allow-list gate for any read under the global (~/.claude) scope.
+
+    Applies to both single-file reads (`get_file`) and directory listings
+    (`list_html_artifacts`) so the two never diverge. `rel_path` is expected
+    to already have any leading `.claude/` segment stripped (via
+    `_strip_claude_prefix`)."""
+    rel_path = rel_path.strip("/")
+    if rel_path in _GLOBAL_ALLOWED_ROOT_FILES:
+        return True
+    head = rel_path.split("/", 1)[0]
+    return head in _GLOBAL_ALLOWED_DIRS
 
 
 # IMPORTANT: this route must be declared BEFORE the catch-all `{rel_path:path}`
@@ -76,8 +99,24 @@ def _list_files_in_dir(repo_root, dir_rel: str, ext: str):
 async def list_html_artifacts(repo_id: str, dir: str = "docs") -> list[dict]:
     """List `.html` files in a tracked repo. Defaults to `docs/`; pass `?dir=`
     to scan another directory (e.g. `.claude/skills/html-docs/templates`)."""
+    scan_dir = dir
+    if repo_id == GLOBAL_REPO_ID:
+        scan_dir = _strip_claude_prefix(dir)
+        if not _global_path_allowed(scan_dir):
+            # Same "don't reveal existence" stance as get_file's 404 — an
+            # empty list is indistinguishable from a dir that simply has no
+            # .html files in it, which is already the behavior for repos.
+            return []
     repo_root = _resolve_repo(repo_id).resolve()
-    return _list_files_in_dir(repo_root, dir, ".html")
+    if repo_id == GLOBAL_REPO_ID:
+        # Same post-resolution re-check as get_file (`..` / symlinks).
+        try:
+            resolved_rel = (repo_root / scan_dir).resolve().relative_to(repo_root)
+        except ValueError:
+            return []
+        if not _global_path_allowed(resolved_rel.as_posix()):
+            return []
+    return _list_files_in_dir(repo_root, scan_dir, ".html")
 
 
 def _inline_css_imports(html: str, base_dir: Path, root: Path) -> str:
@@ -111,13 +150,30 @@ async def get_file(repo_id: str, rel_path: str) -> dict:
     repo_root = _resolve_repo(repo_id).resolve()
     if repo_id == GLOBAL_REPO_ID:
         rel_path = _strip_claude_prefix(rel_path)
+        # Allow-list gate BEFORE resolving/statting anything under ~/.claude —
+        # everything outside agents/skills/commands/rules/output-styles/
+        # CLAUDE.md (settings*.json, .credentials.json, projects/, plugins/,
+        # shell-snapshots/, statusline.sh, ...) 404s without revealing
+        # whether it exists.
+        if not _global_path_allowed(rel_path):
+            raise HTTPException(status_code=404, detail=f"file not found: {rel_path}")
     target = (repo_root / rel_path).resolve()
 
-    # Path-traversal guard
+    # Path-traversal guard (second layer — containment even if the allow-list
+    # check above were ever bypassed or extended incorrectly)
     try:
         target.relative_to(repo_root)
     except ValueError:
         raise HTTPException(status_code=403, detail="path outside repo") from None
+
+    # Re-apply the global allow-list to the RESOLVED path: `..` segments and
+    # symlinks can point an allow-listed prefix (e.g. agents/../settings.json,
+    # or agents/x.json -> ../settings.json) at a denied file that still sits
+    # inside claude_dir, which the containment check above would accept.
+    if repo_id == GLOBAL_REPO_ID and not _global_path_allowed(
+        target.relative_to(repo_root).as_posix()
+    ):
+        raise HTTPException(status_code=404, detail=f"file not found: {rel_path}")
 
     if not target.is_file():
         raise HTTPException(status_code=404, detail=f"file not found: {rel_path}")

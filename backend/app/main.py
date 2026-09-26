@@ -62,7 +62,14 @@ async def lifespan(_: FastAPI):
     finally:
         ingest_task.cancel()
         try:
-            await ingest_task
+            # Bound the wait — a long synchronous parse inside the ingest
+            # loop won't observe cancellation until its next await point, so
+            # an unbounded `await ingest_task` here can stall graceful
+            # shutdown indefinitely. Abandon the task after a grace period
+            # instead of blocking process exit on it.
+            await asyncio.wait_for(ingest_task, timeout=5)
+        except TimeoutError:
+            logger.warning("ingest task did not stop within 5s; abandoning it")
         except (asyncio.CancelledError, Exception):
             pass
         await stop_watcher()
