@@ -3737,3 +3737,105 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
   font:10.5px var(--font); color:var(--muted); padding:6px 2px;
 }
 
+/* ===================================================================
+   M0 ROUND 2 — honest data state, clickable crumbs, ⌘K palette
+   =================================================================== */
+
+/* ---- Clickable breadcrumbs (R-UX-8) ---- */
+.crumb-link{
+  background:none; border:none; padding:0; margin:0;
+  font:inherit; color:inherit; text-transform:inherit; letter-spacing:inherit;
+  cursor:pointer;
+}
+.crumb-link:hover, .crumb-link:focus-visible{ color:var(--cyan); text-decoration:underline; }
+.crumb-link:focus-visible{ outline:2px solid color-mix(in srgb, var(--cyan) 60%, transparent); outline-offset:2px; border-radius:2px; }
+
+/* ---- Backend status pill (R-UX-2) ---- */
+.backend-status{
+  display:flex; align-items:center; gap:.4rem;
+  padding:.25rem .6rem; border-radius:99px;
+  font-size:.62rem; font-weight:600; letter-spacing:.04em;
+  font-family:var(--font); white-space:nowrap;
+}
+.backend-status .dot{ width:6px; height:6px; border-radius:50%; flex:none; }
+.backend-status-retry{
+  background:none; border:1px solid currentColor; border-radius:99px;
+  color:inherit; font:inherit; font-size:.58rem; padding:.05rem .45rem;
+  cursor:pointer; margin-left:.15rem;
+}
+.backend-status-retry:hover{ opacity:.8; }
+
+.backend-status.bs-offline{
+  background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.3); color:var(--red);
+}
+.backend-status.bs-offline .dot{ background:var(--red); }
+.backend-status.bs-stale{
+  background:var(--dim); border:1px solid var(--brd2); color:var(--muted);
+}
+.backend-status.bs-stale .dot{ background:var(--gold); }
+.backend-status.bs-mock{
+  background:var(--dim); border:1px solid var(--brd2); color:var(--cyan);
+}
+.backend-status.bs-mock .dot{ background:var(--cyan); }
+
+@media(max-width:800px){
+  .backend-status{ display:none; }
+}
+
+/* ---- Command palette trigger (search-box is now a <button>) ---- */
+button.search-box{
+  cursor:pointer; text-align:left; font:inherit;
+}
+.search-box-placeholder{
+  flex:1; color:var(--muted); font-family:var(--font); font-size:.72rem;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+
+/* ---- Command palette overlay ---- */
+.cmdk-overlay{
+  position:fixed; inset:0; z-index:200;
+  background:rgba(0,0,0,.45);
+  display:flex; align-items:flex-start; justify-content:center;
+  padding-top:12vh;
+}
+[data-theme="light"] .cmdk-overlay{ background:rgba(41,38,27,.25); }
+
+.cmdk-panel{
+  width:min(560px, 92vw); max-height:60vh;
+  background:var(--card); border:1px solid var(--brd2);
+  border-radius:12px; box-shadow:var(--shadow-hover);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+.cmdk-input-row{
+  display:flex; align-items:center; gap:.5rem;
+  padding:.7rem .85rem; border-bottom:1px solid var(--brd2);
+}
+.cmdk-input-row svg{ width:13px; height:13px; stroke:var(--muted); fill:none; stroke-width:2; flex:none; }
+.cmdk-input-row input{
+  flex:1; background:none; border:none; outline:none;
+  color:var(--txt-bright); font-family:var(--font); font-size:.82rem;
+}
+.cmdk-input-row input::placeholder{ color:var(--muted); }
+.cmdk-input-row kbd{
+  font-size:.58rem; padding:.1rem .35rem; border-radius:3px;
+  border:1px solid var(--brd2); color:var(--muted); flex:none;
+}
+.cmdk-list{
+  list-style:none; margin:0; padding:.35rem; overflow-y:auto;
+}
+.cmdk-empty{
+  padding:.9rem; text-align:center; color:var(--muted); font-size:.72rem; font-family:var(--font);
+}
+.cmdk-item{
+  display:flex; align-items:center; gap:.55rem;
+  padding:.5rem .6rem; border-radius:7px; cursor:pointer;
+  font-family:var(--font); font-size:.75rem; color:var(--txt);
+}
+.cmdk-item svg{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; flex:none; opacity:.8; }
+.cmdk-item-label{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.cmdk-item-sub{ font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; flex:none; }
+.cmdk-item.active, .cmdk-item:hover{
+  background:var(--hover); color:var(--txt-bright);
+}
+.cmdk-item.active .cmdk-item-sub{ color:var(--cyan); }
+

@@ -188,21 +188,34 @@ function App() {
   const openRepo = (id) => setRoute({ page: 'repo', repoId: id });
   const openAgent = (name, kind, repoId) => setRoute({ page: 'agent', name, kind: kind || 'agent', repoId: repoId || null });
 
-  // F16: crumbs derived from the same ROUTES registry that Sidebar uses
+  // F16 / R-UX-8: crumbs derived from the same ROUTES registry that Sidebar
+  // uses. Each item is { label, route } — `route` is null for the current
+  // (last, non-clickable) segment; Topbar/Crumbs navigates via setRoute.
   const crumbs = useMemo(() => {
+    const mk = (label, r) => ({ label, route: r });
+    const DASH = { page: 'dashboard' };
     if (route.page === 'repo') {
       const r = allRepos.find(rr => rr.id === route.repoId);
-      return ['Workspace', ROUTE_BY_ID.repos.label, r?.name || route.repoId];
+      return [
+        mk('Workspace', DASH),
+        mk(ROUTE_BY_ID.repos.label, { page: 'repos' }),
+        mk(r?.name || route.repoId, null),
+      ];
     }
     if (route.page === "agent") {
       if (route.repoId) {
         const r = allRepos.find(rr => rr.id === route.repoId);
-        return ["Workspace", ROUTE_BY_ID.repos.label, r?.name || route.repoId, route.name];
+        return [
+          mk('Workspace', DASH),
+          mk(ROUTE_BY_ID.repos.label, { page: 'repos' }),
+          mk(r?.name || route.repoId, { page: 'repo', repoId: route.repoId }),
+          mk(route.name, null),
+        ];
       }
-      return ["Workspace", ROUTE_BY_ID.agents.label, route.name];
+      return [mk('Workspace', DASH), mk(ROUTE_BY_ID.agents.label, { page: 'agents' }), mk(route.name, null)];
     }
     const r = ROUTE_BY_ID[route.page];
-    return r ? ['Workspace', r.label] : ['Workspace'];
+    return r ? [mk('Workspace', DASH), mk(r.label, null)] : [mk('Workspace', null)];
   }, [route, allRepos]);
 
   const renderPage = () => {
@@ -274,6 +287,8 @@ function App() {
       <main className="main">
         <Topbar
           crumbs={crumbs}
+          setRoute={setRoute}
+          repos={repos}
           theme={tweaks.theme}
           setTheme={(t) => setTweak('theme', t)}
           allLive={allLive}

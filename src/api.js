@@ -28,6 +28,66 @@ function _writeCache(path, value) {
   try { sessionStorage.setItem(CACHE_PREFIX + path, JSON.stringify(value)); } catch { /* quota or private mode */ }
 }
 
+// ── Backend reachability status ─────────────────────────────────────────────
+// Tiny pub/sub (mirrors _liveStatus below) so any component can render an
+// "is this real data?" signal without every useFetch call threading extra
+// props through. useFetch() below is the sole writer via _reportFetchResult.
+//   'mock'    — VITE_USE_MOCKS=1, never touches the network
+//   'offline' — the most recent fetch failed and we've never had a success
+//               this session (or the last success predates the last failure)
+//   'stale'   — serving a sessionStorage cache from a previous successful
+//               session but this session hasn't had a fresh success yet
+//   'online'  — at least one fetch has succeeded and nothing has failed since
+let _backendState = USE_MOCKS ? 'mock' : 'offline';
+let _lastOkAt = null;
+// True once ANY path has a sessionStorage cache from a prior successful run —
+// used to distinguish "offline, never worked" from "offline, but we have
+// something cached to show".
+let _hasAnyCache = false;
+if (!USE_MOCKS && typeof sessionStorage !== 'undefined') {
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      if (sessionStorage.key(i)?.startsWith(CACHE_PREFIX)) { _hasAnyCache = true; break; }
+    }
+  } catch { /* ignore */ }
+}
+const _backendSubs = new Set();
+function _setBackendState(s) {
+  if (_backendState === s) return;
+  _backendState = s;
+  _backendSubs.forEach(fn => fn({ state: _backendState, lastOkAt: _lastOkAt }));
+}
+function _reportFetchResult(ok) {
+  if (USE_MOCKS) return;
+  if (ok) {
+    _lastOkAt = Date.now();
+    _setBackendState('online');
+  } else if (_backendState !== 'online') {
+    // Only degrade to offline/stale if we're not already known-online — a
+    // single blip on one path shouldn't flip a healthy app to "offline"
+    // while other paths are succeeding.
+    _setBackendState(_hasAnyCache ? 'stale' : 'offline');
+  }
+}
+
+export function useBackendStatus() {
+  const [s, setS] = useState({ state: _backendState, lastOkAt: _lastOkAt });
+  useEffect(() => {
+    _backendSubs.add(setS);
+    return () => _backendSubs.delete(setS);
+  }, []);
+  return s;
+}
+
+// Bumped by retryFetches() below; useFetch subscribes so a single "Retry"
+// action in the UI re-triggers every mounted fetch hook at once.
+let _retryVersion = 0;
+const _retrySubs = new Set();
+export function retryFetches() {
+  _retryVersion += 1;
+  _retrySubs.forEach(fn => fn(_retryVersion));
+}
+
 function useFetch(path, fallback) {
   // Initial value priority:
   //  1. sessionStorage cached real response (no flash on reload)
@@ -37,6 +97,12 @@ function useFetch(path, fallback) {
   const [data, setData] = useState(cached !== null ? cached : fallback);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!USE_MOCKS && cached === null);
+  const [retryVersion, setRetryVersion] = useState(_retryVersion);
+
+  useEffect(() => {
+    _retrySubs.add(setRetryVersion);
+    return () => _retrySubs.delete(setRetryVersion);
+  }, []);
 
   useEffect(() => {
     if (USE_MOCKS) {
@@ -73,9 +139,11 @@ function useFetch(path, fallback) {
           if (j != null) {
             setData(j);
             _writeCache(path, j);
+            _hasAnyCache = true;
           }
           setError(null);
           setLoading(false);
+          _reportFetchResult(true);
         }
       })
       .catch(e => {
@@ -85,12 +153,13 @@ function useFetch(path, fallback) {
           // Keep whatever we already had (cache or initial fallback).
           setError(e);
           setLoading(false);
+          _reportFetchResult(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [path]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path, retryVersion]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return { data, error, loading };
 }
