@@ -45,6 +45,13 @@ async def test_health_responds_promptly_during_slow_bootstrap_ingest(
         async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
             res = await asyncio.wait_for(client.get("/api/health"), timeout=1.0)
         elapsed = time.monotonic() - started
+        # The ASGI request can complete without yielding to the event loop, so
+        # give the background ingest task a chance to take its first step
+        # before the lifespan exits (and cancels it).
+        for _ in range(100):
+            if calls:
+                break
+            await asyncio.sleep(0.01)
 
     assert res.status_code == 200
     assert res.json() == {"ok": True}
