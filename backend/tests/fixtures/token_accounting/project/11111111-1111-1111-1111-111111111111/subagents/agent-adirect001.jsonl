@@ -1,0 +1,2 @@
+{"type": "user", "sessionId": "11111111-1111-1111-1111-111111111111", "cwd": "__CWD__", "timestamp": "__T_DIRECT_1__", "message": {"content": "[Task harness] investigate x"}}
+{"type": "assistant", "sessionId": "11111111-1111-1111-1111-111111111111", "cwd": "__CWD__", "timestamp": "__T_DIRECT_2__", "message": {"id": "direct-msg-004", "model": "claude-sonnet-4-5", "content": [{"type": "text", "text": "done"}], "usage": {"input_tokens": 40000, "output_tokens": 10000}}}

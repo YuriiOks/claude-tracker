@@ -51,6 +51,17 @@ async def get_cost(days: int = 7) -> dict:
         ts = sc.started_at if sc.started_at.tzinfo else sc.started_at.replace(tzinfo=UTC)
         if ts < cutoff:
             continue
+        # Direct + workflow subagent spend is real spend -- fold it into the
+        # same totals/byDay/byRepo breakdowns as main-session rows, not just
+        # byAgent (previously the only place subagent spend showed up at
+        # all, silently missing it from totalTokens/totalCost/byDay/byRepo).
+        day = ts.date().isoformat()
+        by_day[day]["tokens"] += sc.tokens
+        by_day[day]["cost"] += sc.cost
+        by_repo[sc.repo]["tokens"] += sc.tokens
+        by_repo[sc.repo]["cost"] += sc.cost
+        total_tokens += sc.tokens
+        total_cost += sc.cost
         by_agent[sc.agent_type]["calls"] += 1
         by_agent[sc.agent_type]["tokens"] += sc.tokens
         by_agent[sc.agent_type]["cost"] += sc.cost
