@@ -189,28 +189,48 @@ async def _reconcile_message_ledger(
 
 
 async def _upsert_hourly(
-    session: AsyncSession, hour_key_id: str, repo: str, hourly: dict
+    session: AsyncSession,
+    hour_key_id: str,
+    repo: str,
+    hourly: dict,
+    *,
+    full_replace: bool = False,
 ) -> None:
     """REPLACE per-hour token buckets for one SessionHourRow "owner" key (a
     real session_id, or a synthetic subagent key from _subagent_hour_key)
-    with the given (authoritative, full-file) totals. Only touches the
-    exact hour keys present in `hourly` -- never deletes the owner's other
-    hours, so a smaller file processed after a bigger one can't erase data
-    the bigger file already wrote for a different hour.
+    with the given (authoritative, full-file) totals.
+
+    By default (`full_replace=False`), only the exact hour keys present in
+    `hourly` are touched -- never the owner's other hours, so a smaller file
+    processed after a bigger one can't erase data the bigger file already
+    wrote for a different hour.
+
+    When `full_replace=True` (a genuine full reparse of the exact file that
+    exclusively owns `hour_key_id` -- a shrink/replace/rebuild, not a race
+    between two different files sharing a session_id), ALL of that owner's
+    existing hour rows are deleted first, including hours no longer present
+    in `hourly` at all. Without this, an hour the file used to cover before
+    shrinking keeps its stale tokens forever, inflating the heatmap and 48h
+    charts. Deletion happens even if `hourly` ends up empty (e.g. the file
+    shrank to nothing usable), since the goal is to drop stale hours, not
+    just skip writing new ones.
 
     Used by the FULL-parse path, where `hourly` is the file's complete,
     just-recomputed total for each hour it touches. For the incremental
     path, see `_add_hourly` instead -- replacing here would drop whatever a
     prior increment already accumulated for the same hour.
     """
+    if full_replace:
+        await session.execute(delete(SessionHourRow).where(SessionHourRow.session_id == hour_key_id))
+    elif hourly:
+        await session.execute(
+            delete(SessionHourRow).where(
+                SessionHourRow.session_id == hour_key_id,
+                SessionHourRow.hour_ts.in_(list(hourly.keys())),
+            )
+        )
     if not hourly:
         return
-    await session.execute(
-        delete(SessionHourRow).where(
-            SessionHourRow.session_id == hour_key_id,
-            SessionHourRow.hour_ts.in_(list(hourly.keys())),
-        )
-    )
     for hour_ts, tok in hourly.items():
         if tok <= 0:
             continue
@@ -391,7 +411,14 @@ async def _apply_full_summary(
             ))
             outcome.new = 1
 
-        await _upsert_hourly(session, _subagent_hour_key(path), summary.repo, summary.hourly_tokens)
+        # A subagent's _subagent_hour_key is owned exclusively by this one
+        # file (see _subagent_hour_key docstring), and this whole branch is
+        # always a full reparse -- so the fresh totals must fully replace
+        # ALL of this key's prior hours, not just the ones `hourly` still
+        # covers, or an hour the file shrank away from keeps stale tokens.
+        await _upsert_hourly(
+            session, _subagent_hour_key(path), summary.repo, summary.hourly_tokens, full_replace=True
+        )
         await _upsert_file_state(
             session, path_str, byte_offset=new_offset, size=stored_size, mtime=mtime, inode=inode,
             session_id=summary.session_id, is_subagent=True,
@@ -406,6 +433,14 @@ async def _apply_full_summary(
     await _reconcile_message_ledger(session, summary, path_str)
 
     existing = await session.get(SessionSummaryRow, summary.session_id)
+    # Captured BEFORE any mutation of `existing.file_path` below -- true only
+    # for a genuine full reparse of the SAME file this session_id already
+    # tracks (a shrink/replace), as opposed to a brand-new session_id or a
+    # different file racing for the same one. Only in that genuine case can
+    # this file's fresh hourly totals be trusted to fully replace ALL of
+    # this session_id's stored hours -- see the `_upsert_hourly(...,
+    # full_replace=...)` call below.
+    is_same_file_full_reparse = existing is not None and existing.file_path == path_str
     content_win: bool
     if existing:
         # A full reparse of the SAME file this row already tracks (a
@@ -455,7 +490,14 @@ async def _apply_full_summary(
         ))
         outcome.new = 1
 
-    await _upsert_hourly(session, summary.session_id, summary.repo, summary.hourly_tokens)
+    # Only a genuine full reparse of the SAME file already tracked for this
+    # session_id may wipe ALL of its stored hours -- a brand-new session_id
+    # or a different file losing the "richer file wins" race must not erase
+    # hours some other file legitimately owns.
+    await _upsert_hourly(
+        session, summary.session_id, summary.repo, summary.hourly_tokens,
+        full_replace=is_same_file_full_reparse,
+    )
 
     if content_win:
         for ev in events:

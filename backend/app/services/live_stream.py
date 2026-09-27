@@ -265,6 +265,15 @@ def _line_to_event(
     return None
 
 
+# A crashed `watchfiles.awatch` iteration (e.g. an OSError bubbling up from
+# the underlying inotify/FSEvents backend) restarts after this many seconds,
+# doubling on each consecutive failure up to the cap below -- short enough to
+# recover quickly from a transient hiccup, capped so a persistent problem
+# doesn't spin the loop hot. Module-level so tests can shrink it.
+_WATCH_RESTART_BACKOFF_INITIAL_SEC = 2.0
+_WATCH_RESTART_BACKOFF_MAX_SEC = 30.0
+
+
 async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
     while not projects_dir.is_dir():  # noqa: ASYNC240
         logger.info("projects_dir missing, watcher idle: %s", projects_dir)
@@ -278,26 +287,40 @@ async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
             pass
 
     logger.info("live_stream watching %s (%d files seeded)", projects_dir, len(_offsets))
-    try:
-        async for change_set in watchfiles.awatch(
-            projects_dir,
-            recursive=True,
-            stop_event=None,
-            watch_filter=lambda _ch, p: p.endswith(".jsonl"),
-            # watchfiles' defaults (debounce=1600ms, step=50ms) cap worst-case
-            # live-feed latency at ~1.6s. Both args are milliseconds; tighten
-            # them so /ws/live reflects new JSONL lines within ~250ms.
-            debounce=250,
-            step=25,
-        ):
-            paths = {Path(p) for _ch, p in change_set}
-            signal_queue = get_ingest_signal_queue()
-            for p in paths:
-                signal_queue.put_nowait(p)
-            await _emit_for_changes(paths, hub)
-    except asyncio.CancelledError:
-        logger.info("live_stream watcher cancelled")
-        raise
+
+    # Only asyncio.CancelledError (deliberate shutdown, via Hub.stop()) may
+    # propagate out of this loop. Any other exception out of watchfiles.awatch
+    # -- an OSError from the underlying inotify/FSEvents backend is the
+    # common one -- must not kill the watcher for good: log a warning and
+    # restart the watch after a short, exponentially-capped backoff instead.
+    backoff = _WATCH_RESTART_BACKOFF_INITIAL_SEC
+    while True:
+        try:
+            async for change_set in watchfiles.awatch(
+                projects_dir,
+                recursive=True,
+                stop_event=None,
+                watch_filter=lambda _ch, p: p.endswith(".jsonl"),
+                # watchfiles' defaults (debounce=1600ms, step=50ms) cap worst-case
+                # live-feed latency at ~1.6s. Both args are milliseconds; tighten
+                # them so /ws/live reflects new JSONL lines within ~250ms.
+                debounce=250,
+                step=25,
+            ):
+                backoff = _WATCH_RESTART_BACKOFF_INITIAL_SEC  # a healthy tick resets the backoff
+                paths = {Path(p) for _ch, p in change_set}
+                signal_queue = get_ingest_signal_queue()
+                for p in paths:
+                    signal_queue.put_nowait(p)
+                await _emit_for_changes(paths, hub)
+            return  # awatch's generator ended on its own -- nothing left to watch
+        except asyncio.CancelledError:
+            logger.info("live_stream watcher cancelled")
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning("live_stream watcher crashed, restarting in %.1fs: %s", backoff, e)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _WATCH_RESTART_BACKOFF_MAX_SEC)
 
 
 async def start_watcher() -> Hub:
