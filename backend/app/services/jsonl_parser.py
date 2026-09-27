@@ -262,6 +262,10 @@ def _process_line(
         obj = json.loads(raw)
     except json.JSONDecodeError:
         return
+    if not isinstance(obj, dict):
+        # A valid JSON value that is not a record (e.g. a bare number) --
+        # never a transcript event; skip it instead of crashing the walk.
+        return
 
     t = obj.get("type", "")
     state.session_id = state.session_id or obj.get("sessionId")
@@ -569,7 +573,11 @@ def parse_jsonl_incremental(
         task_text=task_text,
         seen_message_ids=set(seen_message_ids),
     )
-    for raw in text.splitlines():
+    # JSONL records are separated by "\n" ONLY. str.splitlines() also breaks
+    # on U+2028/U+2029/U+0085/\x0c/etc., which are legal inside JSON strings
+    # and do occur in real transcripts -- splitting on them corrupts records
+    # (fragments can even decode to bare ints).
+    for raw in text.split("\n"):
         raw = raw.strip()
         if not raw:
             continue

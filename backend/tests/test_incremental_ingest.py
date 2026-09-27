@@ -697,3 +697,86 @@ async def test_file_growing_during_parse_offset_matches_bytes_actually_read(
         row = await session.get(SessionSummaryRow, sid)
     expected_final = expected_after_m2 + sum(m3_usage)
     assert row.tokens == expected_final
+
+
+@pytest.mark.asyncio
+async def test_unicode_line_separators_inside_json_strings_do_not_split_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Real transcripts contain U+2028 / U+0085 inside JSON strings (legal JSON,
+    # left raw by JSON.stringify). str.splitlines() broke such records into
+    # fragments -- one of which ("7") decoded to a bare int and crashed the
+    # rebuild in production. Records must be split on "\n" only, and a stray
+    # non-object JSON line must simply be skipped.
+    repo, proj = _setup_env(tmp_path, monkeypatch)
+    sid = "sep-sess-1"
+    now = datetime.now(tz=UTC)
+    user = json.dumps({
+        "type": "user", "sessionId": sid, "cwd": str(repo),
+        "timestamp": _iso(now - timedelta(minutes=5)),
+        "message": {"content": "before " + "7" + " after\u0085end"},
+    }, ensure_ascii=False)
+    assistant = json.dumps({
+        "type": "assistant", "sessionId": sid, "cwd": str(repo),
+        "timestamp": _iso(now - timedelta(minutes=4)),
+        "message": {
+            "id": "sep-m1", "model": "claude-sonnet-4-5",
+            "content": [{"type": "text", "text": "x y"}],
+            "usage": {"input_tokens": 1000, "output_tokens": 100},
+        },
+    }, ensure_ascii=False)
+    assert " " in user and " " in assistant  # raw, not escaped
+    (proj / f"{sid}.jsonl").write_text("\n".join([user, "42", assistant]) + "\n", encoding="utf-8")
+
+    from app.models.session_summary import SessionSummaryRow
+    from app.services.ingest import ingest_all
+
+    result = await ingest_all()
+    assert result["failed"] == 0
+
+    async with db_mod._sessionmaker() as session:
+        row = await session.get(SessionSummaryRow, sid)
+    assert row is not None
+    assert row.tokens == 1100  # the assistant record was not torn apart and dropped
+
+
+@pytest.mark.asyncio
+async def test_one_failing_file_does_not_abort_the_rebuild(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A per-file data error is logged, counted and skipped; the rest of the
+    # corpus is ingested and a version rebuild still records its marker
+    # (otherwise it would retry forever, as happened in production).
+    repo, proj = _setup_env(tmp_path, monkeypatch)
+    now = datetime.now(tz=UTC)
+    (proj / "good-sess.jsonl").write_text(
+        _user_line("good-sess", str(repo), now - timedelta(minutes=3)) + "\n"
+        + _assistant_line("good-sess", str(repo), now - timedelta(minutes=2), "good-m1", 500, 50)
+        + "\n"
+    )
+    (proj / "bad-sess.jsonl").write_text(
+        _user_line("bad-sess", str(repo), now - timedelta(minutes=3)) + "\n"
+    )
+
+    import app.services.ingest as ingest_mod
+    from app.models.ingest_meta import SINGLETON_ID, IngestMetaRow
+    from app.models.session_summary import SessionSummaryRow
+
+    real = ingest_mod.parse_jsonl_incremental
+
+    def _boom_for_bad(path, *args, **kwargs):
+        if Path(path).name == "bad-sess.jsonl":
+            raise ValueError("simulated malformed transcript")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(ingest_mod, "parse_jsonl_incremental", _boom_for_bad)
+    result = await ingest_mod.ingest_all()
+    assert result["failed"] == 1
+
+    async with db_mod._sessionmaker() as session:
+        good = await session.get(SessionSummaryRow, "good-sess")
+        bad = await session.get(SessionSummaryRow, "bad-sess")
+        meta = await session.get(IngestMetaRow, SINGLETON_ID)
+    assert good is not None and good.tokens == 550
+    assert bad is None
+    assert meta is not None and meta.version == ingest_mod.INGEST_VERSION
