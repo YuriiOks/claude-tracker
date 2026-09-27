@@ -86,6 +86,41 @@
    labels reuse cyan/orange. Page title stays neutral. */
 [data-theme="light"] h2.section-title{ color:var(--txt-bright); }
 
+/* Self-hosted fonts (R-LAT-5) — replaces the Google Fonts render-blocking
+   <link> in index.html. Weight 300 dropped (unused anywhere in this file). */
+@font-face{
+  font-family:'Fira Code'; font-style:normal; font-weight:400; font-display:swap;
+  src:url('/fonts/fira-code-latin-400-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Fira Code'; font-style:normal; font-weight:500; font-display:swap;
+  src:url('/fonts/fira-code-latin-500-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Fira Code'; font-style:normal; font-weight:600; font-display:swap;
+  src:url('/fonts/fira-code-latin-600-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Fira Code'; font-style:normal; font-weight:700; font-display:swap;
+  src:url('/fonts/fira-code-latin-700-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Inter'; font-style:normal; font-weight:400; font-display:swap;
+  src:url('/fonts/inter-latin-400-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Inter'; font-style:normal; font-weight:500; font-display:swap;
+  src:url('/fonts/inter-latin-500-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Inter'; font-style:normal; font-weight:600; font-display:swap;
+  src:url('/fonts/inter-latin-600-normal.woff2') format('woff2');
+}
+@font-face{
+  font-family:'Inter'; font-style:normal; font-weight:700; font-display:swap;
+  src:url('/fonts/inter-latin-700-normal.woff2') format('woff2');
+}
+
 :root{
   --font:'Fira Code', ui-monospace, monospace;
   --font-ui:'Inter', system-ui, sans-serif;
@@ -148,8 +183,17 @@ html,body{
 }
 #neuralBg{
   position:fixed;
-  left:var(--sb-w); top:52px; right:0; bottom:0;
-  width:auto; height:auto;
+  left:var(--sb-w); top:52px;
+  /* R-LAT-5: explicit width/height instead of width:auto/height:auto +
+     left/top/right/bottom. A <canvas> is a replaced element -- per the CSS
+     abs-pos-replaced-element sizing algorithm, `auto` on a replaced element
+     resolves to its *intrinsic* size (300x150), not the box implied by
+     left+right/top+bottom, so the canvas rendered at 300x150 until
+     index.html's resize() set an inline pixel size on first paint -- a real
+     ~300x150 -> full-size layout jump measured as canvas-attributed CLS
+     (independent of the opacity/visibility toggle below). calc() gives it
+     the right box from the very first layout, before any JS runs. */
+  width:calc(100vw - var(--sb-w)); height:calc(100vh - 52px);
   z-index:0;
   pointer-events:none;
   /* no background — must be transparent so #bg-fill shows through */

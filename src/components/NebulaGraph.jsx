@@ -520,9 +520,9 @@ function drawLiveBadge(ctx, n, drawnR, count, badgeColor) {
 // Full render pass, in order: backdrop, cluster fog, edges, comets, nodes and
 // cluster hubs, then labels. Reads theme and design tokens fresh every call
 // so it stays reactive to theme toggles without any extra plumbing.
-function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, comets, stars, theme, liveGroups, now, reducedMotion) {
+function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, comets, stars, theme, liveGroups, now, reducedMotion, themeCache) {
   const dark = theme !== "light";
-  const roleColors = readRoleColors(dark);
+  const { roleColors, gradients } = themeCache;
   ctx.clearRect(0, 0, cssW, cssH);
 
   if (dark) {
@@ -540,11 +540,7 @@ function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, com
 
   CLUSTER_KINDS.forEach(kind => {
     const anchor = CLUSTER_ANCHORS[kind];
-    const color = roleColors[KIND_ROLE[kind]];
-    const grad = ctx.createRadialGradient(anchor.x, anchor.y, 0, anchor.x, anchor.y, 180);
-    grad.addColorStop(0, hexToRgba(color, 0.06 * controls.fog));
-    grad.addColorStop(1, hexToRgba(color, 0));
-    ctx.fillStyle = grad;
+    ctx.fillStyle = gradients[kind];
     ctx.beginPath();
     ctx.arc(anchor.x, anchor.y, 180, 0, Math.PI * 2);
     ctx.fill();
@@ -631,14 +627,21 @@ function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, com
 
     const screenR = drawnR * scale;
     const showSprite = (isHub || isLeaf || !!LEAF_SPRITE[n.kind]) && screenR >= LOD_SPRITE_MIN_PX;
+    // R-LAT-7: shadowBlur is one of the most expensive 2D canvas ops and was
+    // previously set on every node every frame. Reserve it for nodes that
+    // actually earn the attention -- hub, hovered, and nodes with a live
+    // session -- everything else gets a flat (still colored) stroke/fill.
+    const wantsGlow = isHub || n.id === hoverId || !!liveGroup;
 
     if (showSprite) {
       ctx.beginPath();
       ctx.arc(n.x, n.y, drawnR, 0, Math.PI * 2);
       ctx.fillStyle = discBg;
       ctx.fill();
-      ctx.shadowBlur = (dark ? 12 : 4) * controls.glow;
-      ctx.shadowColor = dark ? ownColor : hexToRgba(ownColor, 0.45);
+      if (wantsGlow) {
+        ctx.shadowBlur = (dark ? 12 : 4) * controls.glow;
+        ctx.shadowColor = dark ? ownColor : hexToRgba(ownColor, 0.45);
+      }
       ctx.lineWidth = dark ? 2 : 2.5;
       ctx.strokeStyle = ownColor;
       ctx.beginPath();
@@ -658,8 +661,10 @@ function draw(ctx, cssW, cssH, cam, nodes, resolvedEdges, controls, hoverId, com
       const grid = SPRITES[spriteName] || SPRITES.main;
       drawSprite(ctx, grid, n.x, n.y, drawnR * SPRITE_SIZE_RATIO, ownColor);
     } else {
-      ctx.shadowBlur = (dark ? 14 : 6) * controls.glow;
-      ctx.shadowColor = color;
+      if (wantsGlow) {
+        ctx.shadowBlur = (dark ? 14 : 6) * controls.glow;
+        ctx.shadowColor = color;
+      }
       ctx.beginPath();
       ctx.arc(n.x, n.y, drawnR, 0, Math.PI * 2);
       ctx.fillStyle = hexToRgba(color, dark ? (isHub ? 0.9 : 0.8) : 0.75);
@@ -764,6 +769,15 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
   const liveRowsRef = useRef([]);
   const ephemeralIndexRef = useRef(new Map());
   const processedEventKeysRef = useRef(new Set());
+  // R-LAT-7: cached role colors + cluster gradients, invalidated only on a
+  // theme flip (see MutationObserver below) instead of rebuilt every frame.
+  const themeCacheRef = useRef(null);
+  // True while wrapRef's canvas is actually in the viewport (IntersectionObserver).
+  const isVisibleRef = useRef(true);
+  // Lets effects outside the main rAF-loop effect (liveEvents processing,
+  // repo/layer rebuild, repoLiveRows sync) resume a parked loop without
+  // duplicating the rAF-scheduling logic.
+  const wakeRef = useRef(() => {});
 
   useEffect(() => { onOpenRef.current = onOpen; }, [onOpen]);
 
@@ -777,8 +791,16 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
     const { w, h } = sizeRef.current;
     if (!w || !h) return;
     tweenRef.current = { from: { ...camRef.current }, to: fitCam(w, h), start: performance.now(), duration: 400 };
-    kineticRef.current.sleeping = false;
-    kineticRef.current.lowFrames = 0;
+    wakeRef.current();
+  }, []);
+
+  // R-LAT-7: drop the per-frame theme-color/gradient cache the moment the
+  // theme actually flips -- the next draw() rebuilds it once, every other
+  // frame reuses it.
+  useEffect(() => {
+    const mo = new MutationObserver(() => { themeCacheRef.current = null; });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => mo.disconnect();
   }, []);
 
   useEffect(() => {
@@ -787,6 +809,28 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
     const ctx = canvas.getContext("2d");
     reducedMotionRef.current = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+    // R-LAT-7: role colors + the 4 cluster-fog gradients only depend on the
+    // theme, not on anything per-frame -- rebuild once per theme flip
+    // (invalidated by the MutationObserver above) instead of every draw().
+    function getThemeCache(theme) {
+      const cached = themeCacheRef.current;
+      if (cached && cached.theme === theme) return cached;
+      const dark = theme !== "light";
+      const roleColors = readRoleColors(dark);
+      const gradients = {};
+      CLUSTER_KINDS.forEach(kind => {
+        const anchor = CLUSTER_ANCHORS[kind];
+        const color = roleColors[KIND_ROLE[kind]];
+        const grad = ctx.createRadialGradient(anchor.x, anchor.y, 0, anchor.x, anchor.y, 180);
+        grad.addColorStop(0, hexToRgba(color, 0.06 * CONTROL_DEFAULTS.fog));
+        grad.addColorStop(1, hexToRgba(color, 0));
+        gradients[kind] = grad;
+      });
+      const next = { theme, roleColors, gradients };
+      themeCacheRef.current = next;
+      return next;
+    }
+
     function drawNow() {
       const { w, h } = sizeRef.current;
       if (!w || !h) return;
@@ -794,7 +838,9 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
       pruneEphemerals(nodesRef.current, edgesRef.current, ephemeralIndexRef.current, now);
       ctx.setTransform(dprRef.current, 0, 0, dprRef.current, 0, 0);
       const liveGroups = groupLiveRows(liveRowsRef.current, nodesRef.current);
-      draw(ctx, w, h, camRef.current, nodesRef.current, edgesRef.current, controlsRef.current, hoverRef.current, cometsRef.current, starsRef.current, document.documentElement.dataset.theme, liveGroups, now, reducedMotionRef.current);
+      const theme = document.documentElement.dataset.theme;
+      const themeCache = getThemeCache(theme);
+      draw(ctx, w, h, camRef.current, nodesRef.current, edgesRef.current, controlsRef.current, hoverRef.current, cometsRef.current, starsRef.current, theme, liveGroups, now, reducedMotionRef.current, themeCache);
     }
     drawNowRef.current = drawNow;
 
@@ -813,6 +859,21 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
     const ro = new ResizeObserver(resize);
     ro.observe(wrap);
     resize();
+
+    // R-LAT-7: pause the sim/draw loop entirely while the canvas is scrolled
+    // out of the viewport (e.g. below the fold in RepoDetail), and resume it
+    // the moment it's back -- distinct from the document.hidden check below,
+    // which only covers a backgrounded tab, not an off-screen element in a
+    // visible one.
+    let io = null;
+    if (typeof IntersectionObserver !== "undefined") {
+      io = new IntersectionObserver(([entry]) => {
+        const wasVisible = isVisibleRef.current;
+        isVisibleRef.current = entry.isIntersecting;
+        if (entry.isIntersecting && !wasVisible) resumeLoop();
+      }, { threshold: 0 });
+      io.observe(wrap);
+    }
 
     function screenToWorld(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
@@ -833,8 +894,7 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
       const pos = screenToWorld(e.clientX, e.clientY);
       const hit = hitTestNode(nodesRef.current, pos.x, pos.y);
       downInfo = { x: e.clientX, y: e.clientY, dragged: false, hit };
-      kineticRef.current.sleeping = false;
-      kineticRef.current.lowFrames = 0;
+      wake();
       if (hit && hit.id !== "__repo__") {
         hit.fx = hit.x; hit.fy = hit.y;
         dragState = { kind: "node", node: hit };
@@ -913,12 +973,11 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
       const { w, h } = sizeRef.current;
       const anchor = CLUSTER_ANCHORS[kind];
       tweenRef.current = { from: { ...camRef.current }, to: fitCamToPoint(w, h, anchor.x, anchor.y, 2.2), start: performance.now(), duration: 400 };
-      kineticRef.current.sleeping = false;
-      kineticRef.current.lowFrames = 0;
+      wake();
     }
 
     function onVisibility() {
-      if (!document.hidden) { kineticRef.current.sleeping = false; kineticRef.current.lowFrames = 0; }
+      if (!document.hidden) wake();
     }
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -931,13 +990,36 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
 
     let rafId = null;
     let sleepDrawCounter = 0;
+
+    // R-LAT-7: resume the rAF chain if it isn't already running (idempotent
+    // -- safe to call from any handler without tracking "is it running?").
+    function resumeLoop() {
+      if (rafId == null && !reducedMotionRef.current && isVisibleRef.current) {
+        rafId = requestAnimationFrame(step);
+      }
+    }
+    // Interaction/new-data entry point: un-sleep the sim AND resume the loop.
+    function wake() {
+      kineticRef.current.sleeping = false;
+      kineticRef.current.lowFrames = 0;
+      resumeLoop();
+    }
+    wakeRef.current = wake;
+
+    // R-LAT-7: `step` only re-arms itself at the bottom, on the single path
+    // that continues looping -- NOT unconditionally at the top. Re-arming
+    // eagerly at the top (the previous shape) queued the next frame before
+    // this invocation had decided whether to park, so setting `rafId = null`
+    // in the park branch was a no-op (a frame was already in flight) and a
+    // concurrent wake() would schedule a genuine second, parallel rAF chain
+    // the moment that stale frame fired -- doubling the draw rate instead of
+    // parking it.
     function step() {
-      rafId = requestAnimationFrame(step);
-      if (document.hidden) return;
+      if (!isVisibleRef.current) { rafId = null; return; } // IntersectionObserver resumes us
+      if (document.hidden) { rafId = requestAnimationFrame(step); return; }
       const dragging = draggingRef.current;
       if (dragging || tweenRef.current) { kineticRef.current.sleeping = false; kineticRef.current.lowFrames = 0; }
 
-      let shouldDraw = true;
       if (!kineticRef.current.sleeping) {
         const energy = simTick(nodesRef.current, edgesRef.current, controlsRef.current);
         if (energy < ENERGY_SLEEP_THRESHOLD && !dragging) {
@@ -946,9 +1028,6 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
         } else {
           kineticRef.current.lowFrames = 0;
         }
-      } else {
-        sleepDrawCounter++;
-        shouldDraw = sleepDrawCounter % 3 === 0;
       }
 
       const tw = tweenRef.current;
@@ -963,8 +1042,13 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
         if (t >= 1) tweenRef.current = null;
       }
 
+      // R-LAT-7 / W1-17-nebula-engine-6: ambient embellishment (comet
+      // spawning) is gated on the same sleep flag as the physics sim now --
+      // previously it kept spawning forever regardless of settle state,
+      // which meant `cometsRef.current` was rarely empty and the graph could
+      // never reach a truly idle frame.
       const flow = controlsRef.current.cometFlow;
-      if (flow > 0) {
+      if (flow > 0 && !kineticRef.current.sleeping) {
         cometTimerRef.current++;
         if (cometTimerRef.current >= 49.5 / flow) {
           cometTimerRef.current = 0;
@@ -974,12 +1058,34 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
       }
       updateComets(cometsRef.current);
 
-      if (shouldDraw) drawNow();
+      if (kineticRef.current.sleeping) {
+        // Fully settled: sim energy spent, no comets left in flight (they
+        // stopped spawning above and the in-flight ones have finished), no
+        // camera tween, not dragging -- draw the resting frame once, then
+        // park the rAF loop entirely instead of redrawing every 3rd frame
+        // forever. wake() resumes on interaction, a new live event, or a
+        // repo/layer change; the IntersectionObserver resumes it on
+        // scroll-back-into-view.
+        if (cometsRef.current.length === 0 && !tw && !dragging) {
+          drawNow();
+          rafId = null;
+          return;
+        }
+        // Still draining in-flight comets -- keep the old cheap 1-in-3 draw
+        // cadence rather than a full 60fps redraw for a couple of seconds.
+        sleepDrawCounter++;
+        if (sleepDrawCounter % 3 !== 0) { rafId = requestAnimationFrame(step); return; }
+        sleepDrawCounter = 0;
+      }
+
+      drawNow();
+      rafId = requestAnimationFrame(step);
     }
-    if (!reducedMotionRef.current) rafId = requestAnimationFrame(step);
+    resumeLoop();
 
     return () => {
       ro.disconnect();
+      if (io) io.disconnect();
       if (rafId) cancelAnimationFrame(rafId);
       canvas.removeEventListener("pointerdown", onPointerDown);
       canvas.removeEventListener("pointermove", onPointerMove);
@@ -1009,14 +1115,27 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
     if (w && h) camRef.current = fitCam(w, h);
     tweenRef.current = null;
     drawNowRef.current();
+    wakeRef.current(); // resume the loop if a previous repo/layer had parked it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRepo, layers]);
 
   // Live agent rows for the selected repo, kept in a ref so the draw loop
   // can read them every frame without a sim rebuild on every 1.5s poll.
+  // R-LAT-7: App's useActiveAgents ticks every ~1-1.5s with a fresh array
+  // reference even when the actual session set is unchanged (mock data's
+  // secondsSinceLastEvent field keeps counting), so `repoLiveRows` gets a
+  // new (often still-empty) reference on nearly every tick. Only wake the
+  // parked rAF loop when the session set *content* actually changed --
+  // otherwise a repo with zero live sessions would never be allowed to
+  // settle, permanently defeating the park optimization above.
+  const repoLiveRowsFpRef = useRef("");
   useEffect(() => {
     liveRowsRef.current = repoLiveRows;
+    const fp = repoLiveRows.map(r => r.sessionId).join(",");
+    const changed = fp !== repoLiveRowsFpRef.current;
+    repoLiveRowsFpRef.current = fp;
     if (reducedMotionRef.current) drawNowRef.current();
+    else if (changed) wakeRef.current(); // a session starting/stopping is worth a resumed frame
   }, [repoLiveRows]);
 
   // Real event comets + ephemeral target nodes. Dedup key is event identity
@@ -1063,8 +1182,7 @@ export default function NebulaGraph({ repos, lockedRepo, defaultLayers, onOpen, 
     });
     processedEventKeysRef.current = seenKeys;
     if (sawNew) {
-      kineticRef.current.sleeping = false;
-      kineticRef.current.lowFrames = 0;
+      wakeRef.current();
       if (reducedMotionRef.current) drawNowRef.current();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

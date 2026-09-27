@@ -1,13 +1,21 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import Icon from '../icons';
 import { Metric, Status, Tabs, PageHead } from './Common';
-import MarkdownPanel from './MarkdownPanel';
 import { useRepoHtmlArtifacts } from '../api';
 import LiveTerminal from './LiveTerminal';
 import { PermissionsPanel, PluginsPanel } from './Pages';
 import { useAgents, useRepoEvents, useGlobal } from "../api";
 import NebulaGraph from "./NebulaGraph";
 import { MCP_REGISTRY } from "../data";
+
+// W2-14-1: MarkdownPanel drags in `marked` + highlight.js + 12 language
+// grammars (113KB / 36.5KB gz) that the default Overview tab never renders.
+// Lazy-loaded so that cost is only paid once a file/artifact is actually
+// opened, not on every first click into a repo.
+const MarkdownPanel = lazy(() => import('./MarkdownPanel'));
+// Shared Suspense fallback for the three MarkdownPanel mount points below --
+// mirrors App.jsx's route-level "Loading…" empty state.
+const MD_PANEL_FALLBACK = <div className="empty" style={{ padding: '1.5rem', color: 'var(--muted)' }}>Loading…</div>;
 
 const HtmlArtifacts = ({ repo }) => {
   const { data: artifacts } = useRepoHtmlArtifacts(repo.id);
@@ -29,14 +37,16 @@ const HtmlArtifacts = ({ repo }) => {
         ))}
       </div>
       {active && (
-        <MarkdownPanel
-          key={active}
-          repoId={repo.id}
-          relPath={active}
-          filePath={active}
-          defaultMode="html"
-          emptyMessage="Artifact not readable"
-        />
+        <Suspense fallback={MD_PANEL_FALLBACK}>
+          <MarkdownPanel
+            key={active}
+            repoId={repo.id}
+            relPath={active}
+            filePath={active}
+            defaultMode="html"
+            emptyMessage="Artifact not readable"
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -133,14 +143,16 @@ const ClaudeRootFiles = ({ repo }) => {
       </div>
       {active && (
         <div className="mb-3">
-          <MarkdownPanel
-            key={active}
-            repoId={repo.id}
-            relPath={active}
-            filePath={active}
-            defaultMode={active.endsWith('.json') ? 'code' : 'html'}
-            emptyMessage={'File not found: ' + active}
-          />
+          <Suspense fallback={MD_PANEL_FALLBACK}>
+            <MarkdownPanel
+              key={active}
+              repoId={repo.id}
+              relPath={active}
+              filePath={active}
+              defaultMode={active.endsWith('.json') ? 'code' : 'html'}
+              emptyMessage={'File not found: ' + active}
+            />
+          </Suspense>
         </div>
       )}
     </>
@@ -215,14 +227,16 @@ const ClaudeTree = ({ repo, onOpen }) => {
       </div>
       {viewFile && (
         <div className="mt-3">
-          <MarkdownPanel
-            key={viewFile}
-            repoId={repo.id}
-            relPath={'.claude/' + viewFile}
-            filePath={'.claude/' + viewFile}
-            defaultMode="code"
-            emptyMessage={'File not found: .claude/' + viewFile}
-          />
+          <Suspense fallback={MD_PANEL_FALLBACK}>
+            <MarkdownPanel
+              key={viewFile}
+              repoId={repo.id}
+              relPath={'.claude/' + viewFile}
+              filePath={'.claude/' + viewFile}
+              defaultMode="code"
+              emptyMessage={'File not found: .claude/' + viewFile}
+            />
+          </Suspense>
         </div>
       )}
     </>

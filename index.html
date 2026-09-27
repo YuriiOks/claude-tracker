@@ -21,15 +21,21 @@
       document.documentElement.style.backgroundColor = theme === 'light' ? '#fff7ed' : '#070b14';
     })();
   </script>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- Self-hosted fonts (R-LAT-5) — preload the two critical weights used
+       for body text + code at first paint; the rest load lazily via the
+       @font-face rules in styles.css. -->
+  <link rel="preload" href="/fonts/fira-code-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/inter-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
   <style>
     /* Gate the decorative neural-bg canvas until the React app has painted
        (Track C: kill pre-mount flash). Releasing .bg-ready via `unset`
        lets the per-theme opacity rules in styles.css apply again. */
-    #neuralBg { visibility: hidden; opacity: 0 !important; transition: opacity .4s ease; }
-    #neuralBg.bg-ready { visibility: visible; opacity: unset !important; }
+    /* R-LAT-5: opacity-only toggle — Chrome's Layout Instability algorithm
+       excludes opacity-only changes from CLS, but treats a visibility
+       hidden->visible flip as new/shifted content. Canvas keeps its box
+       (no layout change) either way. */
+    #neuralBg { opacity: 0 !important; transition: opacity .4s ease; }
+    #neuralBg.bg-ready { opacity: unset !important; }
 
     /* Critical first-paint CSS (Track C, round 2). In dev mode styles.css is
        injected by Vite AFTER the JS module graph loads, so without these the
@@ -126,6 +132,11 @@
       }
 
       function tick() {
+        raf = requestAnimationFrame(tick);
+        // R-LAT-6: pause while the tab is hidden — no visible pixels to
+        // update, and prefers-reduced-motion users get one static frame
+        // instead of a continuously-animating background.
+        if (document.hidden || reduceMotion) return;
         const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
         const bgFade = isDark ? 0.18 : 0.16;
         const b = bounds(); const w = b.w, h = b.h;
@@ -191,8 +202,9 @@
             }
           }
         }
-        raf = requestAnimationFrame(tick);
       }
+
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
       window.__neuralBg = {
         start() { if (!raf) { resize(); seed(); tick(); } },

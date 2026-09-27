@@ -1,6 +1,12 @@
+import { memo } from 'react';
 import Icon from '../icons';
 import { useUser } from '../api';
 import { ROUTES } from '../routes';
+
+// R-LAT-9: hoisted so the non-"live" badge case doesn't allocate a fresh
+// object per nav item per render (matters once Sidebar is memoized below).
+const EMPTY_BADGE_STYLE = {};
+const LIVE_BADGE_STYLE = { background: 'var(--live-bg-strong)', color: 'var(--live)' };
 
 const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) => {
   const { data: user } = useUser();
@@ -44,7 +50,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
               <Icon name={item.icon} />
               {!collapsed && <span>{item.label}</span>}
               {!collapsed && item.badge ? (
-                <span className="badge" style={item.accent === 'live' ? { background: 'var(--live-bg-strong)', color: 'var(--live)' } : {}}>
+                <span className="badge" style={item.accent === 'live' ? LIVE_BADGE_STYLE : EMPTY_BADGE_STYLE}>
                   {item.badge}
                 </span>
               ) : null}
@@ -116,4 +122,7 @@ const Sidebar = ({ route, setRoute, repos, allLive, collapsed, setCollapsed }) =
   );
 };
 
-export default Sidebar;
+// R-LAT-9: memoized -- App.jsx's live-stream ticks pass a stable `repos`
+// array (unchanged reference when nothing changed, see api.js dedupe) so
+// this skips re-rendering the whole nav tree on every idle tick.
+export default memo(Sidebar);

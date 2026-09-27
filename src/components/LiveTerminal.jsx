@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, memo } from 'react';
 
 export const eventToLine = (e) => {
   const time = new Date(Date.now() + e.t * 1000).toTimeString().slice(0, 8);
@@ -72,4 +72,4 @@ const LiveTerminal = ({ events, height = 360, showCursor = true, paused = false,
   );
 };
 
-export default LiveTerminal;
+export default memo(LiveTerminal);

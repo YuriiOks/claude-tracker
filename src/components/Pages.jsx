@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import Icon from '../icons';
 import { Metric, Status, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
@@ -65,7 +65,7 @@ export const SessionsPage = ({ sessions, repos, onOpen }) => {
   );
 };
 
-export const LivePage = ({ liveEvents, repos, onOpen, repoFilter = null, liveAgents }) => {
+export const LivePage = memo(({ liveEvents, repos, onOpen, repoFilter = null, liveAgents }) => {
   // F9: compute live metrics from the actual event stream instead of fake constants.
   // Events carry `t` as a delta in seconds from now (negative = past).
   const events = repoFilter ? liveEvents.filter(e => e.repo === repoFilter) : liveEvents;
@@ -112,7 +112,7 @@ export const LivePage = ({ liveEvents, repos, onOpen, repoFilter = null, liveAge
     </div>
   </>
   );
-};
+});
 
 export const AgentsPage = ({ repos, onOpen }) => {
   const all = [];

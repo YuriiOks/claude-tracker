@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useMemo, memo, lazy, Suspense } from 'react';
 import { useDashboardStats } from '../api';
 import Icon from '../icons';
 import { Metric, Status, InlineSpark, PageHead } from './Common';
 import LiveTerminal from './LiveTerminal';
 import LiveAgents from './LiveAgents';
-import { lazy, Suspense } from 'react';
 const AddRepoModal = lazy(() => import('./AddRepoModal'));
 
 const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }) => {
@@ -58,9 +57,14 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
 
   const [feedFilter, setFeedFilter] = useState('all');
   const [feedPaused, setFeedPaused] = useState(false);
-  const filtered = feedFilter === 'all'
-    ? liveEvents
-    : liveEvents.filter(e => e.kind === feedFilter || (feedFilter === 'tool' && e.kind === 'command'));
+  const filtered = useMemo(() => (
+    feedFilter === 'all'
+      ? liveEvents
+      : liveEvents.filter(e => e.kind === feedFilter || (feedFilter === 'tool' && e.kind === 'command'))
+  ), [liveEvents, feedFilter]);
+  // R-LAT-9: avoid a fresh array allocation on every render when `filtered`
+  // itself hasn't changed (defeats LiveTerminal's memo otherwise).
+  const feedTail = useMemo(() => filtered.slice(-22), [filtered]);
 
   return (
     <>
@@ -150,7 +154,7 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
                 </button>
               </div>
             </div>
-            <LiveTerminal events={filtered.slice(-22)} height={360} paused={feedPaused} hideHeader={true} />
+            <LiveTerminal events={feedTail} height={360} paused={feedPaused} hideHeader={true} />
           </div>
         </div>
 
@@ -227,4 +231,4 @@ const Dashboard = ({ repos, sessions, liveEvents, onOpen, setRoute, liveAgents }
   );
 };
 
-export default Dashboard;
+export default memo(Dashboard);
