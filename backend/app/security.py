@@ -21,10 +21,36 @@ Both the Vite dev proxy (changeOrigin: false) and nginx (`Host $http_host`)
 forward the browser's *original* Host, so a legitimate same-origin request
 via either proxy always has Host == Origin's authority — only a request
 that bypasses the proxy (or forges an Origin) trips this check.
+
+LAN_MODE: the trusted-local passthrough above has a gap once the frontend
+is actually reachable from the LAN (`make dev-lan` / `make docker-up-lan`,
+or `LAN_BIND=0.0.0.0`). Both the Vite dev proxy and nginx forward whatever
+Host header the *client* sent, unchanged. A browser can't lie about Host,
+but a non-browser client on the LAN can simply send `Host: localhost` and
+walk straight through the trusted-local check above -- the backend has no
+way to tell that request apart from one made by the browser on the machine
+itself. TCP-peer inspection doesn't help either: behind the Vite proxy the
+backend's peer is always loopback (the proxy is the one connecting), and
+under Docker Desktop's NAT every published-port connection looks the same
+regardless of its real origin.
+
+Settings.lan_mode (env `LAN_MODE`) closes this gap the simple way: when on,
+`is_trusted_local` is never consulted at all (see SecurityMiddleware and
+app.routers.auth) -- every gated request, even one whose Host header claims
+to be localhost, must carry the shared token. `/api/auth/pairing` also
+stops working in LAN mode (403): it hands out the token to "the owner, on
+the machine", but that trust can no longer be established over HTTP once
+Host-based trust is off, so pairing instead happens via `tracker pair` /
+`make pair` on the host itself (see app.cli). The one exception is OTel
+ingest (`/v1/*`): see `_is_trusted_v1_peer` below for why peer-address
+trust is safe there specifically, even though it isn't safe for the
+general case above.
 """
 from __future__ import annotations
 
+import functools
 import hmac
+import ipaddress
 import logging
 import os
 import secrets
@@ -149,6 +175,80 @@ def is_cross_origin(host_header: str, origin_header: str | None) -> bool:
     return parsed != (host, port)
 
 
+# Networks directly attached to this process's host/container. In Docker, a
+# connection that originated on the host (e.g. the OTel exporter hitting the
+# 127.0.0.1-published port) reaches the container from the compose network's
+# gateway -- which is NOT necessarily in 172.16.0.0/12 (compose picks subnets
+# from several pools; e.g. 192.168.48.0/20 was observed on the owner's Mac).
+# So derive the on-link networks from /proc/net/route instead of hardcoding a
+# range. Not Linux (bare-metal macOS) -> empty -> only loopback is trusted,
+# which is exactly right there (the exporter connects over loopback).
+def _parse_proc_net_route(text: str) -> list[ipaddress.IPv4Network]:
+    nets: list[ipaddress.IPv4Network] = []
+    for line in text.split("\n")[1:]:
+        cols = line.split()
+        if len(cols) < 8:
+            continue
+        dest, gateway, mask = cols[1], cols[2], cols[7]
+        # On-link routes only (no gateway); skip the default route.
+        if gateway != "00000000" or dest == "00000000":
+            continue
+        try:
+            d = ipaddress.IPv4Address(int.from_bytes(bytes.fromhex(dest), "little"))
+            m = ipaddress.IPv4Address(int.from_bytes(bytes.fromhex(mask), "little"))
+            nets.append(ipaddress.IPv4Network(f"{d}/{m}", strict=False))
+        except ValueError:
+            continue
+    return nets
+
+
+@functools.lru_cache(maxsize=1)
+def _attached_networks() -> tuple[ipaddress.IPv4Network, ...]:
+    try:
+        text = Path("/proc/net/route").read_text(encoding="utf-8")
+    except OSError:
+        return ()
+    return tuple(_parse_proc_net_route(text))
+
+
+def _is_trusted_v1_peer(scope: Scope) -> bool:
+    """LAN_MODE exception for OTel ingest (`/v1/*`) only.
+
+    Design choice (see module docstring): instead of requiring the Claude
+    Code OTel exporter to be reconfigured with `OTEL_EXPORTER_OTLP_HEADERS:
+    X-Tracker-Token=...`, trust `/v1/*` by ASGI peer address -- loopback, or a
+    network directly attached to this container (the compose network the
+    host's published-port traffic arrives from) -- when LAN_MODE is on. This is safe specifically
+    for `/v1/*` (and not for the general Host-based trust this file removes
+    in LAN mode) because of two independent facts, not just one:
+
+      1. The backend port is published on 127.0.0.1 ONLY, in every mode
+         (LAN_MODE never changes this — see docker-compose.yml). A LAN
+         client cannot open a TCP connection to the backend at all, so it
+         can never present a peer address that would pass this check.
+      2. Neither the Vite dev proxy (vite.config.js: proxy only covers
+         `/api` and `/ws`) nor nginx (docker/nginx.conf: `location /api/`
+         and `location /ws/` only) forwards `/v1/*`. So even the frontend,
+         which the LAN *can* reach when LAN_MODE publishes it, has no path
+         that relays a LAN request into `/v1/*`.
+
+    A request that satisfies this check can therefore only have come from
+    the host machine itself (loopback) or from the Docker bridge (a
+    container-to-container or host-to-published-port hop within the
+    compose stack) -- never from another device on the LAN.
+    """
+    client = scope.get("client")
+    if not client:
+        return False
+    try:
+        ip = ipaddress.ip_address(client[0])
+    except ValueError:
+        return False
+    if ip.is_loopback:
+        return True
+    return ip.version == 4 and any(ip in net for net in _attached_networks())
+
+
 def _extract_token(scope: Scope, headers: dict[bytes, bytes]) -> str | None:
     token = headers.get(TOKEN_HEADER.encode("latin-1"))
     if token:
@@ -196,7 +296,15 @@ class SecurityMiddleware:
             await self.app(scope, receive, send)
             return
 
-        if is_trusted_local(host_header, origin_header):
+        settings = get_settings()
+        if settings.lan_mode:
+            # Host-based trust is off entirely in LAN mode (see module
+            # docstring) -- except OTel ingest, trusted by peer address
+            # instead (see _is_trusted_v1_peer for why that's still safe).
+            if path.startswith("/v1/") and _is_trusted_v1_peer(scope):
+                await self.app(scope, receive, send)
+                return
+        elif is_trusted_local(host_header, origin_header):
             await self.app(scope, receive, send)
             return
 

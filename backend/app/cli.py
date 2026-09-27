@@ -1,4 +1,4 @@
-"""CLI: `tracker ingest`, `tracker rebuild`."""
+"""CLI: `tracker ingest`, `tracker rebuild`, `tracker pair`."""
 from __future__ import annotations
 
 import asyncio
@@ -30,6 +30,21 @@ def rebuild() -> None:
     """Drop the cache and re-ingest everything."""
     result = asyncio.run(ingest_all(rebuild=True))
     typer.echo(f"rebuilt: {result}")
+
+
+@app_cli.command()
+def pair() -> None:
+    """Print the shared pairing token.
+
+    In LAN_MODE, `/api/auth/pairing` refuses to hand this out over HTTP
+    (Host-based trust is off — see app.security), so pairing a phone
+    happens out-of-band instead: run this on the machine running the
+    backend (bare-metal via `make pair`, Docker via `make docker-pair`),
+    which builds the full `http://<lan-ip>:<port>/?pair=<token>` link.
+    """
+    from app.security import get_token
+
+    typer.echo(get_token())
 
 
 if __name__ == "__main__":

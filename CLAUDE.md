@@ -74,16 +74,20 @@ Override with explicit "in markdown" if I want plain MD.
 ```bash
 make install          # uv sync (backend) + npm install (frontend)
 make dev              # backend :8765 + frontend :5173 (Ctrl-C stops both)
+make dev-lan          # same, frontend published on the LAN (LAN_MODE=1)
 make ingest           # walk ~/.claude/projects/ JSONL → SQLite cache
 make rebuild          # drop cache and re-ingest
+make pair             # print a phone-pairing link (needed once LAN mode is on)
 make test             # backend pytest (frontend has no tests yet)
 make lint             # ruff (backend) + eslint (frontend)
 make build            # vite production bundle → dist/
 
 # Docker (ports 47820/47821 — copy .env.docker.example → .env.docker first):
 make docker-up        # build & start backend + frontend
+make docker-up-lan    # same, frontend published on the LAN (LAN_MODE=1 LAN_BIND=0.0.0.0)
 make docker-down      # stop stack (keeps cache volume)
 make docker-ingest    # run ingest inside the backend container
+make docker-pair      # same as `make pair`, in the container
 
 # Frontend-only iteration (API calls fail until backend is also up):
 npm run dev           # :5173

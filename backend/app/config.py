@@ -29,6 +29,15 @@ class Settings(BaseSettings):
     # use. Set TRACKER_TOKEN to override (e.g. to pin a token across restarts
     # without relying on the on-disk file).
     tracker_token: str = ""
+    # LAN mode (see app.security module docstring). Off by default: nothing
+    # in the default docker-compose/dev setup listens on the LAN, so the
+    # Host-header trusted-local bypass is safe as-is. Turn on via `make
+    # dev-lan` / `make docker-up-lan` (LAN_MODE=1) when the frontend is
+    # actually published on the LAN -- it disables the Host-based bypass
+    # entirely, since a non-browser LAN client can otherwise send
+    # `Host: localhost` and pass as "trusted local" through the Vite/nginx
+    # proxy, which forwards the browser's original Host unchanged.
+    lan_mode: bool = False
     otel_ingest_url: str = "http://localhost:8765/v1/logs"
     otel_metrics_url: str = "http://localhost:8765/v1/metrics"
     # Host's home directory. Used to translate JSONL host paths
