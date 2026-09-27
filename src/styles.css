@@ -3492,16 +3492,30 @@ button.search-box{
      a modal and must never render underneath another overlay. */
   position:fixed; inset:0; z-index:var(--z-command);
   background:rgba(0,0,0,.45);
+  backdrop-filter:blur(3px); -webkit-backdrop-filter:blur(3px);
   display:flex; align-items:flex-start; justify-content:center;
   padding-top:12vh;
 }
 [data-theme="light"] .cmdk-overlay{ background:rgba(41,38,27,.25); }
+/* No backdrop-filter support: darken the overlay a bit more since the page
+   won't be blurred behind it. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .cmdk-overlay{ background:rgba(0,0,0,.65); }
+  [data-theme="light"] .cmdk-overlay{ background:rgba(41,38,27,.5); }
+}
 
 .cmdk-panel{
   width:min(560px, 92vw); max-height:60vh;
-  background:var(--card); border:1px solid var(--brd2);
-  border-radius:12px; box-shadow:var(--shadow-hover);
+  background:var(--glass-bg-strong); border:1px solid var(--glass-border);
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-radius:12px; box-shadow:var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
   display:flex; flex-direction:column; overflow:hidden;
+}
+/* No backdrop-filter support: fall back to the fully opaque card surface so
+   dashboard content behind the panel never shows through. */
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .cmdk-panel{ background:var(--card); }
 }
 .cmdk-input-row{
   display:flex; align-items:center; gap:.5rem;
@@ -3525,14 +3539,25 @@ button.search-box{
 }
 .cmdk-item{
   display:flex; align-items:center; gap:.55rem;
-  padding:.5rem .6rem; border-radius:7px; cursor:pointer;
+  padding:.45rem .6rem; border-radius:7px; cursor:pointer;
   font-family:var(--font); font-size:.75rem; color:var(--txt);
 }
-.cmdk-item svg{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; flex:none; opacity:.8; }
-.cmdk-item-label{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.cmdk-item-sub{ font-size:.62rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; flex:none; }
+.cmdk-item svg{ width:13px; height:13px; stroke:currentColor; fill:none; stroke-width:2; flex:none; opacity:.8; margin-top:.1rem; }
+/* Name + one-line description stack, so a long real-mode description never
+   pushes the name (or the kind badge) out of view. */
+.cmdk-item-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:.05rem; }
+.cmdk-item-label{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--txt-bright); }
+.cmdk-item-desc{
+  font-size:.66rem; color:var(--muted); text-transform:none; letter-spacing:normal;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.cmdk-item-sub{
+  font-size:.6rem; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; flex:none;
+  max-width:6rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  padding:.1rem .4rem; border-radius:999px; border:1px solid var(--brd2);
+}
 .cmdk-item.active, .cmdk-item:hover{
   background:var(--hover); color:var(--txt-bright);
 }
-.cmdk-item.active .cmdk-item-sub{ color:var(--cyan); }
+.cmdk-item.active .cmdk-item-sub{ color:var(--cyan); border-color:var(--cyan); }
 

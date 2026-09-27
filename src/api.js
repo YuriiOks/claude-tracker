@@ -364,8 +364,8 @@ export function usePlugins() {
 }
 
 export function useCost(days = 7) {
-  const fallback = { byDay: [], byRepo: [], totalTokens: 0, totalCost: 0, windowDays: days };
-  return useFetch(`/api/cost?days=${days}`, fallback);
+  const fallback = { byDay: [], byRepo: [], byAgent: [], totalTokens: 0, totalCost: 0, windowDays: days };
+  return useFetch(`/api/cost?days=${days}`, days === 7 ? MOCK.COST : fallback);
 }
 
 export function useDiff() {

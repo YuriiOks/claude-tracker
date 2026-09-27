@@ -16,13 +16,20 @@ function AgentResults({ query, onResults }) {
     const q = query.trim().toLowerCase();
     if (!q || !data) { onResults([]); return; }
     const items = Object.entries(data)
+      // Match on the agent's name (the dict key), not its description — a
+      // real-mode `role` can be a long frontmatter blurb that shouldn't be
+      // searchable substring noise.
       .filter(([name]) => name.toLowerCase().includes(q))
       .slice(0, 8)
       .map(([name, meta]) => ({
         type: 'agent',
         key: `agent:${name}`,
         label: name,
-        sub: meta?.role || meta?.repo || 'agent',
+        badge: 'agent',
+        // `role` is free text from either the mock or a real agent's
+        // frontmatter `description` — treat it purely as a description, one
+        // line, never as the name.
+        desc: meta?.role || meta?.repo || '',
         route: { page: 'agent', name, kind: 'agent', repoId: meta?.repo || null },
       }));
     onResults(items);
@@ -122,7 +129,7 @@ function PaletteBody({ repos, setRoute, onClose }) {
     type: 'repo',
     key: `repo:${r.id}`,
     label: r.name || r.id,
-    sub: 'repo',
+    badge: 'repo',
     route: { page: 'repo', repoId: r.id },
   })), [repos]);
 
@@ -207,8 +214,11 @@ function PaletteBody({ repos, setRoute, onClose }) {
                 onMouseDown={(e) => { e.preventDefault(); pick(item); }}
               >
                 {item.icon && <Icon name={item.icon} size={13} />}
-                <span className="cmdk-item-label">{item.label}</span>
-                {item.sub && <span className="cmdk-item-sub">{item.sub}</span>}
+                <span className="cmdk-item-main">
+                  <span className="cmdk-item-label">{item.label}</span>
+                  {item.desc && <span className="cmdk-item-desc">{item.desc}</span>}
+                </span>
+                {item.badge && <span className="cmdk-item-sub">{item.badge}</span>}
               </li>
             ))}
           </ul>

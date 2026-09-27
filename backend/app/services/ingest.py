@@ -58,7 +58,14 @@ logger = logging.getLogger(__name__)
 # inside the sweep window on every tick. Bumped so every existing DB does
 # exactly one full walk to establish cursors (offset = each file's current
 # size) before incremental parsing takes over.
-INGEST_VERSION = 4
+# v5: session.task is now derived by `jsonl_parser._extract_task_text`,
+# which skips local-command wrapper/meta records, tool_result-only
+# messages, and bare interrupt markers, strips embedded <system-reminder>
+# blocks, and renders command-palette slash commands as "/foo bar" instead
+# of their raw XML tags -- see jsonl_parser.py's task-title module comment.
+# Bumped so every already-ingested session's stored `task` re-derives from
+# the fixed rules instead of keeping a stale wrapper-caveat title forever.
+INGEST_VERSION = 5
 
 # Internal Claude Code system files stored in subagents/ that are NOT user-invoked
 # Task() calls: context compaction, inline prompt suggestions, side questions, etc.

@@ -185,15 +185,89 @@ def _repo_from_cwd(cwd: str | None, repo_paths: list[Path]) -> str:
 
 
 def _content_text(content) -> str:  # noqa: ANN001
+    """Best-effort plain text from a message's `content` field. Only ever
+    returns a `type: text` block's text (or the bare string itself) -- a
+    content list holding ONLY a `tool_result` block (no sibling text block)
+    yields "" rather than falling back into the tool_result's own nested
+    `content` string, which is the TOOL's output, not something the user
+    typed (see `_extract_task_text`, which relies on this for its
+    tool-result-only skip case).
+    """
     if isinstance(content, str):
         return content
     if isinstance(content, list):
         for c in content:
             if isinstance(c, dict) and c.get("type") == "text":
                 return str(c.get("text", ""))
-            if isinstance(c, dict) and isinstance(c.get("content"), str):
-                return c["content"]
     return ""
+
+
+# --- Task-title derivation from the first real user message -----------------
+#
+# Real shapes observed in ~/.claude/projects/**/*.jsonl (grep/node inspection,
+# 2026-09-27):
+#   * `<local-command-caveat>Caveat: ...</local-command-caveat>` -- a standalone
+#     wrapper record Claude Code inserts ahead of `/`-command output. Usually
+#     (not always) carries `"isMeta": true`.
+#   * `<local-command-stdout>...</local-command-stdout>` / `-stderr>` -- the
+#     command's own output, fed back as a synthetic "user" turn. Often has NO
+#     `isMeta` flag at all, so it must also be pattern-matched on content.
+#   * Slash commands picked from the command palette serialize as XML tags
+#     rather than plain "/foo bar" text, e.g.
+#       <command-name>/model</command-name>
+#       <command-message>model</command-message>
+#       <command-args>claude-opus-5</command-args>
+#     -- tag order varies (command-message sometimes precedes command-name),
+#     and `command-args` is sometimes empty. A *skill* invoked the same way
+#     omits the leading "/" on command-name (e.g. "workflow-authoring") and
+#     is always `isMeta: true`.
+#   * `<system-reminder>...</system-reminder>` -- Claude Code prepends this
+#     (e.g. "you are operating in a git worktree") directly ahead of the
+#     user's real first prompt in the SAME message, not as its own record.
+#   * `[Request interrupted by user]` / `[Request interrupted by user for
+#     tool use]` -- a synthetic text block, no wrapper tags at all.
+#   * A content list holding only a `tool_result` block (no `text` sibling)
+#     when a session resumes mid-tool-call -- see `_content_text` above.
+_META_WRAPPER_RE = re.compile(
+    r"^(<local-command-caveat>|<local-command-stdout>|<local-command-stderr>|<command-message>)"
+)
+_INTERRUPT_RE = re.compile(r"^\[Request interrupted by user(?: for tool use)?\]$")
+_SYSTEM_REMINDER_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.DOTALL)
+_SLASH_COMMAND_NAME_RE = re.compile(r"<command-name>(/[^<]*)</command-name>")
+_COMMAND_ARGS_RE = re.compile(r"<command-args>([^<]*)</command-args>")
+
+
+def _extract_task_text(obj: dict) -> str | None:
+    """Real user-authored text from a `type: user` record, for the session's
+    task title -- or None if this record carries nothing worth showing
+    (a wrapper/meta record, a bare interrupt marker, or a tool_result-only
+    message). Does NOT truncate -- the caller slices to the display length.
+    """
+    if obj.get("isMeta"):
+        return None
+    msg = obj.get("message") or {}
+    raw = _content_text(msg.get("content", ""))
+    if not raw:
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    # Slash-command picker invocations -- checked before the wrapper-only
+    # skip below, since a real command can itself start with a bare
+    # <command-message> tag (tag order varies; see module docstring above).
+    name_m = _SLASH_COMMAND_NAME_RE.search(stripped)
+    if name_m:
+        name = name_m.group(1).strip()
+        args_m = _COMMAND_ARGS_RE.search(stripped)
+        args = args_m.group(1).strip() if args_m else ""
+        return f"{name} {args}".strip() if args else name
+    if _META_WRAPPER_RE.match(stripped) or _INTERRUPT_RE.match(stripped):
+        return None
+    # Strip an embedded <system-reminder>...</system-reminder> block from an
+    # otherwise-real prompt (e.g. the git-worktree boilerplate) rather than
+    # discarding the whole message.
+    cleaned = _SYSTEM_REMINDER_RE.sub("", stripped).strip()
+    return cleaned or None
 
 
 # Matches "claude-{family}-{version}" (current naming, e.g. "claude-opus-4-5")
@@ -284,9 +358,11 @@ def _process_line(
 
     elif t == "user":
         msg = obj.get("message", {}) or {}
+        if state.task_text is None:
+            clean = _extract_task_text(obj)
+            if clean:
+                state.task_text = clean[:160]
         text = _content_text(msg.get("content", "")) or ""
-        if state.task_text is None and text and not text.startswith("[system"):
-            state.task_text = text[:160]
         if text.startswith("/") and ts is not None:
             cmd = text.split()[0]
             events.append(ParsedEvent(ts, state.repo, "command", {"cmd": cmd, "msg": text[:140]}))

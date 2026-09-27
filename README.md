@@ -48,14 +48,36 @@ npm run dev              # → http://localhost:5173
 ```bash
 make help              # list all targets
 make dev               # bare-metal: backend + frontend concurrently
+make dev-lan           # same, frontend published on the LAN (see below)
 make docker-up         # docker compose up -d
+make docker-up-lan     # same, frontend published on the LAN (see below)
 make docker-logs
 make docker-rebuild
 make ingest            # populate SQLite cache (bare-metal)
 make docker-ingest     # same, in container
+make pair              # print a phone-pairing link (bare-metal)
+make docker-pair       # same, docker
 make lint              # eslint + ruff
 make test              # backend pytest + frontend lint
 ```
+
+## Phone / LAN access
+
+By default nothing here listens on the LAN — the Vite dev server binds `127.0.0.1` and the Docker frontend port is published as `127.0.0.1:47820`, so a phone on the same WiFi can't reach either one. LAN mode opts in explicitly:
+
+```bash
+make dev-lan            # bare-metal: frontend on the LAN, backend stays loopback-only
+make docker-up-lan      # docker: same, via LAN_MODE=1 LAN_BIND=0.0.0.0
+```
+
+Once it's up, pair a phone (the token proves it's actually you — see `backend/app/security.py` for the threat model this closes):
+
+```bash
+make pair               # bare-metal — prints http://<lan-ip>:5173/?pair=<token>
+make docker-pair        # docker    — prints http://<lan-ip>:47820/?pair=<token>
+```
+
+Open that link on the phone once; it stores the token and attaches it to every request after that. In LAN mode the backend no longer trusts a `Host: localhost` header at all (that header is otherwise forwarded unchanged by both the Vite proxy and nginx, which a non-browser LAN client can forge), so pairing only works via the CLI/Makefile above — the in-app Tweaks → "Pair a phone" section requires that same trust and 403s once LAN mode is on.
 
 ## Documentation
 

@@ -34,6 +34,12 @@ services:
       HOST_HOME: ${REPO_PARENT_HOST:-${HOME}}
       OTEL_INGEST_URL: http://localhost:47821/v1/logs
       OTEL_METRICS_URL: http://localhost:47821/v1/metrics
+      # LAN mode (see backend/app/security.py) -- off by default. Set via
+      # `make docker-up-lan`, never by hand-editing this file. The backend
+      # port below stays 127.0.0.1-only regardless of this flag; LAN_MODE
+      # only changes what SecurityMiddleware trusts once the frontend is
+      # published on the LAN (see the frontend service's ports below).
+      LAN_MODE: ${LAN_MODE:-0}
     ports:
       - "127.0.0.1:47821:8765"
     volumes:
@@ -68,7 +74,12 @@ services:
       VITE_HMR_CLIENT_PORT: "47820"
       CHOKIDAR_USEPOLLING: "true"
     ports:
-      - "47820:5173"
+      # Bare 0.0.0.0 by default would put this on the LAN unconditionally --
+      # `${LAN_BIND:-127.0.0.1}` keeps it loopback-only unless `make
+      # docker-up-lan` (LAN_BIND=0.0.0.0) says otherwise. The container's own
+      # Vite process always binds 0.0.0.0 internally (see Dockerfile's dev
+      # CMD) -- Docker's port publishing here is the actual LAN gate.
+      - "${LAN_BIND:-127.0.0.1}:47820:5173"
     volumes:
       # Source mount for HMR; node_modules stays in the container layer
       - ./src:/app/src:ro
