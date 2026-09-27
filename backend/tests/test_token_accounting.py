@@ -442,15 +442,20 @@ async def test_interrupted_rebuild_does_not_advance_version(
     real_parse_incremental = ingest_mod.parse_jsonl_incremental
     calls = {"n": 0}
 
+    # A BaseException, like a real shutdown/cancellation: ingest_all isolates
+    # ordinary per-file Exceptions (bad data) but must let these propagate.
+    class _SimulatedCrash(BaseException):
+        pass
+
     def _flaky_parse_incremental(path, repo_paths, start_offset, seen_ids, **kwargs):
         calls["n"] += 1
         if calls["n"] == 2:
-            raise RuntimeError("simulated crash mid-rebuild")
+            raise _SimulatedCrash("simulated crash mid-rebuild")
         return real_parse_incremental(path, repo_paths, start_offset, seen_ids, **kwargs)
 
     monkeypatch.setattr(ingest_mod, "parse_jsonl_incremental", _flaky_parse_incremental)
 
-    with pytest.raises(RuntimeError, match="simulated crash mid-rebuild"):
+    with pytest.raises(_SimulatedCrash, match="simulated crash mid-rebuild"):
         await ingest_mod.ingest_all()
 
 

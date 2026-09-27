@@ -160,7 +160,9 @@ def _tail_new_lines(path: Path) -> list[str]:
     complete, _partial = chunk[: last_nl + 1], chunk[last_nl + 1 :]
     _offsets[path] = offset + last_nl + 1
     text = complete.decode("utf-8", errors="replace")
-    return [ln for ln in text.splitlines() if ln.strip()]
+    # Split on "\n" only -- see jsonl_parser.parse_jsonl_incremental: in-string
+    # U+2028/U+0085/\x0c are legal JSON and must not break a record apart.
+    return [ln for ln in text.split("\n") if ln.strip()]
 
 
 async def _emit_for_changes(changed: Iterable[Path], hub: Hub) -> None:

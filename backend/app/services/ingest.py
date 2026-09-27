@@ -697,6 +697,7 @@ async def ingest_all(
     updated_count = 0
     skipped = 0
     event_count = 0
+    failed_count = 0
     started = time.perf_counter()
 
     if _sessionmaker is None:
@@ -759,12 +760,24 @@ async def ingest_all(
                 state_by_path.update({r.file_path: r for r in rows})
 
         for path in candidates:
-            outcome = await _ingest_one_file(
-                session, path, repo_paths,
-                rebuild=rebuild,
-                state_by_path=state_by_path,
-                stat_result=stat_by_path[path],
-            )
+            # Isolate per-file DATA errors: one malformed transcript must not
+            # abort the whole walk (a version rebuild would otherwise retry
+            # forever without ever writing its marker). Each file commits on
+            # its own, so the rollback only drops that file's partial writes.
+            # BaseException (shutdown/cancellation) still propagates, so an
+            # interrupted rebuild keeps its marker stale and is retried.
+            try:
+                outcome = await _ingest_one_file(
+                    session, path, repo_paths,
+                    rebuild=rebuild,
+                    state_by_path=state_by_path,
+                    stat_result=stat_by_path[path],
+                )
+            except Exception as e:  # noqa: BLE001
+                await session.rollback()
+                failed_count += 1
+                logger.warning("ingest of %s failed, skipping: %s", path, e, exc_info=True)
+                continue
             new_count += outcome.new
             updated_count += outcome.updated
             skipped += outcome.skipped
@@ -784,6 +797,7 @@ async def ingest_all(
         "updated": updated_count,
         "skipped": skipped,
         "events": event_count,
+        "failed": failed_count,
         "elapsed_s": round(time.perf_counter() - started, 2),
     }
 
