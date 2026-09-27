@@ -38,10 +38,14 @@ export const BackendStatusPill = () => {
     mock: { label: 'MOCK DATA', cls: 'bs-mock' },
     stale: { label: 'cached · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), cls: 'bs-stale' },
     offline: { label: 'Backend unreachable — showing sample/cached data', cls: 'bs-offline' },
-    // R-SEC-1: the backend is reachable but wants a pairing token. Clicking
-    // the pill opens the Tweaks panel, which hosts the "Pair a phone" section
-    // (see TweaksPanel.jsx) when running on the paired Mac itself.
-    auth: { label: 'Pair this device', hint: 'Open Tweaks → Pair a phone on the Mac running claude-tracker', cls: 'bs-auth' },
+    // R-SEC-1: the backend is reachable but wants a pairing token. In LAN
+    // mode (see backend/app/security.py) this is the *only* way to see this
+    // pill — Host-based trust is off entirely there, so the Tweaks panel's
+    // "Pair a phone" section (which needs that same trust to fetch a token)
+    // 403s and quietly hides itself. Point at `make pair` / `make
+    // docker-pair` first; clicking still opens Tweaks for the rare
+    // non-LAN-mode case where that section works.
+    auth: { label: 'Pair this device', hint: 'Run `make pair` (or `make docker-pair`) on the Mac running claude-tracker — or open Tweaks → Pair a phone there', cls: 'bs-auth' },
   }[state];
   if (!cfg) return null;
   const openTweaks = () => window.postMessage({ type: '__activate_edit_mode' }, window.location.origin);
