@@ -190,6 +190,38 @@ const DiffModal = ({ d, onConfirm, onCancel, target, scope, busy, readOnly }) =>
   );
 };
 
+// R-SEC-4: shown when the backend 409s a save with
+// {"detail":"confirmation required","dangerous":[...]}. Reuses the pk-modal
+// look of DiffModal above. Fires on both the manual Save path and the
+// auto-save path — auto-save must pause and wait for this, never resend
+// confirmDangerous:true on its own.
+const DangerConfirmModal = ({ dangerous, onConfirm, onCancel, busy }) => (
+  <div className="pk-modal-backdrop" onClick={onCancel}>
+    <div className="pk-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="pk-modal-head">
+        <h3>Confirm dangerous rule{dangerous.length === 1 ? '' : 's'}</h3>
+        <button className="pk-modal-x" onClick={onCancel} aria-label="Close">×</button>
+      </div>
+      <div className="pk-modal-meta">
+        The backend flagged {dangerous.length} rule{dangerous.length === 1 ? '' : 's'} below as dangerous. Review before saving anyway.
+      </div>
+      <div className="pk-diff">
+        {dangerous.map((r) => (
+          <div key={r} className="pk-diff-bucket">
+            <div className="pk-diff-add mono" style={{ color: 'var(--red)' }}>! {r}</div>
+          </div>
+        ))}
+      </div>
+      <div className="pk-modal-actions">
+        <button className="btn" onClick={onCancel}>Cancel</button>
+        <button className="btn primary" onClick={onConfirm} disabled={busy}>
+          {busy ? 'Saving…' : 'Save anyway'}
+        </button>
+      </div>
+    </div>
+  </div>
+);
+
 const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const { data: repos } = useRepos();
   const [scope, setScope] = useState(defaultScope);
@@ -237,6 +269,10 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  // R-SEC-4: set when a save 409s with "confirmation required". Neither the
+  // manual nor the auto-save path may resend with confirmDangerous:true
+  // except in direct response to the user clicking "Save anyway" here.
+  const [pendingConfirm, setPendingConfirm] = useState(null); // { dangerous: string[] } | null
 
   // Sync server -> working. This is the ONLY way `working` should equal
   // a server snapshot — every user mutation flows through mutate() and
@@ -261,7 +297,9 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
   const d = useMemo(() => diff(original, working), [original, working]);
 
   // The actual save call. Shared between manual and auto paths.
-  const performSave = async () => {
+  // `confirmDangerous` is only ever true when relaying the user's explicit
+  // "Save anyway" click on DangerConfirmModal — never set speculatively.
+  const performSave = async (confirmDangerous = false) => {
     if (!target) return;
     inFlightRef.current = true;
     try {
@@ -269,6 +307,7 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
         scope, target,
         permissions: working,
         ifUnchangedSince: serverMtimeRef.current || null,
+        confirmDangerous,
       });
       setOriginal({ allow: [...working.allow], deny: [...working.deny], ask: [...working.ask] });
       setServerMtime(result.mtime);
@@ -294,6 +333,12 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
       if (ok) {
         setAutoStatus('saved');
         setTimeout(() => setAutoStatus(''), 1500);
+      } else if (err?.needsConfirmation) {
+        // R-SEC-4: never auto-resend with confirmDangerous — pause and make
+        // the user look at the modal.
+        setAutoStatus('error');
+        setAutoSave(false);
+        setPendingConfirm({ dangerous: err.dangerous });
       } else {
         setAutoStatus('error');
         if (err?.stale) {
@@ -351,11 +396,38 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
       setShowDiff(false);
       setToast(result.backupPath ? `Saved. Backup: ${result.backupPath.split('/').pop()}` : 'Saved.');
       setTimeout(() => setToast(''), 3000);
+    } else if (err?.needsConfirmation) {
+      setShowDiff(false);
+      setPendingConfirm({ dangerous: err.dangerous });
     } else if (err?.stale) {
       setError('File changed on disk. Refresh to merge external edits.');
     } else {
       setError(err?.message || String(err));
     }
+  };
+
+  // R-SEC-4: the ONLY call site allowed to pass confirmDangerous:true —
+  // fires exclusively from the user's "Save anyway" click.
+  const handleConfirmDangerous = async () => {
+    setPendingConfirm(null);
+    setSaving(true);
+    setError('');
+    const { ok, err, result } = await performSave(true);
+    setSaving(false);
+    if (ok) {
+      setShowDiff(false);
+      setToast(result.backupPath ? `Saved. Backup: ${result.backupPath.split('/').pop()}` : 'Saved.');
+      setTimeout(() => setToast(''), 3000);
+    } else if (err?.stale) {
+      setError('File changed on disk. Refresh to merge external edits.');
+    } else {
+      setError(err?.message || String(err));
+    }
+  };
+
+  const handleCancelDangerous = () => {
+    setPendingConfirm(null);
+    setError('Save cancelled — dangerous rule(s) need explicit confirmation.');
   };
 
   const handleReset = () => {
@@ -481,6 +553,15 @@ const PermissionsKanban = ({ defaultScope = 'global' }) => {
           readOnly={diffReadOnly}
           onCancel={() => setShowDiff(false)}
           onConfirm={handleManualSave}
+        />
+      )}
+
+      {pendingConfirm && (
+        <DangerConfirmModal
+          dangerous={pendingConfirm.dangerous}
+          busy={saving}
+          onConfirm={handleConfirmDangerous}
+          onCancel={handleCancelDangerous}
         />
       )}
     </div>

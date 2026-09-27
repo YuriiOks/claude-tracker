@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from sqlalchemy import select
 
 import app.db as db_mod
@@ -15,7 +15,7 @@ router = APIRouter(tags=["cost"])
 
 
 @router.get("/cost")
-async def get_cost(days: int = 7) -> dict:
+async def get_cost(days: int = Query(default=7, ge=1, le=3650)) -> dict:
     db_mod._ensure_engine()
     sm = db_mod._sessionmaker
     assert sm is not None

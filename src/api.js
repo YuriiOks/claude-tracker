@@ -14,8 +14,14 @@ const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === '1';
 // UI hydrates with the LAST seen real response — no mock-fallback flash.
 const CACHE_PREFIX = 'ct:fetch:';
 
+// R-SEC-10: permissions payloads (and the pairing token) are sensitive/
+// short-lived — never let them land in sessionStorage.
+function _isCacheExempt(path) {
+  return path.startsWith('/api/permissions') || path.startsWith('/api/auth/pairing');
+}
+
 function _readCache(path) {
-  if (typeof sessionStorage === 'undefined') return null;
+  if (typeof sessionStorage === 'undefined' || _isCacheExempt(path)) return null;
   try {
     const raw = sessionStorage.getItem(CACHE_PREFIX + path);
     return raw ? JSON.parse(raw) : null;
@@ -24,8 +30,57 @@ function _readCache(path) {
   }
 }
 function _writeCache(path, value) {
-  if (typeof sessionStorage === 'undefined') return;
+  if (typeof sessionStorage === 'undefined' || _isCacheExempt(path)) return;
   try { sessionStorage.setItem(CACHE_PREFIX + path, JSON.stringify(value)); } catch { /* quota or private mode */ }
+}
+
+// ── Pairing token ────────────────────────────────────────────────────────────
+// Requests from localhost need no token; everything else (e.g. a phone on the
+// LAN) needs `X-Tracker-Token` on fetches and `?token=` on WS URLs. The token
+// is captured from a `?pair=<token>` URL param (see src/usePairing.js) and
+// persisted in localStorage so it survives reloads.
+const TOKEN_KEY = 'ct-auth-token';
+
+export function getAuthToken() {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+export function setAuthToken(token) {
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch { /* private mode */ }
+}
+
+function _authHeaders(extra) {
+  const token = getAuthToken();
+  return token ? { ...extra, 'X-Tracker-Token': token } : { ...extra };
+}
+
+// Every plain-object REST call in this file goes through here so the token
+// header is attached consistently. A 401 flips the shared backend-status
+// pub/sub to 'auth' instead of the generic offline/stale states.
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: _authHeaders(opts.headers) });
+  if (res.status === 401) _setBackendState('auth');
+  return res;
+}
+
+// Appends `?token=` (or `&token=` if the URL already has a query string) so
+// WebSocket connections carry the pairing token the same way fetches do.
+function _wsUrl(path) {
+  const token = getAuthToken();
+  if (!token) return path;
+  return path + (path.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(token);
+}
+
+// Localhost-only endpoint that mints a fresh pairing token. Used by the
+// Tweaks panel's "Pair a phone" section — throws (and the caller should
+// swallow it) when called from a non-localhost origin.
+export async function fetchPairingToken() {
+  const r = await apiFetch('/api/auth/pairing', { headers: { Accept: 'application/json' } });
+  if (!r.ok) throw new Error(`${r.status} /api/auth/pairing`);
+  const j = await r.json();
+  return j.token;
 }
 
 // ── Backend reachability status ─────────────────────────────────────────────
@@ -37,6 +92,7 @@ function _writeCache(path, value) {
 //               this session (or the last success predates the last failure)
 //   'stale'   — serving a sessionStorage cache from a previous successful
 //               session but this session hasn't had a fresh success yet
+//   'auth'    — the backend requires a pairing token we don't have (401)
 //   'online'  — at least one fetch has succeeded and nothing has failed since
 let _backendState = USE_MOCKS ? 'mock' : 'offline';
 let _lastOkAt = null;
@@ -70,6 +126,14 @@ function _reportFetchResult(ok) {
     // never appears.
     _setBackendState(_hasAnyCache ? 'stale' : 'offline');
   }
+}
+// A 401 is not "the backend is down" — it's "the backend is fine but wants
+// the pairing token". Keep it a distinct pub/sub state so the UI can say
+// "pair this device" instead of "offline".
+function _reportAuthRequired() {
+  if (USE_MOCKS) return;
+  _setRetrying(false);
+  _setBackendState('auth');
 }
 
 export function useBackendStatus() {
@@ -148,8 +212,13 @@ function useFetch(path, fallback) {
     setData(pathCached !== null ? pathCached : fallback);
     setError(null);
     setLoading(pathCached === null);
-    fetch(path, { headers: { Accept: 'application/json' } })
+    apiFetch(path, { headers: { Accept: 'application/json' } })
       .then(r => {
+        if (r.status === 401) {
+          const e = new Error(`401 ${path}`);
+          e.authRequired = true;
+          throw e;
+        }
         if (!r.ok) throw new Error(`${r.status} ${path}`);
         return r.json();
       })
@@ -177,7 +246,8 @@ function useFetch(path, fallback) {
           // Keep whatever we already had (cache or initial fallback).
           setError(e);
           setLoading(false);
-          _reportFetchResult(false);
+          if (e.authRequired) _reportAuthRequired();
+          else _reportFetchResult(false);
         }
       });
     return () => {
@@ -226,14 +296,26 @@ export function useScopedPermissions(scope = "global", target = "settings_local"
 
 // One-shot PUT that replaces a single settings file's permissions block.
 // Returns a promise that resolves to { filePath, mtime, backupPath }.
-// Throws an Error with .stale=true on 409 so the caller can refresh.
-export async function updateScopedPermissions({ scope, target, permissions, ifUnchangedSince }) {
-  const r = await fetch("/api/permissions/scoped", {
+// Throws an Error with .stale=true on a plain 409 (file changed on disk), or
+// .needsConfirmation=true + .dangerous=[...] when the backend flagged one or
+// more rules as dangerous (R-SEC-4) — resend with confirmDangerous:true only
+// after the user explicitly confirms.
+export async function updateScopedPermissions({ scope, target, permissions, ifUnchangedSince, confirmDangerous }) {
+  const body = { scope, target, permissions, ifUnchangedSince };
+  if (confirmDangerous) body.confirmDangerous = true;
+  const r = await apiFetch("/api/permissions/scoped", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ scope, target, permissions, ifUnchangedSince }),
+    body: JSON.stringify(body),
   });
   if (r.status === 409) {
+    const payload = await r.json().catch(() => ({}));
+    if (payload.detail === "confirmation required") {
+      const err = new Error("dangerous rule(s) require confirmation");
+      err.needsConfirmation = true;
+      err.dangerous = payload.dangerous || [];
+      throw err;
+    }
     const err = new Error("settings file changed on disk");
     err.stale = true;
     throw err;
@@ -284,7 +366,7 @@ export function useDashboardStats(intervalMs = 5000) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch('/api/stats/dashboard');
+        const r = await apiFetch('/api/stats/dashboard');
         if (!r.ok) throw new Error(`${r.status}`);
         const j = await r.json();
         if (!cancelled) { setData(j); setLoading(false); }
@@ -311,7 +393,7 @@ export function useHeatmap(intervalMs = 60000) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/stats/heatmap?tz=${encodeURIComponent(tz)}`);
+        const r = await apiFetch(`/api/stats/heatmap?tz=${encodeURIComponent(tz)}`);
         if (!r.ok) throw new Error(`${r.status}`);
         const j = await r.json();
         if (!cancelled) { setData(j); setLoading(false); }
@@ -341,7 +423,7 @@ export function useRepoCandidates() {
 
 // POST a new repo path to the runtime registry. Throws on error.
 export async function addRepo(hostPath) {
-  const res = await fetch('/api/repos', {
+  const res = await apiFetch('/api/repos', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ path: hostPath }),
@@ -372,7 +454,7 @@ export function useFile(repoId, relPath) {
 
 // DELETE a repo from the runtime registry (env entries can't be removed).
 export async function removeRepo(repoId) {
-  const res = await fetch(`/api/repos/${encodeURIComponent(repoId)}`, { method: 'DELETE' });
+  const res = await apiFetch(`/api/repos/${encodeURIComponent(repoId)}`, { method: 'DELETE' });
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(detail.detail || `HTTP ${res.status}`);
@@ -425,7 +507,7 @@ export function useActiveAgents(intervalMs = 1500) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch('/api/live/agents');
+        const r = await apiFetch('/api/live/agents');
         if (r.ok) {
           const j = await r.json();
           if (!cancelled) setAgents(Array.isArray(j) ? j : []);
@@ -460,7 +542,7 @@ export function useRepoEvents(repoId, n = 60, intervalMs = 5000) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch(`/api/live/recent?n=${n}&repo=${encodeURIComponent(repoId)}`);
+        const r = await apiFetch(`/api/live/recent?n=${n}&repo=${encodeURIComponent(repoId)}`);
         if (!r.ok) throw new Error(`${r.status}`);
         const j = await r.json();
         if (!cancelled) setEvents(j);
@@ -487,7 +569,7 @@ export function useTelemetryConfig() {
 // Returns the updated config (same shape as GET + backupPath).
 // Throws Error with .stale=true on 409.
 export async function setTelemetry({ enabled, logToolDetails, logUserPrompts, ifUnchangedSince }) {
-  const r = await fetch('/api/telemetry', {
+  const r = await apiFetch('/api/telemetry', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled, logToolDetails, logUserPrompts, ifUnchangedSince }),
@@ -506,7 +588,7 @@ export async function setTelemetry({ enabled, logToolDetails, logUserPrompts, if
 
 // Imperative GET for refetching after a 409 stale conflict.
 export async function getTelemetry() {
-  const r = await fetch('/api/telemetry', { headers: { Accept: 'application/json' } });
+  const r = await apiFetch('/api/telemetry', { headers: { Accept: 'application/json' } });
   if (!r.ok) throw new Error(`${r.status} /api/telemetry`);
   return r.json();
 }
@@ -525,7 +607,7 @@ export function useOtelSummary(intervalMs = 10000) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch('/api/otel/summary?hours=24');
+        const r = await apiFetch('/api/otel/summary?hours=24');
         if (!r.ok) throw new Error(`${r.status}`);
         const j = await r.json();
         if (!cancelled) { setData(j); setError(null); setLoading(false); }
@@ -554,7 +636,7 @@ export function useOtelMetrics(intervalMs = 10000) {
     let timer;
     const tick = async () => {
       try {
-        const r = await fetch('/api/otel/metrics?hours=24');
+        const r = await apiFetch('/api/otel/metrics?hours=24');
         if (!r.ok) throw new Error(`${r.status}`);
         const j = await r.json();
         if (!cancelled) { setData(j); setError(null); setLoading(false); }
@@ -667,8 +749,11 @@ export function useLiveEvents() {
       });
     };
 
-    fetch('/api/live/recent?n=60')
-      .then(r => (r.ok ? r.json() : []))
+    apiFetch('/api/live/recent?n=60')
+      .then(r => {
+        if (r.status === 401) _reportAuthRequired();
+        return r.ok ? r.json() : [];
+      })
       .then(j => {
         if (cancelled) return;
         mergeRows(Array.isArray(j) ? j : []);
@@ -678,7 +763,7 @@ export function useLiveEvents() {
     const connect = () => {
       if (cancelled) return;
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${proto}//${window.location.host}/ws/live`);
+      ws = new WebSocket(_wsUrl(`${proto}//${window.location.host}/ws/live`));
       ws.onmessage = (ev) => {
         try {
           const data = JSON.parse(ev.data);
@@ -701,7 +786,7 @@ export function useLiveEvents() {
         // Composite keys are stable across REST and WS sources (no id-space
         // collisions), so a reconnect only needs the merge-fetch to backfill
         // whatever the WS gap dropped -- no key surgery required first.
-        fetch('/api/live/recent?n=60')
+        apiFetch('/api/live/recent?n=60')
           .then(r => (r.ok ? r.json() : []))
           .then(rows => {
             if (cancelled || !Array.isArray(rows)) return;
@@ -709,8 +794,17 @@ export function useLiveEvents() {
           })
           .catch(() => {});
       };
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
         if (cancelled) return;
+        // AUTH CONTRACT: the backend closes with 4401 when the pairing token
+        // is missing/invalid. That's not a transient network blip -- retrying
+        // with the same (bad) token would just loop, so surface 'auth'
+        // instead of grinding through the reconnect/backoff ladder.
+        if (ev.code === 4401) {
+          _reportAuthRequired();
+          _setLiveStatus('reconnecting');
+          return;
+        }
         _setLiveStatus('reconnecting');
         setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 15000);

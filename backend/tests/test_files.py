@@ -53,7 +53,7 @@ async def test_global_scope_serves_path_without_claude_prefix(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/files/global/agents/x.md")
 
     assert res.status_code == 200
@@ -73,7 +73,7 @@ async def test_global_scope_serves_path_with_claude_prefix(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/files/global/.claude/agents/x.md")
 
     assert res.status_code == 200
@@ -92,7 +92,7 @@ async def test_global_scope_rejects_path_traversal(claude_dir_with_agent: Path) 
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         # Percent-encode the dot segments so httpx's own URL normalization
         # doesn't collapse them away before the request ever reaches the app —
         # the raw string is what a traversal payload would actually look like.
@@ -114,7 +114,7 @@ async def test_global_scope_rejects_traversal_escaping_allowed_dir(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get(
             "/api/files/global/agents%2f..%2f..%2f..%2f..%2f..%2f..%2f..%2fetc%2fpasswd"
         )
@@ -130,7 +130,7 @@ async def test_global_scope_serves_root_claude_md(claude_dir_with_agent: Path) -
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/files/global/CLAUDE.md")
 
     assert res.status_code == 200
@@ -160,7 +160,7 @@ async def test_global_scope_blocks_non_allowlisted_paths(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get(f"/api/files/global/{rel_path}")
 
     assert res.status_code == 404
@@ -176,7 +176,7 @@ async def test_global_html_artifacts_allowlisted_dir_lists_files(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get(
             "/api/repos/global/artifacts/html",
             params={"dir": ".claude/skills/html-docs/templates"},
@@ -198,7 +198,7 @@ async def test_global_html_artifacts_non_allowlisted_dir_returns_empty(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/repos/global/artifacts/html")
 
     assert res.status_code == 200
@@ -224,7 +224,7 @@ async def test_global_scope_blocks_dotdot_out_of_allowed_dir(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get(f"/api/files/global/{rel_path}")
 
     assert res.status_code == 404
@@ -244,7 +244,7 @@ async def test_global_scope_blocks_symlink_out_of_allowed_dir(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/files/global/agents/leak.json")
 
     assert res.status_code == 404
@@ -258,7 +258,7 @@ async def test_global_html_artifacts_blocks_dotdot_dir(claude_dir_with_agent: Pa
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get(
             "/api/repos/global/artifacts/html", params={"dir": "skills/../projects/some-repo"}
         )

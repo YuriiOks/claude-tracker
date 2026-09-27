@@ -39,6 +39,10 @@ class ScopedPermissionsWrite(_AliasModel):
     # If set, server refuses the write when the file mtime has advanced
     # past this value. Prevents clobbering external edits.
     if_unchanged_since: float | None = Field(default=None, alias="ifUnchangedSince")
+    # R-SEC-4: must be explicitly true to persist a dangerous `allow` rule
+    # (bare `*`, bare `Bash`, or any `Tool(*)`). Never set speculatively by
+    # the client — only in direct response to a 409 + user confirmation.
+    confirm_dangerous: bool = Field(default=False, alias="confirmDangerous")
 
 
 class ScopedPermissionsWriteResult(_AliasModel):

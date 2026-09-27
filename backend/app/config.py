@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     port: int = 8765
     frontend_origin: str = "http://localhost:5173"
     log_level: str = "INFO"
+    # Shared auth token for non-trusted-local clients (see app.security).
+    # Empty by default -- a random token is generated + persisted on first
+    # use. Set TRACKER_TOKEN to override (e.g. to pin a token across restarts
+    # without relying on the on-disk file).
+    tracker_token: str = ""
     otel_ingest_url: str = "http://localhost:8765/v1/logs"
     otel_metrics_url: str = "http://localhost:8765/v1/metrics"
     # Host's home directory. Used to translate JSONL host paths

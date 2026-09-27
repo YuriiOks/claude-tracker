@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { fetchPairingToken } from '../api';
 export { useTweaks } from './useTweaks';
 
 const TWEAKS_STYLE = `
@@ -74,7 +75,11 @@ export function TweaksPanel({ title = 'Tweaks', children }) {
   }, [open, clampToViewport]);
 
   useEffect(() => {
+    // R-SEC-11: only trust same-window, same-origin messages. Without this,
+    // any embedded/cross-origin frame could toggle the panel open by posting
+    // `{ type: '__activate_edit_mode' }` at us.
     const onMsg = (e) => {
+      if (e.origin !== window.location.origin || e.source !== window) return;
       const t = e?.data?.type;
       if (t === '__activate_edit_mode') setOpen(true);
       else if (t === '__deactivate_edit_mode') setOpen(false);
@@ -211,6 +216,56 @@ export function TweakSlider({ label, value, min = 0, max = 1, step = 0.01, onCha
         />
       </div>
     </TweakRow>
+  );
+}
+
+// "Pair a phone" — only rendered content when GET /api/auth/pairing succeeds
+// (it's localhost-only server-side, so this silently shows nothing when
+// opened from a paired/remote device). Gives the pairing link + a copy
+// button + a one-line hint to swap localhost for the Mac's LAN IP.
+export function TweakPairing() {
+  const [token, setToken] = useState(null);
+  const [failed, setFailed] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchPairingToken()
+      .then((t) => { if (!cancelled) setToken(t); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, []);
+
+  if (failed || !token) return null;
+
+  const link = `${window.location.origin}/?pair=${token}`;
+  const copy = () => {
+    navigator.clipboard?.writeText(link).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  };
+
+  return (
+    <TweakSection label="Pair a phone">
+      <div className="twk-row">
+        <div className="twk-row twk-row-h" style={{ gap: 6 }}>
+          <input
+            className="twk-field mono"
+            readOnly
+            value={link}
+            onFocus={(e) => e.target.select()}
+            style={{ flex: 1, fontSize: 10 }}
+          />
+          <button type="button" className="twk-field" style={{ width: 'auto', padding: '0 10px', cursor: 'pointer' }} onClick={copy}>
+            {copied ? 'Copied' : 'Copy'}
+          </button>
+        </div>
+        <div style={{ fontSize: 10, lineHeight: 1.4, color: 'rgba(41,38,27,.55)' }}>
+          Open this on another device on the same network — replace <code>localhost</code> with this Mac&apos;s LAN IP.
+        </div>
+      </div>
+    </TweakSection>
   );
 }
 

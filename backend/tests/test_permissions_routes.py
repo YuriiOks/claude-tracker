@@ -23,7 +23,7 @@ async def client():
     from app.main import create_app
     app = create_app()
     async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://localhost"
     ) as c:
         yield c
 
@@ -90,3 +90,59 @@ async def test_unknown_scope_404(claude_dir_override, client):
         "permissions": {"allow": [], "deny": [], "ask": []},
     })
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# R-SEC-4: dangerous-rule confirm gate + rule syntax validation
+# ---------------------------------------------------------------------------
+
+async def test_dangerous_allow_rule_requires_confirmation(claude_dir_override, client):
+    r = await client.put("/api/permissions/scoped", json={
+        "scope": "global",
+        "target": "settings_local",
+        "permissions": {"allow": ["Bash(*)"], "deny": [], "ask": []},
+    })
+    assert r.status_code == 409
+    body = r.json()
+    assert body["detail"] == "confirmation required"
+    assert body["dangerous"] == ["Bash(*)"]
+
+    # Confirming persists the write.
+    r2 = await client.put("/api/permissions/scoped", json={
+        "scope": "global",
+        "target": "settings_local",
+        "permissions": {"allow": ["Bash(*)"], "deny": [], "ask": []},
+        "confirmDangerous": True,
+    })
+    assert r2.status_code == 200
+
+
+async def test_bare_star_and_bare_bash_are_dangerous(claude_dir_override, client):
+    for rule in ("*", "Bash", "Bash( * )", "Read(*)"):
+        r = await client.put("/api/permissions/scoped", json={
+            "scope": "global",
+            "target": "settings_local",
+            "permissions": {"allow": [rule], "deny": [], "ask": []},
+        })
+        assert r.status_code == 409, f"{rule!r} should require confirmation"
+        assert r.json()["dangerous"] == [rule]
+
+
+async def test_dangerous_rule_in_deny_or_ask_does_not_require_confirmation(
+    claude_dir_override, client
+):
+    r = await client.put("/api/permissions/scoped", json={
+        "scope": "global",
+        "target": "settings_local",
+        "permissions": {"allow": [], "deny": ["Bash(*)"], "ask": ["*"]},
+    })
+    assert r.status_code == 200
+
+
+async def test_unbalanced_parens_rejected_422(claude_dir_override, client):
+    r = await client.put("/api/permissions/scoped", json={
+        "scope": "global",
+        "target": "settings_local",
+        "permissions": {"allow": ["Bash(ls:*"], "deny": [], "ask": []},
+    })
+    assert r.status_code == 422

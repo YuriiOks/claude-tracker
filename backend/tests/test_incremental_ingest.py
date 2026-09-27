@@ -353,7 +353,7 @@ async def test_health_responds_promptly_during_slow_synchronous_parse(
         # enter the slow parse call before measuring /api/health against it.
         await asyncio.sleep(0.2)
         transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
             started = time.monotonic()
             res = await asyncio.wait_for(client.get("/api/health"), timeout=1.0)
             elapsed = time.monotonic() - started
@@ -528,7 +528,7 @@ async def test_shrink_across_hours_drops_stale_hour_bucket_for_session_file(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         heat = (await client.get("/api/stats/heatmap")).json()
 
     token_total = sum(sum(day) for day in heat["tokenGrid"])
@@ -604,7 +604,7 @@ async def test_shrink_across_hours_drops_stale_hour_bucket_for_subagent_file(
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         heat = (await client.get("/api/stats/heatmap")).json()
 
     token_total = sum(sum(day) for day in heat["tokenGrid"])

@@ -3412,6 +3412,12 @@ button:focus-visible, a:focus-visible, [role=button]:focus-visible{
   background:var(--dim); border:1px solid var(--brd2); color:var(--cyan);
 }
 .backend-status.bs-mock .dot{ background:var(--cyan); }
+.backend-status.bs-auth{
+  background:color-mix(in srgb, var(--purple) 12%, transparent);
+  border:1px solid color-mix(in srgb, var(--purple) 35%, transparent);
+  color:var(--purple);
+}
+.backend-status.bs-auth .dot{ background:var(--purple); }
 
 /* Compact form on narrow viewports: keep the colored dot + Retry control
    visible (so offline state is still actionable) but visually hide the

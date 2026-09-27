@@ -186,7 +186,7 @@ async def test_write_telemetry_stale_via_router_returns_409(tmp_claude_dir):
     from app.main import create_app
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         res = await c.put(
             "/api/telemetry",
             json={
@@ -195,6 +195,46 @@ async def test_write_telemetry_stale_via_router_returns_409(tmp_claude_dir):
             },
         )
     assert res.status_code == 409
+
+
+# ---------------------------------------------------------------------------
+# R-SEC-5: PUT /api/telemetry endpoint host allowlist
+# ---------------------------------------------------------------------------
+
+async def _put_telemetry(tmp_claude_dir, endpoint):
+    import httpx
+
+    import app.db as _db_module
+    from app.db import init_db
+
+    _db_module._engine = None
+    _db_module._sessionmaker = None
+    await init_db()
+
+    from app.main import create_app
+    app = create_app()
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
+        return await c.put("/api/telemetry", json={"enabled": True, "endpoint": endpoint})
+
+
+@pytest.mark.asyncio
+async def test_telemetry_endpoint_rejects_remote_host(tmp_claude_dir):
+    res = await _put_telemetry(tmp_claude_dir, "http://attacker.example/collect")
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_telemetry_endpoint_rejects_non_http_scheme(tmp_claude_dir):
+    res = await _put_telemetry(tmp_claude_dir, "ftp://localhost/collect")
+    assert res.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_telemetry_endpoint_accepts_allowed_hosts(tmp_claude_dir):
+    for host in ("localhost", "127.0.0.1", "host.docker.internal"):
+        res = await _put_telemetry(tmp_claude_dir, f"http://{host}:4318/v1/logs")
+        assert res.status_code == 200, f"{host} should be accepted"
 
 
 # ---------------------------------------------------------------------------

@@ -38,10 +38,22 @@ export const BackendStatusPill = () => {
     mock: { label: 'MOCK DATA', cls: 'bs-mock' },
     stale: { label: 'cached · ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), cls: 'bs-stale' },
     offline: { label: 'Backend unreachable — showing sample/cached data', cls: 'bs-offline' },
+    // R-SEC-1: the backend is reachable but wants a pairing token. Clicking
+    // the pill opens the Tweaks panel, which hosts the "Pair a phone" section
+    // (see TweaksPanel.jsx) when running on the paired Mac itself.
+    auth: { label: 'Pair this device', hint: 'Open Tweaks → Pair a phone on the Mac running claude-tracker', cls: 'bs-auth' },
   }[state];
   if (!cfg) return null;
+  const openTweaks = () => window.postMessage({ type: '__activate_edit_mode' }, window.location.origin);
   return (
-    <div className={'backend-status ' + cfg.cls} role="status" aria-live="polite">
+    <div
+      className={'backend-status ' + cfg.cls}
+      role="status"
+      aria-live="polite"
+      title={cfg.hint}
+      onClick={state === 'auth' ? openTweaks : undefined}
+      style={state === 'auth' ? { cursor: 'pointer' } : undefined}
+    >
       <span className="dot"></span>
       {/* Full label on desktop; visually collapses to just the dot + retry
           on narrow viewports (see .backend-status media query) but stays in

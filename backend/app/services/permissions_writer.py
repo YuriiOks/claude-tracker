@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -27,6 +28,12 @@ logger = logging.getLogger(__name__)
 BACKUP_KEEP = 10
 ALLOWED_TARGETS = ("settings", "settings_local")
 
+# Matches a bare tool-name wildcard rule: "Bash(*)", "Bash( * )", "Read(*)", ...
+_WILDCARD_TOOL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*\(\s*\*\s*\)$")
+# Exact rules that grant unrestricted access on their own, independent of the
+# regex above (no parens involved).
+_DANGEROUS_EXACT = {"*", "Bash"}
+
 
 class StaleFile(Exception):
     """Raised when the file changed on disk since the client last read it."""
@@ -34,6 +41,39 @@ class StaleFile(Exception):
 
 class ScopeNotFound(Exception):
     """Raised when the requested scope (repo id) doesn't resolve to a path."""
+
+
+class InvalidRule(Exception):
+    """Raised when a permission rule fails basic syntax validation."""
+
+
+class ConfirmationRequired(Exception):
+    """Raised when a write would add dangerous rule(s) to `allow` without
+    the caller having set `confirm_dangerous=True`."""
+
+    def __init__(self, dangerous: list[str]) -> None:
+        self.dangerous = dangerous
+        super().__init__(f"dangerous rule(s) require confirmation: {dangerous}")
+
+
+def _is_dangerous_rule(rule: str) -> bool:
+    """A rule that grants unrestricted access: bare `*`, bare `Bash`, or any
+    `Tool(*)` / `Tool( * )` form."""
+    r = rule.strip()
+    return r in _DANGEROUS_EXACT or bool(_WILDCARD_TOOL_RE.match(r))
+
+
+def _is_balanced(rule: str) -> bool:
+    """True if parentheses in `rule` are balanced (no unmatched open/close)."""
+    depth = 0
+    for ch in rule:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+    return depth == 0
 
 
 def _resolve_scope_dir(scope: str) -> Path:
@@ -137,12 +177,19 @@ def write_permissions(
     target: str,
     permissions: dict,
     if_unchanged_since: float | None = None,
+    confirm_dangerous: bool = False,
 ) -> dict:
     """Replace the permissions block in (scope, target)'s settings file.
 
     Returns {file_path, mtime, backup_path}. Raises StaleFile if the
     on-disk mtime exceeds `if_unchanged_since`. Always makes a backup
     when the file already exists.
+
+    Raises InvalidRule if any rule has unbalanced parentheses. Raises
+    ConfirmationRequired if the resulting `allow` list contains a rule that
+    grants unrestricted access (bare `*`, bare `Bash`, or any `Tool(*)`) and
+    `confirm_dangerous` is not True -- this is a stateless check against the
+    submitted full-state list, not a diff against what was previously saved.
     """
     path = resolve_settings_path(scope, target)
     existed = path.is_file()
@@ -178,11 +225,19 @@ def write_permissions(
             out.append(s)
         return out
 
-    existing["permissions"] = {
-        "allow": _dedupe(permissions.get("allow") or []),
-        "deny": _dedupe(permissions.get("deny") or []),
-        "ask": _dedupe(permissions.get("ask") or []),
-    }
+    allow = _dedupe(permissions.get("allow") or [])
+    deny = _dedupe(permissions.get("deny") or [])
+    ask = _dedupe(permissions.get("ask") or [])
+
+    for rule in (*allow, *deny, *ask):
+        if not _is_balanced(rule):
+            raise InvalidRule(f"unbalanced parentheses in rule: {rule!r}")
+
+    dangerous = [r for r in allow if _is_dangerous_rule(r)]
+    if dangerous and not confirm_dangerous:
+        raise ConfirmationRequired(dangerous)
+
+    existing["permissions"] = {"allow": allow, "deny": deny, "ask": ask}
 
     # Backup BEFORE we touch anything.
     backup_path = ""

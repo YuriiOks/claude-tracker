@@ -6,7 +6,7 @@ import json
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from app.schemas.event import LiveEvent
 from app.services.ingest import fetch_recent_events
@@ -18,7 +18,9 @@ router = APIRouter(tags=["live"])
 
 
 @router.get("/api/live/recent", response_model=list[LiveEvent])
-async def recent(n: int = 60, repo: str | None = None) -> list[LiveEvent]:
+async def recent(
+    n: int = Query(default=60, ge=1, le=2000), repo: str | None = None
+) -> list[LiveEvent]:
     rows = await fetch_recent_events(limit=n, repo=repo)
     if not rows:
         return []

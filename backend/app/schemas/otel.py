@@ -3,9 +3,15 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
+
+# R-SEC-5: the only hosts a Claude Code OTel exporter should ever be pointed
+# at from this dashboard -- anything else risks redirecting the owner's real
+# prompt/token telemetry to an attacker-controlled collector.
+_ALLOWED_ENDPOINT_HOSTS = {"localhost", "127.0.0.1", "host.docker.internal"}
 
 
 class _CamelModel(BaseModel):
@@ -136,6 +142,24 @@ class TelemetryConfigWrite(_CamelModel):
     log_user_prompts: bool = False
     endpoint: str | None = None
     if_unchanged_since: float | None = None
+
+    @field_validator("endpoint")
+    @classmethod
+    def _validate_endpoint(cls, v: str | None) -> str | None:
+        """R-SEC-5: reject any exporter endpoint that isn't localhost /
+        127.0.0.1 / host.docker.internal -- this field ends up in the
+        owner's real ~/.claude/settings.json OTel exporter config, so an
+        unconstrained value is a prompt-exfiltration vector."""
+        if not v:
+            return v
+        parts = urlsplit(v)
+        if parts.scheme not in ("http", "https"):
+            raise ValueError("endpoint must be an http(s) URL")
+        if not parts.hostname or parts.hostname.lower() not in _ALLOWED_ENDPOINT_HOSTS:
+            raise ValueError(
+                f"endpoint host must be one of {sorted(_ALLOWED_ENDPOINT_HOSTS)}"
+            )
+        return v
 
 
 class TelemetryWriteResponse(TelemetryConfig):

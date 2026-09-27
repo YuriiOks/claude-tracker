@@ -13,11 +13,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react": "19.2.5",
-    "react-dom": "19.2.5",
-    "marked": "15.0.7",
+    "dompurify": "3.4.16",
     "highlight.js": "11.10.0",
-    "marked-highlight": "2.2.1"
+    "marked": "15.0.7",
+    "marked-highlight": "2.2.1",
+    "react": "19.2.5",
+    "react-dom": "19.2.5"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
