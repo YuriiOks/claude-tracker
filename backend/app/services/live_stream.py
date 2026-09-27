@@ -94,6 +94,23 @@ def get_hub() -> Hub:
 
 
 # ---------------------------------------------------------------------------
+# Ingest signal -- lets the background ingest task (app.main._ingest_loop)
+# react to a JSONL change within ~1-2s instead of waiting for its periodic
+# safety-sweep interval. Purely in-memory / best-effort and independent of
+# this module's own `_offsets` tailer above: this queue only carries WHICH
+# paths changed so ingest.py's persisted per-file cursors (ingest_file_state)
+# can be advanced -- it doesn't carry parsed content. Unbounded: a burst is
+# naturally capped by however many files watchfiles reports in one
+# change_set, and Path objects are tiny.
+# ---------------------------------------------------------------------------
+_ingest_signal_queue: asyncio.Queue[Path] = asyncio.Queue()
+
+
+def get_ingest_signal_queue() -> asyncio.Queue[Path]:
+    return _ingest_signal_queue
+
+
+# ---------------------------------------------------------------------------
 # Tailer
 # ---------------------------------------------------------------------------
 
@@ -274,6 +291,9 @@ async def _watch_loop(projects_dir: Path, hub: Hub) -> None:
             step=25,
         ):
             paths = {Path(p) for _ch, p in change_set}
+            signal_queue = get_ingest_signal_queue()
+            for p in paths:
+                signal_queue.put_nowait(p)
             await _emit_for_changes(paths, hub)
     except asyncio.CancelledError:
         logger.info("live_stream watcher cancelled")

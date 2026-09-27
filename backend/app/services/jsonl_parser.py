@@ -225,30 +225,223 @@ def _price(model: str | None) -> ModelPrice:
 _EDIT_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 
-def parse_jsonl(
-    path: Path, repo_paths: list[Path]
-) -> tuple[SessionSummary | None, list[ParsedEvent]]:
-    """Stream-parse one JSONL file; return (summary, events).
-
-    Returns (None, []) if the file is empty or unreadable.
+@dataclass
+class _ParseState:
+    """Mutable accumulator threaded through `_process_line` by both the
+    full-file parser (`parse_jsonl`) and the incremental delta parser
+    (`parse_jsonl_incremental`). For a full parse it starts empty; for an
+    incremental parse it starts pre-seeded with whatever this file's prior
+    increment(s) already established (session_id, repo, agent_name,
+    task_text, seen_message_ids) so a growing file's tail reads exactly the
+    same as if the whole file had been parsed in one pass.
     """
-    if not path.is_file():
-        return None, []
 
-    events: list[ParsedEvent] = []
     session_id: str | None = None
     repo: str = "unknown"
     started_at: datetime | None = None
     last_ts: datetime | None = None
     agent_name: str | None = None
     task_text: str | None = None
-    tokens = 0
-    cost = 0.0
-    edits = 0
+    tokens: int = 0
+    cost: float = 0.0
+    edits: int = 0
     model_seen: str | None = None
-    seen_message_ids: set[str] = set()
-    hourly_tokens: dict = {}
-    message_usage: dict = {}
+    seen_message_ids: set[str] = field(default_factory=set)
+    hourly_tokens: dict = field(default_factory=dict)
+    message_usage: dict = field(default_factory=dict)
+
+
+def _process_line(
+    raw: str, repo_paths: list[Path], state: _ParseState, events: list[ParsedEvent]
+) -> None:
+    """Parse one JSONL line, mutating `state` in place and appending any
+    ParsedEvent(s) it produces. Shared by the full and incremental parsers
+    so a line means exactly the same thing regardless of which one reads it.
+    """
+    try:
+        obj = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+
+    t = obj.get("type", "")
+    state.session_id = state.session_id or obj.get("sessionId")
+    cwd = obj.get("cwd")
+    if cwd and state.repo == "unknown":
+        state.repo = _repo_from_cwd(cwd, repo_paths)
+
+    ts = _ts(obj)
+    if ts is not None:
+        if state.started_at is None:
+            state.started_at = ts
+        state.last_ts = ts
+
+    if t == "agent-name":
+        state.agent_name = obj.get("agentName") or state.agent_name
+
+    elif t == "user":
+        msg = obj.get("message", {}) or {}
+        text = _content_text(msg.get("content", "")) or ""
+        if state.task_text is None and text and not text.startswith("[system"):
+            state.task_text = text[:160]
+        if text.startswith("/") and ts is not None:
+            cmd = text.split()[0]
+            events.append(ParsedEvent(ts, state.repo, "command", {"cmd": cmd, "msg": text[:140]}))
+
+    elif t == "assistant":
+        msg = obj.get("message", {}) or {}
+        state.model_seen = msg.get("model") or state.model_seen
+        msg_id = msg.get("id")
+        usage = msg.get("usage", {}) or {}
+        # Claude Code splits one logical assistant turn (thinking / text /
+        # each tool_use block) across multiple JSONL lines that all share
+        # the same message.id and all repeat the SAME consolidated,
+        # non-delta usage object. Only fold usage in once per unique
+        # message.id -- otherwise tokens/cost get summed once per split
+        # line (measured ~7x inflation vs. a deduped baseline on a real
+        # transcript). A set (not just "differs from the last seen id")
+        # catches non-consecutive repeats too. Lines with no id (older
+        # format) always count, since we cannot tell whether they
+        # duplicate a prior turn, and can't be cross-file deduped either.
+        # For an incremental parse, `state.seen_message_ids` is pre-seeded
+        # with every id this same file already counted in a PRIOR
+        # increment (from message_ledger) -- this is what stops a message
+        # whose split lines straddle the increment boundary from being
+        # double-counted when its later half is read on the next tick.
+        is_new_turn = msg_id is None or msg_id not in state.seen_message_ids
+        if msg_id is not None:
+            state.seen_message_ids.add(msg_id)
+        if is_new_turn:
+            in_tok = int(usage.get("input_tokens", 0) or 0)
+            out_tok = int(usage.get("output_tokens", 0) or 0)
+            cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
+            cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
+            # Headline tokens = generation work (input + output + cache_creation).
+            # cache_read_input_tokens is intentionally excluded from the TOKEN
+            # count (though it IS billed, see cost below): long-lived sessions
+            # can re-read the same 80k-token cached system prompt thousands of
+            # times -- a single 8h session can easily accumulate 670M cache_read
+            # tokens against just 1.3M output, inflating the headline "tokens"
+            # figure by ~100x in a way that does not reflect actual generation
+            # effort. This keeps the dashboard's token story consistent with
+            # Claude Code's own definition (input + output + cache writes) while
+            # still charging real dollars for cache reads in `cost` below.
+            turn_tokens = in_tok + out_tok + cache_write
+            price = _price(state.model_seen)
+            turn_cost = (in_tok / 1_000_000) * price.input
+            turn_cost += (out_tok / 1_000_000) * price.output
+            # Cache writes: Anthropic bills the 5-minute-TTL tier at 1.25x
+            # input and the 1-hour-TTL tier at 2x input -- real usage is
+            # overwhelmingly 1h-TTL, so blending everything at the flat 1.25x
+            # rate understated cost. Split by TTL when the API tells us
+            # (usage.cache_creation.{ephemeral_1h,ephemeral_5m}_input_tokens),
+            # falling back to the flat 1.25x-of-the-summed-total only for the
+            # older/rarer response shape that omits the sub-object entirely.
+            cache_detail = usage.get("cache_creation")
+            if isinstance(cache_detail, dict):
+                cache_1h = int(cache_detail.get("ephemeral_1h_input_tokens", 0) or 0)
+                cache_5m = int(cache_detail.get("ephemeral_5m_input_tokens", 0) or 0)
+                turn_cost += (cache_1h / 1_000_000) * price.input * 2.0
+                turn_cost += (cache_5m / 1_000_000) * price.input * 1.25
+            else:
+                turn_cost += (cache_write / 1_000_000) * price.input * 1.25
+            # Cache reads are billed too (at a model-specific fraction of the
+            # input rate -- see ModelPrice.cache_read_mult) even though they're
+            # excluded from the token headline above: a dashboard cost figure
+            # that ignores them is a floor, not real spend, on any session that
+            # uses prompt caching (effectively all Claude Code sessions).
+            turn_cost += (cache_read / 1_000_000) * price.input * price.cache_read_mult
+            state.tokens += turn_tokens
+            state.cost += turn_cost
+            hour_key = None
+            if ts is not None and turn_tokens > 0:
+                hour_key = ts.replace(minute=0, second=0, microsecond=0)
+                state.hourly_tokens[hour_key] = state.hourly_tokens.get(hour_key, 0) + turn_tokens
+            if msg_id is not None:
+                state.message_usage[msg_id] = (turn_tokens, turn_cost, hour_key)
+
+        content = msg.get("content", [])
+        if isinstance(content, list) and ts is not None:
+            for c in content:
+                if not isinstance(c, dict) or c.get("type") != "tool_use":
+                    continue
+                tool = c.get("name", "")
+                ti = c.get("input", {}) or {}
+                if tool in _EDIT_TOOLS:
+                    state.edits += 1
+                if tool in ("Task", "Agent"):
+                    target = ti.get("subagent_type") or ti.get("description", "")
+                    events.append(
+                        ParsedEvent(
+                            ts,
+                            state.repo,
+                            "delegate",
+                            {
+                                "from": state.agent_name or "main",
+                                "to": str(target),
+                                "msg": str(ti.get("prompt", ""))[:140],
+                            },
+                        )
+                    )
+                elif tool == "Skill":
+                    skill_name = (
+                        ti.get("skill")
+                        or ti.get("path")
+                        or ti.get("name")
+                        or "skill"
+                    )
+                    events.append(
+                        ParsedEvent(ts, state.repo, "skill", {"skill": str(skill_name)})
+                    )
+                else:
+                    target = (
+                        ti.get("file_path")
+                        or ti.get("path")
+                        or ti.get("command")
+                        or ti.get("pattern")
+                        or ""
+                    )
+                    events.append(
+                        ParsedEvent(
+                            ts,
+                            state.repo,
+                            "tool",
+                            {"tool": tool, "target": str(target)[:200]},
+                        )
+                    )
+
+    elif t == "system":
+        sub = obj.get("subtype", "")
+        if "permission" in sub.lower() and ts is not None:
+            events.append(
+                ParsedEvent(
+                    ts,
+                    state.repo,
+                    "permission",
+                    {
+                        "level": obj.get("level", "ask"),
+                        "action": obj.get("action", ""),
+                        "granted": bool(obj.get("granted", False)),
+                    },
+                )
+            )
+
+    # Unknown types are silently dropped.
+
+
+def parse_jsonl(
+    path: Path, repo_paths: list[Path]
+) -> tuple[SessionSummary | None, list[ParsedEvent]]:
+    """Stream-parse one JSONL file from byte 0; return (summary, events).
+
+    Returns (None, []) if the file is empty or unreadable. Full-file totals
+    -- for a growing file, prefer `parse_jsonl_incremental` so an ingest
+    tick doesn't re-read+re-parse bytes it already accounted for.
+    """
+    if not path.is_file():
+        return None, []
+
+    events: list[ParsedEvent] = []
+    state = _ParseState()
 
     try:
         fh = path.open("r", encoding="utf-8", errors="replace")
@@ -261,171 +454,9 @@ def parse_jsonl(
             raw = raw.strip()
             if not raw:
                 continue
-            try:
-                obj = json.loads(raw)
-            except json.JSONDecodeError:
-                continue
+            _process_line(raw, repo_paths, state, events)
 
-            t = obj.get("type", "")
-            session_id = session_id or obj.get("sessionId")
-            cwd = obj.get("cwd")
-            if cwd and repo == "unknown":
-                repo = _repo_from_cwd(cwd, repo_paths)
-
-            ts = _ts(obj)
-            if ts is not None:
-                if started_at is None:
-                    started_at = ts
-                last_ts = ts
-
-            if t == "agent-name":
-                agent_name = obj.get("agentName") or agent_name
-
-            elif t == "user":
-                msg = obj.get("message", {}) or {}
-                text = _content_text(msg.get("content", "")) or ""
-                if task_text is None and text and not text.startswith("[system"):
-                    task_text = text[:160]
-                if text.startswith("/") and ts is not None:
-                    cmd = text.split()[0]
-                    events.append(ParsedEvent(ts, repo, "command", {"cmd": cmd, "msg": text[:140]}))
-
-            elif t == "assistant":
-                msg = obj.get("message", {}) or {}
-                model_seen = msg.get("model") or model_seen
-                msg_id = msg.get("id")
-                usage = msg.get("usage", {}) or {}
-                # Claude Code splits one logical assistant turn (thinking / text /
-                # each tool_use block) across multiple JSONL lines that all share
-                # the same message.id and all repeat the SAME consolidated,
-                # non-delta usage object. Only fold usage in once per unique
-                # message.id -- otherwise tokens/cost get summed once per split
-                # line (measured ~7x inflation vs. a deduped baseline on a real
-                # transcript). A set (not just "differs from the last seen id")
-                # catches non-consecutive repeats too. Lines with no id (older
-                # format) always count, since we cannot tell whether they
-                # duplicate a prior turn, and can't be cross-file deduped either.
-                is_new_turn = msg_id is None or msg_id not in seen_message_ids
-                if msg_id is not None:
-                    seen_message_ids.add(msg_id)
-                if is_new_turn:
-                    in_tok = int(usage.get("input_tokens", 0) or 0)
-                    out_tok = int(usage.get("output_tokens", 0) or 0)
-                    cache_write = int(usage.get("cache_creation_input_tokens", 0) or 0)
-                    cache_read = int(usage.get("cache_read_input_tokens", 0) or 0)
-                    # Headline tokens = generation work (input + output + cache_creation).
-                    # cache_read_input_tokens is intentionally excluded from the TOKEN
-                    # count (though it IS billed, see cost below): long-lived sessions
-                    # can re-read the same 80k-token cached system prompt thousands of
-                    # times -- a single 8h session can easily accumulate 670M cache_read
-                    # tokens against just 1.3M output, inflating the headline "tokens"
-                    # figure by ~100x in a way that does not reflect actual generation
-                    # effort. This keeps the dashboard's token story consistent with
-                    # Claude Code's own definition (input + output + cache writes) while
-                    # still charging real dollars for cache reads in `cost` below.
-                    turn_tokens = in_tok + out_tok + cache_write
-                    price = _price(model_seen)
-                    turn_cost = (in_tok / 1_000_000) * price.input
-                    turn_cost += (out_tok / 1_000_000) * price.output
-                    # Cache writes: Anthropic bills the 5-minute-TTL tier at 1.25x
-                    # input and the 1-hour-TTL tier at 2x input -- real usage is
-                    # overwhelmingly 1h-TTL, so blending everything at the flat 1.25x
-                    # rate understated cost. Split by TTL when the API tells us
-                    # (usage.cache_creation.{ephemeral_1h,ephemeral_5m}_input_tokens),
-                    # falling back to the flat 1.25x-of-the-summed-total only for the
-                    # older/rarer response shape that omits the sub-object entirely.
-                    cache_detail = usage.get("cache_creation")
-                    if isinstance(cache_detail, dict):
-                        cache_1h = int(cache_detail.get("ephemeral_1h_input_tokens", 0) or 0)
-                        cache_5m = int(cache_detail.get("ephemeral_5m_input_tokens", 0) or 0)
-                        turn_cost += (cache_1h / 1_000_000) * price.input * 2.0
-                        turn_cost += (cache_5m / 1_000_000) * price.input * 1.25
-                    else:
-                        turn_cost += (cache_write / 1_000_000) * price.input * 1.25
-                    # Cache reads are billed too (at a model-specific fraction of the
-                    # input rate -- see ModelPrice.cache_read_mult) even though they're
-                    # excluded from the token headline above: a dashboard cost figure
-                    # that ignores them is a floor, not real spend, on any session that
-                    # uses prompt caching (effectively all Claude Code sessions).
-                    turn_cost += (cache_read / 1_000_000) * price.input * price.cache_read_mult
-                    tokens += turn_tokens
-                    cost += turn_cost
-                    hour_key = None
-                    if ts is not None and turn_tokens > 0:
-                        hour_key = ts.replace(minute=0, second=0, microsecond=0)
-                        hourly_tokens[hour_key] = hourly_tokens.get(hour_key, 0) + turn_tokens
-                    if msg_id is not None:
-                        message_usage[msg_id] = (turn_tokens, turn_cost, hour_key)
-
-                content = msg.get("content", [])
-                if isinstance(content, list) and ts is not None:
-                    for c in content:
-                        if not isinstance(c, dict) or c.get("type") != "tool_use":
-                            continue
-                        tool = c.get("name", "")
-                        ti = c.get("input", {}) or {}
-                        if tool in _EDIT_TOOLS:
-                            edits += 1
-                        if tool in ("Task", "Agent"):
-                            target = ti.get("subagent_type") or ti.get("description", "")
-                            events.append(
-                                ParsedEvent(
-                                    ts,
-                                    repo,
-                                    "delegate",
-                                    {
-                                        "from": agent_name or "main",
-                                        "to": str(target),
-                                        "msg": str(ti.get("prompt", ""))[:140],
-                                    },
-                                )
-                            )
-                        elif tool == "Skill":
-                            skill_name = (
-                                ti.get("skill")
-                                or ti.get("path")
-                                or ti.get("name")
-                                or "skill"
-                            )
-                            events.append(
-                                ParsedEvent(ts, repo, "skill", {"skill": str(skill_name)})
-                            )
-                        else:
-                            target = (
-                                ti.get("file_path")
-                                or ti.get("path")
-                                or ti.get("command")
-                                or ti.get("pattern")
-                                or ""
-                            )
-                            events.append(
-                                ParsedEvent(
-                                    ts,
-                                    repo,
-                                    "tool",
-                                    {"tool": tool, "target": str(target)[:200]},
-                                )
-                            )
-
-            elif t == "system":
-                sub = obj.get("subtype", "")
-                if "permission" in sub.lower() and ts is not None:
-                    events.append(
-                        ParsedEvent(
-                            ts,
-                            repo,
-                            "permission",
-                            {
-                                "level": obj.get("level", "ask"),
-                                "action": obj.get("action", ""),
-                                "granted": bool(obj.get("granted", False)),
-                            },
-                        )
-                    )
-
-            # Unknown types are silently dropped.
-
-    if session_id is None or started_at is None or last_ts is None:
+    if state.session_id is None or state.started_at is None or state.last_ts is None:
         return None, []
 
     try:
@@ -434,22 +465,145 @@ def parse_jsonl(
         mtime = 0.0
 
     summary = SessionSummary(
-        session_id=session_id,
-        repo=repo,
-        started_at=started_at,
-        last_event_at=last_ts,
-        agent=agent_name,
-        task=task_text,
+        session_id=state.session_id,
+        repo=state.repo,
+        started_at=state.started_at,
+        last_event_at=state.last_ts,
+        agent=state.agent_name,
+        task=state.task_text,
         status="completed",
-        tokens=tokens,
-        cost=round(cost, 4),
-        edits=edits,
+        tokens=state.tokens,
+        cost=round(state.cost, 4),
+        edits=state.edits,
         file_path=str(path),
         file_mtime=mtime,
     )
-    summary.hourly_tokens = hourly_tokens
-    summary.message_usage = message_usage
+    summary.hourly_tokens = state.hourly_tokens
+    summary.message_usage = state.message_usage
     return summary, events
+
+
+@dataclass
+class IncrementalParseResult:
+    """Result of parsing only the bytes appended to a file since a prior
+    offset. `summary` (when not None) holds ONLY this increment's DELTA --
+    tokens/cost/edits/hourly_tokens/message_usage are amounts to ADD to the
+    stored row, never the file's running total. `repo`/`agent_name`/
+    `task_text`/`session_id` are the (possibly newly-resolved, possibly
+    unchanged) continuation state the caller must persist for the next
+    increment even when `summary` is None (e.g. a delta that only contained
+    a bare `agent-name` record still needs its `agent_name` carried
+    forward).
+    """
+
+    new_offset: int
+    summary: SessionSummary | None
+    events: list[ParsedEvent] = field(default_factory=list)
+    last_ts: datetime | None = None
+    repo: str = "unknown"
+    agent_name: str | None = None
+    task_text: str | None = None
+    session_id: str | None = None
+
+
+def parse_jsonl_incremental(
+    path: Path,
+    repo_paths: list[Path],
+    start_offset: int,
+    seen_message_ids: set[str],
+    *,
+    session_id: str | None = None,
+    repo: str = "unknown",
+    agent_name: str | None = None,
+    task_text: str | None = None,
+) -> IncrementalParseResult:
+    """Parse only the bytes appended since `start_offset`.
+
+    Mirrors live_stream._tail_new_lines's byte-offset discipline: only
+    advances past the LAST complete newline in the new bytes, so a trailing
+    partial line (a concurrent writer mid-flush) is left unread -- the
+    caller must NOT advance its stored offset past `new_offset` and must
+    retry from the same `start_offset` on the next tick.
+
+    `seen_message_ids` seeds the in-file split-turn dedup with every
+    message id this exact file has already fully counted in a PRIOR
+    increment (the caller looks this up from message_ledger, scoped to this
+    file's own path) -- without this seed, a message whose repeated
+    usage-carrying JSONL lines straddle the previous increment's offset
+    boundary would have its tokens/cost counted a second time when the
+    later split line is seen in this increment.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return IncrementalParseResult(start_offset, None, repo=repo, agent_name=agent_name,
+                                       task_text=task_text, session_id=session_id)
+    if size <= start_offset:
+        return IncrementalParseResult(start_offset, None, repo=repo, agent_name=agent_name,
+                                       task_text=task_text, session_id=session_id)
+
+    try:
+        with path.open("rb") as fh:
+            fh.seek(start_offset)
+            chunk = fh.read()
+    except OSError:
+        return IncrementalParseResult(start_offset, None, repo=repo, agent_name=agent_name,
+                                       task_text=task_text, session_id=session_id)
+
+    last_nl = chunk.rfind(b"\n")
+    if last_nl == -1:
+        # No complete line yet -- leave the offset untouched, exactly like
+        # live_stream._tail_new_lines.
+        return IncrementalParseResult(start_offset, None, repo=repo, agent_name=agent_name,
+                                       task_text=task_text, session_id=session_id)
+
+    complete = chunk[: last_nl + 1]
+    new_offset = start_offset + last_nl + 1
+    text = complete.decode("utf-8", errors="replace")
+
+    events: list[ParsedEvent] = []
+    state = _ParseState(
+        session_id=session_id,
+        repo=repo,
+        agent_name=agent_name,
+        task_text=task_text,
+        seen_message_ids=set(seen_message_ids),
+    )
+    for raw in text.splitlines():
+        raw = raw.strip()
+        if not raw:
+            continue
+        _process_line(raw, repo_paths, state, events)
+
+    if state.session_id is None or state.last_ts is None:
+        # Nothing usable in this increment (e.g. only a bare agent-name
+        # record, or blank lines) -- still report the advanced offset and
+        # whatever continuation state DID change so the caller can persist
+        # it, but there is no numeric delta to merge.
+        return IncrementalParseResult(
+            new_offset, None, events, last_ts=state.last_ts, repo=state.repo,
+            agent_name=state.agent_name, task_text=state.task_text, session_id=state.session_id,
+        )
+
+    delta = SessionSummary(
+        session_id=state.session_id,
+        repo=state.repo,
+        started_at=state.started_at or state.last_ts,
+        last_event_at=state.last_ts,
+        agent=state.agent_name,
+        task=state.task_text,
+        tokens=state.tokens,
+        cost=round(state.cost, 4),
+        edits=state.edits,
+        file_path=str(path),
+        file_mtime=0.0,
+    )
+    delta.hourly_tokens = state.hourly_tokens
+    delta.message_usage = state.message_usage
+    return IncrementalParseResult(
+        new_offset, delta, events, last_ts=state.last_ts, repo=state.repo,
+        agent_name=state.agent_name, task_text=state.task_text, session_id=state.session_id,
+    )
 
 
 def iter_jsonl_files(projects_dir: Path) -> Iterator[Path]:
