@@ -249,6 +249,35 @@ export const AGENT_META = {
   },
 };
 
+// CostPage (Misc.jsx) reads byRepo/byAgent straight from useCost() — the
+// mock has to carry its own shape rather than deriving from REPOS.stats, so
+// mock mode exercises the same "tracked" flag + untracked-project row the
+// real backend now sends. `tracked: true` matches REPOS 1:1; the extra
+// "scratch-notebook" entry has no REPOS card and models a project the
+// backend saw in ~/.claude/projects/ but that isn't a tracked repo.
+export const COST = {
+  windowDays: 7,
+  totalTokens: 4_820_000 + 980_000 + 1_640_000 + 210_000 + 340_000,
+  totalCost: 38.42 + 7.84 + 12.91 + 1.62 + 2.65,
+  byRepo: [
+    { repo: "jupus", tokens: 4_820_000, cost: 38.42, tracked: true },
+    { repo: "anita", tokens: 1_640_000, cost: 12.91, tracked: true },
+    { repo: "voice", tokens: 980_000, cost: 7.84, tracked: true },
+    { repo: "scratch-notebook", tokens: 340_000, cost: 2.65, tracked: false },
+    { repo: "mcp-presentation", tokens: 210_000, cost: 1.62, tracked: true },
+  ],
+  byAgent: [
+    { agent: "backend-engineer", calls: 12, tokens: 1_020_000, cost: 8.12 },
+    { agent: "ai-developer", calls: 9, tokens: 890_000, cost: 7.05 },
+    { agent: "jupus-test-engineer", calls: 11, tokens: 640_000, cost: 5.11 },
+    { agent: "frontend-engineer", calls: 6, tokens: 480_000, cost: 3.84 },
+    { agent: "rag-architect", calls: 5, tokens: 410_000, cost: 3.28 },
+    { agent: "jupus-orchestrator", calls: 8, tokens: 320_000, cost: 2.56 },
+    { agent: "jupus-devops", calls: 4, tokens: 180_000, cost: 1.44 },
+    { agent: "document-specialist", calls: 1, tokens: 52_800, cost: 0.42 },
+  ],
+};
+
 // sessionId is additive here: it lets NebulaGraph's resolveEventActor()
 // attribute an event to a live session (matching useActiveAgents' mock rows,
 // which use "m1"/"m2") the same way the real backend's WS/REST feed does.
