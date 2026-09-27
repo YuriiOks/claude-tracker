@@ -190,7 +190,8 @@ def test_parse_jsonl_splits_cache_write_by_ttl_when_present(tmp_path: Path) -> N
     assert summary is not None
     assert summary.tokens == 100_015  # headline still uses the flat cache-write sum
     # 10/1e6*3 + 5/1e6*15 + 90_000/1e6*3*2.0 (1h) + 10_000/1e6*3*1.25 (5m)
-    assert summary.cost == pytest.approx(0.577605, abs=1e-6)
+    # parse_jsonl rounds cost to 4 dp (round(state.cost, 4)).
+    assert summary.cost == pytest.approx(round(0.577605, 4), abs=1e-9)
 
 
 def test_parse_jsonl_flat_cache_write_fallback_when_ttl_absent(tmp_path: Path) -> None:
@@ -222,7 +223,8 @@ def test_parse_jsonl_flat_cache_write_fallback_when_ttl_absent(tmp_path: Path) -
     assert summary is not None
     assert summary.tokens == 100_015
     # 10/1e6*3 + 5/1e6*15 + 100_000/1e6*3*1.25 (flat fallback)
-    assert summary.cost == pytest.approx(0.375105, abs=1e-6)
+    # parse_jsonl rounds cost to 4 dp (round(state.cost, 4)).
+    assert summary.cost == pytest.approx(round(0.375105, 4), abs=1e-9)
 
 
 def test_parse_jsonl_warns_once_for_unknown_model(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
