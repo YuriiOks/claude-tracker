@@ -13,6 +13,7 @@
 // (`repoId` + `relPath` props → /api/files/:repo/:path).
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
@@ -64,6 +65,26 @@ marked.setOptions({ gfm: true, breaks: false, headerIds: false, mangle: false })
 
 // ──────────────────────── marked extensions (A2/A3/B1) ────────────────────────
 
+// R-SEC-2: escape text destined for an HTML attribute or text node that the
+// renderer builds by hand (marked itself already escapes inline text, but
+// values we splice in ourselves — code-fence language, link titles — need
+// the same treatment before DOMPurify gets a pass at the whole document).
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// R-SEC-2: allow-list link hrefs — http(s), mailto, in-page anchors, and
+// relative paths. Rejects `javascript:`, `data:`, protocol-relative `//`,
+// and any other scheme.
+function isSafeHref(rawHref) {
+  const href = String(rawHref || '').trim();
+  if (!href) return false;
+  if (href.startsWith('#')) return true;
+  if (href.startsWith('//')) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href)) return /^(https?|mailto):/i.test(href);
+  return true; // relative path, e.g. foo/bar.md, ./x, ../y, /abs/path
+}
+
 // Stable kebab-case slug for heading anchors (A2)
 function slugify(text) {
   return String(text)
@@ -102,10 +123,13 @@ function buildRenderer({ collectHeadings }) {
 
   renderer.code = function ({ text, lang }) {
     // text is the raw code (markedHighlight is intentionally NOT registered).
-    const langLabel = (lang || '').trim();
+    const rawLangLabel = (lang || '').trim();
+    // R-SEC-2: the fence language comes straight from the markdown source
+    // (```<lang>) — escape before it lands in an attribute or text node.
+    const langLabel = escapeHtml(rawLangLabel);
     let highlighted;
     try {
-      const language = langLabel && hljs.getLanguage(langLabel) ? langLabel : 'plaintext';
+      const language = rawLangLabel && hljs.getLanguage(rawLangLabel) ? rawLangLabel : 'plaintext';
       highlighted = hljs.highlight(text, { language, ignoreIllegals: true }).value;
     } catch {
       highlighted = text.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
@@ -138,16 +162,20 @@ function buildRenderer({ collectHeadings }) {
 
   renderer.link = function ({ href, title, tokens }) {
     const text = this.parser.parseInline(tokens);
-    const titleAttr = title ? ` title="${title}"` : '';
+    // R-SEC-2: reject javascript:/data:/protocol-relative/unknown-scheme
+    // hrefs outright — render as plain (inert) text instead of a link.
+    if (!isSafeHref(href)) return text;
+    const safeHref = escapeHtml(href);
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
     // External link → arrow icon (B4)
     if (/^https?:\/\//i.test(href)) {
-      return `<a href="${href}"${titleAttr} class="md-link md-link-external" target="_blank" rel="noopener">${text}<span class="md-link-arrow" aria-hidden="true">↗</span></a>`;
+      return `<a href="${safeHref}"${titleAttr} class="md-link md-link-external" target="_blank" rel="noopener">${text}<span class="md-link-arrow" aria-hidden="true">↗</span></a>`;
     }
     // In-repo .md / .html link → handled by click delegate (B4)
     if (/\.(md|html?)(#.*)?$/i.test(href) && !href.startsWith('#')) {
-      return `<a href="${href}"${titleAttr} class="md-link md-link-inrepo" data-inrepo="${href}">${text}</a>`;
+      return `<a href="${safeHref}"${titleAttr} class="md-link md-link-inrepo" data-inrepo="${safeHref}">${text}</a>`;
     }
-    return `<a href="${href}"${titleAttr} class="md-link">${text}</a>`;
+    return `<a href="${safeHref}"${titleAttr} class="md-link">${text}</a>`;
   };
 
   return renderer;
@@ -368,6 +396,20 @@ function TableOfContents({ headings, scrollContainer }) {
   );
 }
 
+// R-SEC-2: DOMPurify pass over the fully-rendered HTML (our own renderer
+// markup + whatever raw HTML the source markdown contained). DOMPurify's
+// default profile already covers the plain-html + svg tags/attrs our
+// renderer emits (headings, code chrome, alerts, the copy-button svg icon);
+// ADD_ATTR only needs to whitelist the two data-* hooks the click delegate
+// reads, since DOMPurify's default profile drops unrecognized data-*.
+const SANITIZE_CONFIG = {
+  ADD_ATTR: ['data-clipboard', 'data-inrepo', 'target'],
+};
+
+function sanitizeHtml(html) {
+  return DOMPurify.sanitize(html, SANITIZE_CONFIG);
+}
+
 // ──────────────────────── component ────────────────────────
 
 const MarkdownPanel = ({
@@ -400,9 +442,9 @@ const MarkdownPanel = ({
     const renderer = buildRenderer({ collectHeadings: collected });
     try {
       const out = marked.parse(body, { renderer });
-      return { html: out, headings: collected };
+      return { html: sanitizeHtml(out), headings: collected };
     } catch (e) {
-      return { html: `<pre>${String(e)}</pre>`, headings: [] };
+      return { html: `<pre>${escapeHtml(String(e))}</pre>`, headings: [] };
     }
   }, [body, mode, isHtml, content]);
 
@@ -483,7 +525,13 @@ const MarkdownPanel = ({
                     title={headerPath || 'embedded html'}
                     className="md-panel-iframe md-panel-iframe-tall"
                     srcDoc={fillTemplatePlaceholders(content)}
-                    sandbox="allow-same-origin allow-scripts"
+                    // R-SEC-2: no `allow-same-origin`. Combined with
+                    // `allow-scripts`, the iframe runs in a unique opaque
+                    // origin — any script the doc contains (e.g. an
+                    // html-docs slider/toggle) still runs, but it can't
+                    // reach this app's DOM, cookies, or localStorage, and
+                    // gets its own storage partition instead of ours.
+                    sandbox="allow-scripts"
                   />
                 : (
                   <div className="md-panel-html-wrap">

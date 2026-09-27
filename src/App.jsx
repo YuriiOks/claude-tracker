@@ -27,10 +27,12 @@ const TweakSection   = lazy(() => import('./components/TweaksPanel').then(m => (
 const TweakRadio     = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakRadio })));
 const TweakToggle    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakToggle })));
 const TweakSelect    = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakSelect })));
+const TweakPairing   = lazy(() => import('./components/TweaksPanel').then(m => ({ default: m.TweakPairing })));
 
 import { useRepos, useGlobal, useSessions, useLiveEvents, useActiveAgents } from './api';
 import { ROUTE_BY_ID } from './routes';
 import { useRoute } from './useRoute';
+import { usePairing } from './usePairing';
 
 const TWEAK_DEFAULTS = {
   theme: 'light',
@@ -88,6 +90,7 @@ function ReposView({ repos, onOpen, layout, liveAgents }) {
 }
 
 function App() {
+  usePairing(); // captures ?pair=<token> from a pairing link, see src/usePairing.js
   const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS, hydrateTweaks);
   const [route, setRoute, goBack] = useRoute();  // URL routing — pushState + popstate
   // R-UX-1/R-A11Y-1: seed collapsed from the same breakpoint the CSS media
@@ -292,7 +295,7 @@ function App() {
           theme={tweaks.theme}
           setTheme={(t) => setTweak('theme', t)}
           allLive={allLive}
-          onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, '*')}
+          onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, window.location.origin)}
         />
         <div className="content" key={routeIdentity(route)}>
           <Suspense fallback={<div className="empty" style={{ padding: '2rem', color: 'var(--muted)' }}>Loading…</div>}>
@@ -358,6 +361,7 @@ function App() {
             ]}
           />
         </TweakSection>
+        <TweakPairing />
       </TweaksPanel>
       </Suspense>
     </>
