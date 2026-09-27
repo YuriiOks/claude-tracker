@@ -36,6 +36,95 @@ def _write_session(jsonl: Path, session_id: str, repo_path: Path, ts: str = "202
     )
 
 
+def _write_session_with_cache_read(jsonl: Path, session_id: str, repo_path: Path) -> None:
+    """One assistant turn with a real cache_read_input_tokens value -- used to
+    verify ingest bills cache reads into the session's stored cost (R-BE-18)
+    while still excluding them from the headline token count.
+    """
+    jsonl.write_text(
+        json.dumps(
+            {
+                "type": "user",
+                "sessionId": session_id,
+                "cwd": str(repo_path),
+                "timestamp": "2026-05-10T10:00:00Z",
+                "message": {"content": "do a thing"},
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "type": "assistant",
+                "sessionId": session_id,
+                "cwd": str(repo_path),
+                "timestamp": "2026-05-10T10:00:30Z",
+                "message": {
+                    "id": "cache-read-msg-1",
+                    "model": "claude-sonnet-4-5",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "usage": {
+                        "input_tokens": 1000,
+                        "output_tokens": 500,
+                        "cache_read_input_tokens": 2_000_000,
+                    },
+                },
+            }
+        )
+        + "\n"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ingest_session_cost_includes_cache_read_billing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """R-BE-18: cache_read_input_tokens must be billed into the stored
+    session cost (at the model's cache-read rate) even though it stays
+    excluded from the headline token count.
+    """
+    repo = tmp_path / "myrepo"
+    repo.mkdir()
+    claude = tmp_path / "claude"
+    proj = claude / "projects" / "myrepo-encoded"
+    proj.mkdir(parents=True)
+    _write_session_with_cache_read(proj / "cr.jsonl", "cr-session", repo)
+
+    monkeypatch.setenv("CLAUDE_DIR", str(claude))
+    monkeypatch.setenv("REPO_ROOTS", str(repo))
+    monkeypatch.setenv("DB_PATH", str(tmp_path / "db.sqlite"))
+
+    from app import config
+
+    config.get_settings.cache_clear()
+    import app.db as db_mod
+
+    db_mod._engine = None
+    db_mod._sessionmaker = None
+
+    from app.services.ingest import ingest_all
+
+    result = await ingest_all()
+    assert result["new"] == 1
+
+    from sqlalchemy import select
+
+    from app.models.session_summary import SessionSummaryRow
+
+    async with db_mod._sessionmaker() as session:
+        row = (
+            await session.execute(
+                select(SessionSummaryRow).where(SessionSummaryRow.session_id == "cr-session")
+            )
+        ).scalar_one()
+
+    # Headline tokens exclude cache_read, same as before this fix.
+    assert row.tokens == 1500
+    # Cost includes cache_read at claude-sonnet-4-5's rate: input $3/MTok,
+    # cache-read hit at the standard 0.1x multiplier.
+    # 1000/1e6*3 + 500/1e6*15 + 2_000_000/1e6*3*0.1 = 0.003 + 0.0075 + 0.6
+    assert row.cost == pytest.approx(0.6105, abs=1e-6)
+
+
 @pytest.mark.asyncio
 async def test_ingest_and_sessions_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = tmp_path / "myrepo"

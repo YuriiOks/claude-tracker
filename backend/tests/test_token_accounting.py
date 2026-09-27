@@ -435,18 +435,27 @@ async def test_interrupted_rebuild_does_not_advance_version(
     import app.services.ingest as ingest_mod
     from app.models.ingest_meta import SINGLETON_ID, IngestMetaRow
 
-    real_parse_jsonl = ingest_mod.parse_jsonl
+    # A full (re)parse -- brand-new file, explicit/version rebuild, or a
+    # shrink/replace -- now goes through parse_jsonl_incremental(path, ..., 0,
+    # set()) rather than the unbounded parse_jsonl (see _apply_full_summary),
+    # so that's the entry point to fail on the 2nd file of the rebuild walk.
+    real_parse_incremental = ingest_mod.parse_jsonl_incremental
     calls = {"n": 0}
 
-    def _flaky_parse_jsonl(path, repo_paths):
+    # A BaseException, like a real shutdown/cancellation: ingest_all isolates
+    # ordinary per-file Exceptions (bad data) but must let these propagate.
+    class _SimulatedCrash(BaseException):
+        pass
+
+    def _flaky_parse_incremental(path, repo_paths, start_offset, seen_ids, **kwargs):
         calls["n"] += 1
         if calls["n"] == 2:
-            raise RuntimeError("simulated crash mid-rebuild")
-        return real_parse_jsonl(path, repo_paths)
+            raise _SimulatedCrash("simulated crash mid-rebuild")
+        return real_parse_incremental(path, repo_paths, start_offset, seen_ids, **kwargs)
 
-    monkeypatch.setattr(ingest_mod, "parse_jsonl", _flaky_parse_jsonl)
+    monkeypatch.setattr(ingest_mod, "parse_jsonl_incremental", _flaky_parse_incremental)
 
-    with pytest.raises(RuntimeError, match="simulated crash mid-rebuild"):
+    with pytest.raises(_SimulatedCrash, match="simulated crash mid-rebuild"):
         await ingest_mod.ingest_all()
 
 
@@ -458,7 +467,7 @@ async def test_interrupted_rebuild_does_not_advance_version(
 
     # The crash is behind us -- the next call must complete the rebuild and
     # only THEN advance the marker.
-    monkeypatch.setattr(ingest_mod, "parse_jsonl", real_parse_jsonl)
+    monkeypatch.setattr(ingest_mod, "parse_jsonl_incremental", real_parse_incremental)
     result = await ingest_mod.ingest_all()
     assert result["new"] >= 4
 

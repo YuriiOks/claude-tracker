@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,20 +17,66 @@ from app.security import SecurityMiddleware
 
 logger = logging.getLogger(__name__)
 
-# Re-ingest interval — keeps session_summary table fresh so /api/stats
-# and /api/repos return today's numbers without manual `tracker ingest`.
-INGEST_INTERVAL_SEC = 30
+# Safety-net full-corpus sweep interval -- with per-file byte-offset cursors
+# (app.models.ingest_file_state) a no-op sweep costs a stat() per file, not a
+# re-parse, so this only exists to catch anything the event-driven signal
+# below missed (process restart before the watcher seeded, a change the
+# watcher's debounce coalesced oddly, etc.), not to drive normal freshness.
+INGEST_SWEEP_SEC = 60
+# How long to wait after the FIRST queued change before running a tick, so a
+# burst of writes to the same/related files (a session mid-turn touches its
+# own file several times in quick succession) becomes one ingest call
+# instead of one per change.
+INGEST_DEBOUNCE_SEC = 1.0
 
 
-async def _ingest_loop():
-    """Run a one-time full bootstrap ingest, then incremental ingest every
-    INGEST_INTERVAL_SEC. The bootstrap lives here (not in `lifespan`) so the
-    app can start serving requests — including /api/health — immediately
-    instead of blocking startup on a full-corpus walk. Bootstrap and the
-    periodic ticks share this single task/coroutine, so they never run
-    concurrently. Logs and continues on error so a transient parse failure
-    doesn't kill the loop."""
+async def _next_ingest_batch(queue: asyncio.Queue[Path], max_wait: float) -> set[Path] | None:
+    """Wait up to `max_wait` seconds for the watcher to signal a change.
+
+    Returns the debounced set of changed paths when at least one arrived in
+    time, or None if the wait elapsed first (the caller should fall back to
+    a since_hours safety sweep). `max_wait <= 0` means "the sweep deadline
+    has already passed" -- go straight to the sweep without waiting at all.
+    """
+    if max_wait <= 0:
+        return None
+    try:
+        first = await asyncio.wait_for(queue.get(), timeout=max_wait)
+    except TimeoutError:
+        return None
+    pending = {first}
+    await asyncio.sleep(INGEST_DEBOUNCE_SEC)
+    while True:
+        try:
+            pending.add(queue.get_nowait())
+        except asyncio.QueueEmpty:
+            break
+    return pending
+
+
+async def _ingest_loop(queue: asyncio.Queue[Path] | None = None):
+    """Run a one-time full bootstrap ingest, then react to the live_stream
+    watcher's change signal (near-instant freshness) with a periodic
+    since_hours safety sweep as a fallback that fires on its own fixed
+    cadence (INGEST_SWEEP_SEC) regardless of how much event-driven traffic
+    is in between -- a continuous stream of changes must not starve the
+    sweep, since the sweep is what catches anything the event-driven path
+    itself missed (e.g. a watcher restart before it re-seeds). The bootstrap
+    lives here (not in `lifespan`) so the app can start serving requests —
+    including /api/health — immediately instead of blocking startup on a
+    full-corpus walk. Bootstrap, the event-driven ticks, and the safety
+    sweep all share this single task/coroutine, so exactly one ingest write
+    is ever in flight. Logs and continues on error so a transient parse
+    failure doesn't kill the loop.
+
+    `queue` defaults to the live_stream module's global signal queue; tests
+    can inject their own to avoid sharing that process-wide singleton.
+    """
     from app.services.ingest import ingest_all
+
+    if queue is None:
+        from app.services.live_stream import get_ingest_signal_queue
+        queue = get_ingest_signal_queue()
 
     try:
         r = await ingest_all()
@@ -37,17 +85,29 @@ async def _ingest_loop():
     except Exception as e:  # noqa: BLE001
         logger.warning("bootstrap ingest failed: %s", e)
 
+    next_sweep_at = time.monotonic() + INGEST_SWEEP_SEC
     while True:
+        pending = await _next_ingest_batch(queue, next_sweep_at - time.monotonic())
+        if pending is None:
+            next_sweep_at = time.monotonic() + INGEST_SWEEP_SEC
         try:
-            r = await ingest_all(since_hours=24)
-            logger.info(
-                "ingest tick: new=%s updated=%s skipped=%s events=%s in %ss",
-                r.get("new"), r.get("updated"),
-                r.get("skipped"), r.get("events"), r.get("elapsed_s"),
-            )
+            if pending:
+                r = await ingest_all(changed_paths=pending)
+                logger.info(
+                    "ingest tick (event-driven, %d path(s)): new=%s updated=%s skipped=%s "
+                    "events=%s in %ss",
+                    len(pending), r.get("new"), r.get("updated"),
+                    r.get("skipped"), r.get("events"), r.get("elapsed_s"),
+                )
+            else:
+                r = await ingest_all(since_hours=24)
+                logger.info(
+                    "ingest tick (sweep): new=%s updated=%s skipped=%s events=%s in %ss",
+                    r.get("new"), r.get("updated"),
+                    r.get("skipped"), r.get("events"), r.get("elapsed_s"),
+                )
         except Exception as e:  # noqa: BLE001
             logger.warning("ingest tick failed: %s", e)
-        await asyncio.sleep(INGEST_INTERVAL_SEC)
 
 
 @asynccontextmanager
