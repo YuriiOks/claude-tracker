@@ -128,7 +128,7 @@ docker-test:
 	$(COMPOSE) run --rm --no-deps backend pytest -q
 
 docker-prod:
-	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+	LAN_MODE=$(LAN_MODE) LAN_BIND=$(LAN_BIND) $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 	@echo "→ prod frontend: http://localhost:47820"
 
 docker-prune:
