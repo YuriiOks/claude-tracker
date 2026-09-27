@@ -23,6 +23,20 @@
   --ct-hooks:#8FA876; --ct-output:#5AA7A7; --ct-memory:#C46686; --ct-contexts:#9CA3AF; --ct-doc:#6A9BCC;
   --add:#10b981; --add-bg:rgba(16,185,129,.08); --del:#f472b6; --del-bg:rgba(244,114,182,.08);
   --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
+
+  /* Glass material — the one frosted-surface recipe for sidebar/topbar/
+     cards/buttons/chips/terminal. One blur tier, no per-component tuning. */
+  --glass-bg:rgba(20,28,55,.42); --glass-bg-strong:rgba(22,30,60,.6); --glass-bg-soft:rgba(20,28,55,.26);
+  --glass-border:rgba(255,255,255,.14); --glass-border-soft:rgba(255,255,255,.06);
+  --glass-highlight:rgba(255,255,255,.08);
+  --glass-blur:16px; --glass-saturate:1.5;
+  --glass-shadow:0 22px 50px -14px rgba(0,0,0,.6), 0 6px 20px -8px rgba(0,0,0,.4);
+  --glass-shadow-sm:0 8px 22px -10px rgba(0,0,0,.55);
+  /* Accent-driven glow, 3 sizes only — built on --accent so per-repo/category
+     color flows through automatically. */
+  --glow-sm:0 0 6px color-mix(in srgb, var(--accent, var(--cyan)) 45%, transparent);
+  --glow-md:0 0 12px color-mix(in srgb, var(--accent, var(--cyan)) 35%, transparent);
+  --glow-lg:0 0 20px color-mix(in srgb, var(--accent, var(--cyan)) 45%, transparent), 0 0 6px color-mix(in srgb, var(--accent, var(--cyan)) 30%, transparent);
 }
 
 /* ====== LIGHT THEME — yuriodev orange/amber ======
@@ -52,7 +66,20 @@
   --ct-agents:#C46686; --ct-skills:#D4A843; --ct-commands:#788C5D; --ct-rules:#9B7BC4;
   --ct-hooks:#8FA876; --ct-output:#5AA7A7; --ct-memory:#C46686; --ct-contexts:#9CA3AF; --ct-doc:#6A9BCC;
   --add:#059669; --add-bg:rgba(5,150,105,.08); --del:#db2777; --del-bg:rgba(219,39,119,.08);
-  --live:#00ff88; --live-bg:rgba(0,255,136,.12); --live-bg-strong:rgba(0,255,136,.15); --live-border:rgba(0,255,136,.18);
+  /* --live stays visually distinct from --green (both used together in the
+     same status row in a couple of places) but gets enough contrast on
+     white cards to pass as a 3:1 UI-component color; text uses --green. */
+  --live:#059669; --live-bg:rgba(5,150,105,.12); --live-bg-strong:rgba(5,150,105,.15); --live-border:rgba(5,150,105,.18);
+
+  --glass-bg:rgba(255,255,255,.45); --glass-bg-strong:rgba(255,255,255,.62); --glass-bg-soft:rgba(255,255,255,.28);
+  --glass-border:rgba(217,119,6,.20); --glass-border-soft:rgba(217,119,6,.10);
+  --glass-highlight:rgba(255,255,255,.7);
+  --glass-blur:14px; --glass-saturate:1.3;
+  --glass-shadow:0 14px 40px -12px rgba(80,30,90,.25), 0 6px 18px -8px rgba(40,15,90,.16);
+  --glass-shadow-sm:0 6px 18px -8px rgba(80,30,90,.20);
+  --glow-sm:0 1px 2px color-mix(in srgb, var(--accent, var(--cyan)) 20%, transparent);
+  --glow-md:0 2px 6px color-mix(in srgb, var(--accent, var(--cyan)) 26%, transparent);
+  --glow-lg:0 3px 10px color-mix(in srgb, var(--accent, var(--cyan)) 30%, transparent);
 }
 
 /* In light mode flip semantic accents — section titles use gold,
@@ -83,6 +110,14 @@
   --tone-violet:#a78bfa;
   --tone-rose:#f472b6;
   --tone-amber:#fbbf24;
+
+  /* z-index scale — every overlay/dropdown/modal in the app reads from
+     here so a new surface can't accidentally out-rank (or hide under)
+     an existing one. Decorative background layers (#staticGrid/#staticScan,
+     .page-head ornaments) stay on their small hand-picked values below this
+     scale; this covers the "things that stack on top of content" tier. */
+  --z-base:0; --z-raised:10; --z-sticky:20; --z-dropdown:30;
+  --z-overlay:40; --z-modal:50; --z-toast:60; --z-tooltip:70; --z-command:80;
 }
 
 /* Sidebar collapse is a class toggle (set by App.jsx from sidebarCollapsed
@@ -169,27 +204,15 @@ body{
 /* ============== SIDEBAR ============== */
 .sidebar{
   width:var(--sb-w); flex-shrink:0;
-  background:var(--bg2);
-  border-right:1px solid var(--brd);
+  background:var(--glass-bg-strong);
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-right:1px solid var(--glass-border);
   display:flex; flex-direction:column;
-  z-index:10;
+  z-index:var(--z-raised);
   position:relative;
+  box-shadow:1px 0 0 var(--glass-border), var(--neu-raised-sm);
   transition:width .25s var(--ease);
-}
-[data-theme="dark"] .sidebar{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,0) 40%),
-    linear-gradient(180deg, rgba(10,15,28,.72), rgba(10,15,28,.86));
-  backdrop-filter:blur(24px) saturate(1.8);
-  -webkit-backdrop-filter:blur(24px) saturate(1.8);
-  border-right:1px solid rgba(255,255,255,.06);
-  box-shadow:inset -1px 0 0 rgba(255,255,255,.03);
-}
-[data-theme="light"] .sidebar{
-  background:rgba(255,251,245,.78);
-  backdrop-filter:blur(20px) saturate(1.4);
-  -webkit-backdrop-filter:blur(20px) saturate(1.4);
-  box-shadow:1px 0 0 rgba(217,119,6,.10);
 }
 .sidebar.collapsed{width:60px;}
 .sidebar.collapsed .sb-item{justify-content:center; padding:.55rem;}
@@ -236,7 +259,9 @@ body{
   text-shadow:0 0 8px rgba(6,182,212,.5);
 }
 [data-theme="light"] .sb-logo{
-  background:linear-gradient(160deg, var(--cyan), color-mix(in srgb, var(--cyan) 75%, #000));
+  /* Both gradient stops darkened (not just the second one) so white text
+     stays >=4.5:1 across the whole badge, not just its bottom-right corner. */
+  background:linear-gradient(160deg, color-mix(in srgb, var(--cyan) 74%, #000), color-mix(in srgb, var(--cyan) 58%, #000));
   border-color:color-mix(in srgb, var(--cyan) 80%, #000);
   color:#fff;
   box-shadow:0 2px 6px rgba(217,119,6,.3), inset 0 1px 0 rgba(255,255,255,.3);
@@ -438,7 +463,8 @@ body{
   border:1px solid rgba(255,255,255,.06);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.04),
-    0 4px 14px -8px rgba(0,0,0,.5);
+    0 4px 14px -8px rgba(0,0,0,.5),
+    var(--neu-raised-sm);
 }
 [data-theme="dark"] .sb-user:hover{
   background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
@@ -447,7 +473,7 @@ body{
 [data-theme="light"] .sb-user{
   background:#ffffff;
   border:1px solid rgba(217,119,6,.18);
-  box-shadow:0 1px 3px rgba(217,119,6,.06);
+  box-shadow:0 1px 3px rgba(217,119,6,.06), var(--neu-raised-sm);
 }
 [data-theme="light"] .sb-user:hover{
   border-color:rgba(217,119,6,.32);
@@ -588,25 +614,14 @@ body{
 }
 .topbar{
   height:52px; flex-shrink:0;
-  border-bottom:1px solid var(--brd2);
   display:flex; align-items:center; gap:.7rem;
   padding:0 1.2rem;
-  background:var(--bg2);
-  position:relative; z-index:5;
-}
-[data-theme="dark"] .topbar{
-  background:linear-gradient(180deg, rgba(10,15,28,.65), rgba(10,15,28,.85));
-  backdrop-filter:blur(24px) saturate(1.8);
-  -webkit-backdrop-filter:blur(24px) saturate(1.8);
-  border-bottom:1px solid rgba(255,255,255,.06);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-}
-[data-theme="light"] .topbar{
-  background:rgba(255,251,245,.78);
-  backdrop-filter:blur(20px) saturate(1.4);
-  -webkit-backdrop-filter:blur(20px) saturate(1.4);
-  border-bottom:1px solid rgba(217,119,6,.18);
-  box-shadow:0 1px 0 rgba(217,119,6,.08);
+  background:var(--glass-bg-strong);
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  border-bottom:1px solid var(--glass-border);
+  box-shadow:0 6px 24px -10px rgba(0,0,0,.15), inset 0 1px 0 var(--glass-highlight), var(--neu-raised-sm);
+  position:relative; z-index:var(--z-raised);
 }
 .crumbs{
   display:flex; align-items:center; gap:.45rem;
@@ -620,11 +635,14 @@ body{
 
 .search-box{
   display:flex; align-items:center; gap:.4rem;
-  background:var(--card); border:1px solid var(--brd2);
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  backdrop-filter:blur(calc(var(--glass-blur) * .7));
+  -webkit-backdrop-filter:blur(calc(var(--glass-blur) * .7));
   border-radius:6px; padding:.3rem .55rem;
+  box-shadow:var(--neu-pressed-sm);
   width:240px; transition:all .2s;
 }
-.search-box:focus-within{border-color:var(--cyan); box-shadow:0 0 0 3px var(--gc);}
+.search-box:focus-within{border-color:var(--cyan); box-shadow:0 0 0 3px var(--gc), var(--neu-pressed-sm);}
 .search-box svg{width:12px; height:12px; stroke:var(--muted); fill:none; stroke-width:2;}
 .search-box input{
   flex:1; background:none; border:none; outline:none;
@@ -638,12 +656,20 @@ body{
 
 .icon-btn{
   width:30px; height:30px; border-radius:6px;
-  background:var(--card); border:1px solid var(--brd2);
+  background:var(--glass-bg); border:1px solid var(--glass-border);
+  backdrop-filter:blur(calc(var(--glass-blur) * .7));
+  -webkit-backdrop-filter:blur(calc(var(--glass-blur) * .7));
+  box-shadow:inset 0 1px 0 var(--glass-highlight), var(--neu-raised-sm);
   display:flex; align-items:center; justify-content:center;
   color:var(--txt); cursor:pointer; transition:all .2s;
 }
-.icon-btn:hover{border-color:var(--cyan); color:var(--cyan);}
-[data-theme="dark"] .icon-btn:hover{box-shadow:var(--glow-c);}
+.icon-btn:hover{
+  border-color:var(--cyan); color:var(--cyan);
+  background:var(--glass-bg-strong);
+  box-shadow:inset 0 1px 0 var(--glass-highlight), var(--neu-raised);
+}
+[data-theme="dark"] .icon-btn:hover{box-shadow:var(--glow-c), inset 0 1px 0 var(--glass-highlight), var(--neu-raised);}
+.icon-btn:active{box-shadow:var(--neu-pressed-sm);}
 .icon-btn svg{width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:2;}
 
 .live-pill{
@@ -684,8 +710,9 @@ h1.page-title{
   line-height:1.1; margin-bottom:0;
   font-feature-settings:'ss01';
 }
-[data-theme="dark"] h1.page-title{text-shadow:0 0 18px color-mix(in srgb, var(--cyan) 40%, transparent), 0 0 6px color-mix(in srgb, var(--cyan) 25%, transparent);}
-[data-theme="light"] h1.page-title{text-shadow:none;}
+/* Theme-specific glow + light-mode gold accent live with .page-eyebrow's
+   equivalents further down (near .page-head) — was duplicated here too,
+   deleted the dead copy rather than keep two sources of truth. */
 h2.section-title{
   font-family:var(--font-ui);
   font-size:.78rem; font-weight:600;
@@ -733,7 +760,7 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
     linear-gradient(180deg,
       color-mix(in srgb, var(--cyan) 4%, rgba(15,23,42,.55)),
       color-mix(in srgb, var(--cyan) 1%, rgba(15,23,42,.78)));
-  border:1px solid rgba(255,255,255,.08);
+  border:1px solid var(--glass-border);
   box-shadow:
     /* outer drop */
     0 8px 32px -8px rgba(0,0,0,.55),
@@ -742,9 +769,11 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
     /* inner bottom shadow for depth */
     inset 0 -1px 0 rgba(0,0,0,.20),
     /* rim glow */
-    0 0 0 1px rgba(6,182,212,.04);
-  backdrop-filter:blur(18px) saturate(1.6);
-  -webkit-backdrop-filter:blur(18px) saturate(1.6);
+    0 0 0 1px rgba(6,182,212,.04),
+    /* neu depth — pillowy edge to match sidebar/topbar/buttons */
+    var(--neu-raised-sm);
+  backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter:blur(var(--glass-blur)) saturate(var(--glass-saturate));
 }
 [data-theme="dark"] .cd:hover,
 [data-theme="dark"] .metric:hover{
@@ -779,7 +808,8 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   box-shadow:
     0 1px 2px rgba(120,53,15,.04),
     0 8px 24px -12px rgba(120,53,15,.18),
-    inset 0 1px 0 rgba(255,255,255,1);
+    inset 0 1px 0 rgba(255,255,255,1),
+    var(--neu-raised-sm);
 }
 [data-theme="light"] .cd:hover,
 [data-theme="light"] .metric:hover{
@@ -992,9 +1022,12 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   font-size:.68rem; font-family:var(--font);
   border:1px solid var(--brd2);
   cursor:pointer; transition:all .15s;
+  /* Small control sitting inside an already-glass card — tactile neu-well,
+     not a second blurred surface. */
+  box-shadow:var(--neu-raised-sm);
 }
-.chip:hover{border-color:var(--cyan); color:var(--cyan); background:color-mix(in srgb, var(--cyan) 6%, transparent);}
-.chip.active{border-color:var(--cyan); color:var(--cyan); background:var(--dim);}
+.chip:hover{border-color:var(--cyan); color:var(--cyan); background:color-mix(in srgb, var(--cyan) 6%, transparent); box-shadow:var(--neu-raised);}
+.chip.active{border-color:var(--cyan); color:var(--cyan); background:var(--dim); box-shadow:var(--neu-pressed-sm);}
 
 .tag-row{display:flex; flex-wrap:wrap; gap:.3rem;}
 
@@ -1051,11 +1084,15 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   border-radius:8px; overflow:hidden;
   display:flex; flex-direction:column;
   font-family:var(--font);
+  /* Recessed slot the feed scrolls inside of. No backdrop-filter here on
+     purpose — .term-body scrolls/live-appends continuously and blurring a
+     live-updating region is the one thing the perf budget forbids. */
+  box-shadow:var(--neu-pressed-sm);
 }
 [data-theme="light"] .term{
   background:#fff8ec;
   border-color:rgba(180,120,30,.25);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.6);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6), var(--neu-pressed-sm);
 }
 [data-theme="light"] .term-body{ color:#3b2a14; }
 [data-theme="light"] .term-time{ color:#9a7e54; }
@@ -1172,7 +1209,7 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   font-size:.62rem;
   font-family:var(--font);
   white-space:nowrap;
-  z-index:100;
+  z-index:var(--z-tooltip);
   pointer-events:none;
   opacity:0;
   transition:opacity .12s;
@@ -1180,22 +1217,6 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 }
 .heat-cell[data-tip]:hover::after{opacity:1;}
 .heat-axis{display:grid; grid-template-columns:repeat(24, 1fr); font-size:.55rem; color:var(--muted); text-align:center; padding-top:.3rem;}
-
-/* ============== GRAPH ============== */
-.graph-wrap{
-  background:var(--card); border:1px solid var(--brd);
-  border-radius:8px; height:560px; overflow:hidden;
-  position:relative; backdrop-filter:blur(8px);
-  user-select:none;
-}
-.graph-wrap svg{display:block; width:100%; height:100%;}
-.graph-wrap text{font-family:var(--font);}
-[data-theme="dark"] .graph-wrap{
-  background:radial-gradient(ellipse at center, color-mix(in srgb, var(--cyan) 5%, transparent) 0%, var(--card) 70%);
-}
-[data-theme="light"] .graph-wrap{
-  background:radial-gradient(ellipse at center, rgba(2,132,199,.04) 0%, #fff 70%);
-}
 
 /* ============== LIST ============== */
 .list-row{
@@ -1298,26 +1319,40 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 .btn{
   font-family:var(--font); font-size:.65rem;
   padding:.4rem .75rem; border-radius:6px;
-  border:1px solid var(--brd); background:var(--card); color:var(--txt-bright);
+  border:1px solid var(--glass-border); background:var(--glass-bg); color:var(--txt-bright);
   cursor:pointer; transition:all .2s var(--ease);
   display:inline-flex; align-items:center; gap:.4rem;
-  backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+  backdrop-filter:blur(calc(var(--glass-blur) * .5)) saturate(var(--glass-saturate));
+  -webkit-backdrop-filter:blur(calc(var(--glass-blur) * .5)) saturate(var(--glass-saturate));
+  box-shadow:inset 0 1px 0 var(--glass-highlight), var(--neu-raised-sm);
   white-space:nowrap;
   letter-spacing:.02em;
 }
-.btn:hover{border-color:var(--cyan); color:var(--cyan); transform:translateY(-1px);}
-[data-theme="dark"] .btn:hover{box-shadow:var(--glow-c);}
+.btn:hover{
+  border-color:var(--cyan); color:var(--cyan); transform:translateY(-1px);
+  background:var(--glass-bg-strong);
+  box-shadow:inset 0 1px 0 var(--glass-highlight), var(--neu-raised);
+}
+[data-theme="dark"] .btn:hover{box-shadow:var(--glow-c), inset 0 1px 0 var(--glass-highlight), var(--neu-raised);}
+.btn:active{box-shadow:var(--neu-pressed-sm); transform:translateY(0);}
 .btn.primary{
-  background:linear-gradient(180deg, var(--cyan), color-mix(in srgb, var(--cyan) 80%, #000));
+  /* Both gradient stops darkened (not just the bottom one) so the white
+     ink stays >=4.5:1 across the whole button, both themes — was 1.81:1
+     dark / 3.10:1 light against a flat bright fill. */
+  background:linear-gradient(180deg, color-mix(in srgb, var(--cyan) 65%, #000), color-mix(in srgb, var(--cyan) 50%, #000));
   border-color:var(--cyan); color:#fff;
-  box-shadow:0 4px 14px -4px color-mix(in srgb, var(--cyan) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.18);
+  box-shadow:0 4px 14px -4px color-mix(in srgb, var(--cyan) 60%, transparent), inset 0 1px 0 rgba(255,255,255,.18), var(--neu-raised-sm);
   font-weight:600;
 }
-[data-theme="light"] .btn.primary{color:#fff;}
+[data-theme="light"] .btn.primary{
+  background:linear-gradient(180deg, color-mix(in srgb, var(--cyan) 80%, #000), color-mix(in srgb, var(--cyan) 62%, #000));
+  color:#fff;
+}
 .btn.primary:hover{
   filter:brightness(1.08); transform:translateY(-1px);
-  box-shadow:0 6px 22px -4px color-mix(in srgb, var(--cyan) 75%, transparent), inset 0 1px 0 rgba(255,255,255,.25);
+  box-shadow:0 6px 22px -4px color-mix(in srgb, var(--cyan) 75%, transparent), inset 0 1px 0 rgba(255,255,255,.25), var(--neu-raised);
 }
+.btn.primary:active{box-shadow:0 2px 8px -4px color-mix(in srgb, var(--cyan) 70%, transparent), var(--neu-pressed-sm);}
 .btn svg{width:12px; height:12px; stroke:currentColor; fill:none; stroke-width:2;}
 
 /* ============== TABS ============== */
@@ -1452,14 +1487,17 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   position:relative;
 }
 [data-theme="dark"] .card-frame{
-  background:rgba(15,23,42,.55);
+  /* Near-opaque, not full .cd glass — this wraps dense/tabular content
+     (LatencyTable, .mon-table) that needs max contrast, not shimmer. */
+  background:rgba(15,23,42,.7);
   backdrop-filter:blur(14px) saturate(1.4);
   -webkit-backdrop-filter:blur(14px) saturate(1.4);
+  box-shadow:var(--neu-raised-sm);
 }
 [data-theme="light"] .card-frame{
   background:#ffffff;
   border-color:rgba(217,119,6,.18);
-  box-shadow:0 1px 3px rgba(180,83,9,.04);
+  box-shadow:0 1px 3px rgba(180,83,9,.04), var(--neu-raised-sm);
 }
 .card-frame-head{
   display:flex; align-items:center; gap:.6rem;
@@ -1482,6 +1520,9 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
   background:var(--code-bg);
   padding:1px;
   font-family:var(--font);
+  /* Sunken groove — the active segment reads as a small raised chip
+     riding inside it. */
+  box-shadow:var(--neu-pressed-sm);
 }
 .seg button{
   background:none; border:0;
@@ -1497,6 +1538,7 @@ h3{font-size:var(--h3); font-weight:600; color:var(--txt-bright); letter-spacing
 .seg button.active{
   background:color-mix(in srgb, var(--cyan) 20%, transparent);
   color:var(--cyan);
+  box-shadow:var(--neu-raised-sm);
 }
 [data-theme="light"] .seg button.active{
   background:color-mix(in srgb, var(--cyan) 18%, white);
@@ -1703,19 +1745,15 @@ button:focus-visible, a:focus-visible, [role=button]:focus-visible{
 }
 
 /* ===================================================================
-   NEU-GLASS HYBRID — vibrant mesh bg + frosted translucent panes
-   (glassmorphism material) layered with soft paired neumorphic shadows
-   (tactile depth + press feedback). One rule per selector: surfaces
-   (.sidebar, .topbar, .cd, .metric, .card-frame, .term, .sb-user) read as
-   pillowy frosted glass; controls (.btn, .sb-item, .search-box input,
-   .seg, .chip, .icon-btn) visibly depress on :active / .active.
+   NEU DEPTH SHADOWS — paired highlight+shadow recipe used by cards,
+   buttons, chips, sidebar items etc. to add tactile depth on top of the
+   .glass material below. Dark theme uses a faint white-alpha highlight
+   (a strong one would look like a stray light leak on a dark surface);
+   light theme can afford a stronger one. The one glass recipe itself
+   (background/blur/border/shadow) lives on each component's own base
+   rule now, expressed via --glass-* tokens (:root, top of file) — no
+   second competing declaration, no !important.
    =================================================================== */
-
-/* ---- Depth-shadow recipe vars — the neu "paired highlight + shadow"
-   trick, tuned subtle so it reads as an added layer over glass rather
-   than the flat beige-neumorphism look. Dark theme uses a faint
-   white-alpha highlight (a strong one would look like a stray light
-   leak on a dark mesh); light theme can afford a stronger highlight. */
 [data-theme="light"]{
   --neu-hi:rgba(255,255,255,.65);
   --neu-lo:rgba(120,60,20,.16);
@@ -1759,414 +1797,6 @@ button:focus-visible, a:focus-visible, [role=button]:focus-visible{
     inset -2px -2px 4px var(--neu-hi);
 }
 
-[data-theme="light"]{
-  --gm-stop1:#ff7a3d;   /* warm coral */
-  --gm-stop2:#fcb045;   /* sunset amber */
-  --gm-stop3:#7e57ff;   /* violet */
-  --gm-stop4:#3aa0ff;   /* electric blue */
-  --gm-stop5:#ff5e8a;   /* pink */
-  --gm-text:#1a0f2e;
-  --gm-text-bright:#0a0420;
-  --gm-muted:#5b4d6e;
-  --gm-accent:#ff5b1f;
-  --gm-accent-2:#7e57ff;
-  --gm-pane:rgba(255,255,255,.45);
-  --gm-pane-strong:rgba(255,255,255,.62);
-  --gm-pane-soft:rgba(255,255,255,.28);
-  --gm-edge:rgba(255,255,255,.55);
-  --gm-edge-dim:rgba(255,255,255,.28);
-  --gm-shadow:0 14px 40px -12px rgba(80,30,90,.35), 0 6px 18px -8px rgba(40,15,90,.2);
-  --gm-shadow-sm:0 6px 18px -8px rgba(80,30,90,.28);
-  --gm-inner-light:inset 0 1px 0 rgba(255,255,255,.7);
-}
-[data-theme="dark"]{
-  --gm-stop1:#0b1840;
-  --gm-stop2:#3a1d6e;
-  --gm-stop3:#0a3a6e;
-  --gm-stop4:#0e6e6e;
-  --gm-stop5:#6e1d4a;
-  --gm-text:#e9eefc;
-  --gm-text-bright:#ffffff;
-  --gm-muted:#9aa6c9;
-  --gm-accent:#22d3ee;
-  --gm-accent-2:#a78bfa;
-  --gm-pane:rgba(20,28,55,.42);
-  --gm-pane-strong:rgba(22,30,60,.6);
-  --gm-pane-soft:rgba(20,28,55,.26);
-  --gm-edge:rgba(255,255,255,.14);
-  --gm-edge-dim:rgba(255,255,255,.06);
-  --gm-shadow:0 22px 50px -14px rgba(0,0,0,.6), 0 6px 20px -8px rgba(0,0,0,.4);
-  --gm-shadow-sm:0 8px 22px -10px rgba(0,0,0,.55);
-  --gm-inner-light:inset 0 1px 0 rgba(255,255,255,.08);
-}
-
-/* ---- Vibrant mesh background ---- */
-[data-theme="light"] body,
-[data-theme="light"] #bg-fill{
-  background:
-    radial-gradient(60vw 50vw at 8% -5%, var(--gm-stop1) 0%, transparent 55%),
-    radial-gradient(55vw 55vw at 100% 0%, var(--gm-stop2) 0%, transparent 50%),
-    radial-gradient(60vw 60vw at 110% 100%, var(--gm-stop3) 0%, transparent 55%),
-    radial-gradient(55vw 55vw at -10% 110%, var(--gm-stop4) 0%, transparent 55%),
-    /* Centre stop: shrunk, pushed off-centre, faded so it doesn't read as a
-       saturated pink/red disc behind the dashboard. */
-    radial-gradient(28vw 26vw at 38% 78%, color-mix(in srgb, var(--gm-stop5) 55%, transparent) 0%, transparent 40%),
-    var(--bg) !important;
-  background-attachment:fixed !important;
-}
-[data-theme="dark"] body,
-[data-theme="dark"] #bg-fill{
-  background:
-    radial-gradient(60vw 50vw at 8% -5%, var(--gm-stop2) 0%, transparent 55%),
-    radial-gradient(55vw 55vw at 100% 0%, var(--gm-stop3) 0%, transparent 55%),
-    radial-gradient(60vw 60vw at 110% 100%, var(--gm-stop1) 0%, transparent 55%),
-    radial-gradient(55vw 55vw at -10% 110%, var(--gm-stop4) 0%, transparent 55%),
-    radial-gradient(40vw 40vw at 50% 60%, var(--gm-stop5) 0%, transparent 60%),
-    var(--bg) !important;
-  background-attachment:fixed !important;
-}
-
-/* Body text re-baseline so it pops on vivid bg */
-body{ color:var(--gm-text) !important; }
-[data-theme="light"]{ --txt:var(--gm-text); --txt-bright:var(--gm-text-bright); --muted:var(--gm-muted); }
-[data-theme="dark"]{ --txt:var(--gm-text); --txt-bright:var(--gm-text-bright); --muted:var(--gm-muted); }
-
-/* ---- Sidebar: tall glass column, +neu depth for a pillowy edge ---- */
-.sidebar{
-  background:var(--gm-pane-strong) !important;
-  backdrop-filter:blur(28px) saturate(160%) !important;
-  -webkit-backdrop-filter:blur(28px) saturate(160%) !important;
-  border-right:1px solid var(--gm-edge) !important;
-  box-shadow:
-    1px 0 0 var(--gm-edge),
-    8px 0 32px -12px rgba(0,0,0,.35),
-    var(--gm-inner-light),
-    var(--neu-raised-sm) !important;
-}
-.sb-logo{
-  background:var(--gm-accent) !important;
-  border:1px solid color-mix(in srgb, var(--gm-accent) 60%, #fff) !important;
-  color:#fff !important;
-  text-shadow:0 1px 2px rgba(0,0,0,.25) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.4),
-    0 4px 12px -4px color-mix(in srgb, var(--gm-accent) 60%, transparent) !important;
-}
-.sb-collapse{
-  background:var(--gm-pane) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-inner-light) !important;
-  backdrop-filter:blur(10px) !important;
-  -webkit-backdrop-filter:blur(10px) !important;
-  color:var(--gm-text-bright) !important;
-}
-/* NEU-CONTROL: flat at rest, raises on hover, presses in for the
-   current/selected route — the tactile "this is where I am" cue. */
-.sb-item{
-  background:transparent !important;
-  border-radius:10px !important;
-  color:var(--gm-text) !important;
-  box-shadow:none !important;
-}
-.sb-item:hover{
-  background:var(--gm-pane-soft) !important;
-  box-shadow:var(--gm-inner-light), var(--neu-raised-sm) !important;
-  color:var(--gm-text-bright) !important;
-}
-.sb-item:active{
-  box-shadow:var(--gm-inner-light), var(--neu-pressed-sm) !important;
-}
-.sb-item.active{
-  background:linear-gradient(135deg,
-    color-mix(in srgb, var(--gm-accent) 30%, var(--gm-pane)),
-    color-mix(in srgb, var(--gm-accent-2) 25%, var(--gm-pane))) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.55),
-    0 6px 18px -8px color-mix(in srgb, var(--gm-accent) 60%, transparent),
-    var(--neu-pressed-sm) !important;
-  color:var(--gm-text-bright) !important;
-  border:1px solid var(--gm-edge) !important;
-}
-.sb-item.active > svg:first-child,
-.sb-item:hover > svg:first-child{
-  color:var(--gm-accent) !important;
-}
-.sb-item .badge{
-  background:var(--gm-pane) !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  box-shadow:none !important;
-  color:var(--gm-text-bright) !important;
-  font-weight:700 !important;
-}
-
-/* ---- Topbar (glass surface + neu depth) ---- */
-.topbar{
-  background:var(--gm-pane-strong) !important;
-  backdrop-filter:blur(24px) saturate(160%) !important;
-  -webkit-backdrop-filter:blur(24px) saturate(160%) !important;
-  border-bottom:1px solid var(--gm-edge) !important;
-  box-shadow:0 6px 24px -10px rgba(0,0,0,.3), var(--gm-inner-light), var(--neu-raised-sm) !important;
-}
-/* Search field reads as a sunken glass well (a control, permanently
-   "pressed" — conventional affordance for text inputs), deepening
-   further on focus. */
-.search-box{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(14px) !important;
-  -webkit-backdrop-filter:blur(14px) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-inner-light), var(--neu-pressed-sm) !important;
-}
-.search-box:focus-within{
-  border-color:color-mix(in srgb, var(--gm-accent) 60%, transparent) !important;
-  box-shadow:0 0 0 3px color-mix(in srgb, var(--gm-accent) 25%, transparent), var(--neu-pressed) !important;
-}
-.search-box kbd{
-  background:var(--gm-pane) !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  box-shadow:var(--neu-raised-sm) !important;
-  color:var(--gm-text) !important;
-}
-
-/* ---- Glass panes: cards, metrics, frames — glass material + neu depth
-   so they read as pillowy frosted glass rather than flat translucent
-   rectangles. Rest = raised-sm, hover = the fuller raised recipe. ---- */
-.cd, .metric, .card-frame, .nebula-wrap{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(20px) saturate(170%) !important;
-  -webkit-backdrop-filter:blur(20px) saturate(170%) !important;
-  border:1px solid var(--gm-edge) !important;
-  border-radius:18px !important;
-  box-shadow:var(--gm-shadow), var(--gm-inner-light), var(--neu-raised-sm) !important;
-}
-.cd.clickable:hover,
-.metric:hover,
-.card-frame:hover{
-  background:var(--gm-pane-strong) !important;
-  border-color:color-mix(in srgb, var(--gm-accent) 35%, var(--gm-edge)) !important;
-  transform:translateY(-2px) !important;
-  box-shadow:
-    0 24px 60px -16px rgba(0,0,0,.45),
-    0 0 0 1px color-mix(in srgb, var(--gm-accent) 18%, transparent),
-    var(--gm-inner-light),
-    var(--neu-raised) !important;
-}
-.cd-bar{
-  display:block !important;
-  background:linear-gradient(90deg, var(--gm-accent), var(--gm-accent-2)) !important;
-  height:3px !important;
-}
-/* Kicker tag reads as engraved/recessed into the card glass. */
-.metric-kicker{
-  background:var(--gm-pane) !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  color:var(--gm-text) !important;
-  box-shadow:var(--neu-pressed-sm) !important;
-}
-.metric .mv{
-  background:linear-gradient(135deg, var(--gm-text-bright), color-mix(in srgb, var(--gm-accent) 50%, var(--gm-text-bright))) !important;
-  -webkit-background-clip:text !important; background-clip:text !important;
-  -webkit-text-fill-color:transparent !important;
-}
-
-/* ---- Buttons — translucent glass control, raised at rest, presses in
-   on :active (the visible "depress" feedback the hybrid asks for). ---- */
-.btn{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(14px) saturate(160%) !important;
-  -webkit-backdrop-filter:blur(14px) saturate(160%) !important;
-  border:1px solid var(--gm-edge) !important;
-  color:var(--gm-text-bright) !important;
-  box-shadow:var(--gm-shadow-sm), var(--gm-inner-light), var(--neu-raised-sm) !important;
-}
-.btn:hover{
-  background:var(--gm-pane-strong) !important;
-  border-color:color-mix(in srgb, var(--gm-accent) 45%, var(--gm-edge)) !important;
-  box-shadow:var(--gm-shadow-sm), var(--gm-inner-light), var(--neu-raised) !important;
-}
-.btn:active{
-  box-shadow:var(--gm-inner-light), var(--neu-pressed-sm) !important;
-  transform:translateY(0) !important;
-}
-.btn.primary{
-  background:var(--gm-accent) !important;
-  color:#fff !important;
-  border:1px solid color-mix(in srgb, var(--gm-accent) 70%, #fff) !important;
-  box-shadow:
-    0 10px 26px -10px color-mix(in srgb, var(--gm-accent) 70%, transparent),
-    var(--gm-inner-light),
-    var(--neu-raised-sm) !important;
-}
-.btn.primary:hover{
-  filter:brightness(1.08);
-  box-shadow:
-    0 14px 32px -10px color-mix(in srgb, var(--gm-accent) 80%, transparent),
-    var(--gm-inner-light),
-    var(--neu-raised) !important;
-}
-.btn.primary:active{
-  box-shadow:
-    0 6px 16px -8px color-mix(in srgb, var(--gm-accent) 70%, transparent),
-    var(--neu-pressed-sm) !important;
-}
-
-/* ---- Chips / status — translucent glass control, raises on hover,
-   presses in for .active/selected (same tactile language as .sb-item). ---- */
-.chip, .ctag, .bg, .status-badge{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(12px) !important;
-  -webkit-backdrop-filter:blur(12px) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-inner-light), var(--neu-raised-sm) !important;
-  color:var(--gm-text-bright) !important;
-}
-.chip:hover{
-  box-shadow:var(--gm-inner-light), var(--neu-raised) !important;
-}
-.chip.active{
-  background:linear-gradient(135deg,
-    color-mix(in srgb, var(--gm-accent) 30%, var(--gm-pane)),
-    color-mix(in srgb, var(--gm-accent-2) 25%, var(--gm-pane))) !important;
-  border-color:color-mix(in srgb, var(--gm-accent) 50%, var(--gm-edge)) !important;
-  color:var(--gm-text-bright) !important;
-  box-shadow:var(--neu-pressed-sm) !important;
-}
-
-/* ---- Segmented control — sunken glass groove; the active button reads
-   as a small raised chip riding inside the groove. ---- */
-.seg{
-  background:var(--gm-pane-soft) !important;
-  backdrop-filter:blur(10px) !important;
-  -webkit-backdrop-filter:blur(10px) !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  box-shadow:var(--neu-pressed-sm) !important;
-}
-.seg button.active{
-  background:var(--gm-pane) !important;
-  box-shadow:var(--neu-raised-sm) !important;
-  color:var(--gm-accent) !important;
-  border-radius:3px;
-}
-
-/* ---- Terminal: glass well, theme-aware. Recessed (pressed) rather than
-   raised — a console reads as a slot the feed scrolls inside of. ---- */
-.term{
-  background:var(--gm-pane-strong) !important;
-  backdrop-filter:blur(20px) saturate(170%) !important;
-  -webkit-backdrop-filter:blur(20px) saturate(170%) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-shadow), var(--gm-inner-light), var(--neu-pressed-sm) !important;
-  border-radius:14px !important;
-}
-[data-theme="light"] .term{
-  background:rgba(255,251,245,.92) !important;
-}
-[data-theme="dark"] .term{
-  background:rgba(10,12,28,.78) !important;
-}
-.term-header{
-  background:linear-gradient(90deg,
-    color-mix(in srgb, var(--gm-accent) 18%, transparent),
-    transparent) !important;
-  border-bottom:1px solid var(--gm-edge-dim) !important;
-}
-.term-body{
-  background:transparent !important;
-  color:var(--gm-text-bright) !important;
-}
-[data-theme="light"] .term-body{
-  color:#3b2415 !important;
-}
-[data-theme="light"] .term-line .ts{ color:#a07757 !important; }
-[data-theme="light"] .term-line .who{ color:#7c2d12 !important; }
-
-/* ---- Page head / typography pop ---- */
-h1.page-title{
-  color:var(--gm-text-bright) !important;
-  text-shadow:0 2px 24px rgba(0,0,0,.25) !important;
-  background:linear-gradient(180deg, var(--gm-text-bright), color-mix(in srgb, var(--gm-accent) 50%, var(--gm-text-bright))) !important;
-  -webkit-background-clip:text !important; background-clip:text !important;
-  -webkit-text-fill-color:transparent !important;
-}
-h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !important; }
-.page-eyebrow, .page-stats, .page-head .crumbs, .muted, .meta{
-  color:var(--gm-muted) !important;
-}
-.page-head .page-sub{ color:var(--gm-text) !important; }
-
-/* ---- Sidebar identity card / CLI / avatar / live pill / icon-btn ---- */
-.sb-user{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(14px) saturate(160%) !important;
-  -webkit-backdrop-filter:blur(14px) saturate(160%) !important;
-  border:1px solid var(--gm-edge) !important;
-  border-radius:14px !important;
-  box-shadow:var(--gm-shadow-sm), var(--gm-inner-light), var(--neu-raised-sm) !important;
-}
-.sb-user:hover{
-  background:var(--gm-pane-strong) !important;
-  border-color:color-mix(in srgb, var(--gm-accent) 30%, var(--gm-edge)) !important;
-}
-.sb-avatar{
-  background:linear-gradient(135deg,
-    color-mix(in srgb, var(--cyan) 88%, transparent),
-    color-mix(in srgb, var(--purple) 70%, transparent)) !important;
-  border:1px solid color-mix(in srgb, var(--cyan) 35%, var(--gm-edge)) !important;
-  color:var(--inv) !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255,255,255,.30),
-    0 2px 8px -3px color-mix(in srgb, var(--cyan) 40%, transparent) !important;
-}
-.sb-avatar-dot{
-  border:2px solid var(--gm-pane-strong) !important;
-}
-.sb-user-menu{
-  background:transparent !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  color:var(--gm-text) !important;
-}
-.sb-user-menu:hover{
-  background:var(--gm-pane) !important;
-  border-color:var(--gm-edge) !important;
-  color:var(--gm-accent) !important;
-}
-.sb-cli{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(12px) !important;
-  -webkit-backdrop-filter:blur(12px) !important;
-  border:1px solid var(--gm-edge-dim) !important;
-  border-radius:10px !important;
-  box-shadow:var(--gm-inner-light) !important;
-}
-.live-pill{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(12px) !important;
-  -webkit-backdrop-filter:blur(12px) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-inner-light) !important;
-  color:var(--gm-text-bright) !important;
-}
-.icon-btn{
-  background:var(--gm-pane) !important;
-  backdrop-filter:blur(12px) saturate(160%) !important;
-  -webkit-backdrop-filter:blur(12px) saturate(160%) !important;
-  border:1px solid var(--gm-edge) !important;
-  box-shadow:var(--gm-inner-light), var(--neu-raised-sm) !important;
-  color:var(--gm-text) !important;
-}
-.icon-btn:hover{
-  background:var(--gm-pane-strong) !important;
-  border-color:color-mix(in srgb, var(--gm-accent) 45%, var(--gm-edge)) !important;
-  color:var(--gm-accent) !important;
-  box-shadow:var(--gm-inner-light), var(--neu-raised) !important;
-}
-.icon-btn:active{
-  box-shadow:var(--neu-pressed-sm) !important;
-}
-
-/* ---- Dim the constellation canvas so it doesn't compete with the
-   vibrant mesh background underneath. ---- */
-[data-theme="light"] #neuralBg, [data-theme="dark"] #neuralBg{ opacity:.45 !important; }
 
 /* ============== REPO LIVE BADGE ============== */
 @keyframes rb-pulse-fast {
@@ -2300,7 +1930,7 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
      stay clickable so the user can navigate while the modal is open. */
   position:fixed;
   left:var(--sb-w); top:var(--topbar-h); right:0; bottom:0;
-  z-index:2000;
+  z-index:var(--z-modal);
   background:color-mix(in srgb, var(--inv) 55%, transparent);
   backdrop-filter:blur(8px) saturate(120%);
   -webkit-backdrop-filter:blur(8px) saturate(120%);
@@ -3240,7 +2870,7 @@ h2.section-title{ color:var(--gm-text-bright) !important; text-shadow:none !impo
 .pk-modal-backdrop {
   position:fixed; inset:0; background:rgba(0,0,0,.45);
   display:flex; align-items:center; justify-content:center;
-  z-index:100;
+  z-index:var(--z-modal);
 }
 [data-theme="light"] .pk-modal-backdrop { background:rgba(217,119,6,.10); backdrop-filter:blur(2px); }
 .pk-modal {
@@ -3807,10 +3437,10 @@ button.search-box{
 
 /* ---- Command palette overlay ---- */
 .cmdk-overlay{
-  /* Above everything, including TweaksPanel's .twk-panel (2147483646) and
-     .modal-backdrop (2000) — the command palette is a modal and must never
-     render underneath another overlay. */
-  position:fixed; inset:0; z-index:2147483647;
+  /* Above everything, including TweaksPanel's .twk-panel (--z-overlay) and
+     .modal-backdrop/.pk-modal-backdrop (--z-modal) — the command palette is
+     a modal and must never render underneath another overlay. */
+  position:fixed; inset:0; z-index:var(--z-command);
   background:rgba(0,0,0,.45);
   display:flex; align-items:flex-start; justify-content:center;
   padding-top:12vh;
