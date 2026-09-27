@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Icon from '../icons';
 import { Metric, PageHead } from './Common';
 import { useDiff, useCost, useRecentDiffs, useFileDiff, useHeatmap } from '../api';
@@ -182,12 +182,20 @@ export const HeatmapPage = ({ repos }) => {
 export const CostPage = ({ repos, setRoute }) => {
   const { data: costData } = useCost(7);
   const byAgent = costData?.byAgent || [];
-  const totalCost = repos.reduce((a, r) => a + r.stats.costWeek, 0);
-  const totalTokens = repos.reduce((a, r) => a + r.stats.tokensWeek, 0);
-  const max = Math.max(...repos.map(r => r.stats.costWeek), 1);
+  // byRepo now spans every project seen locally, not just the ones with a
+  // .claude/ folder — match each entry back to its repo card (for name/
+  // accent/branch) when one exists, and flag the rest as untracked. A
+  // missing `tracked` field (older backend, or mock) reads as tracked, for
+  // backward compatibility.
+  const reposById = useMemo(() => new Map(repos.map(r => [r.id, r])), [repos]);
+  const byRepo = costData?.byRepo || [];
+  const totalCost = costData?.totalCost ?? repos.reduce((a, r) => a + r.stats.costWeek, 0);
+  const totalTokens = costData?.totalTokens ?? repos.reduce((a, r) => a + r.stats.tokensWeek, 0);
+  const totalSessions = repos.reduce((a, r) => a + r.stats.sessionsWeek, 0);
+  const max = Math.max(...byRepo.map(r => r.cost), 1);
   return (
     <>
-      <PageHead title="Cost & tokens" sub="Estimated spend across your tracked repositories. Calculated from token counts × model pricing." />
+      <PageHead title="Cost & tokens" sub="Estimated spend across every Claude Code project seen locally. Calculated from token counts × model pricing." />
       <div className="grid grid-cols-4 mb-4">
         {/* F10: dropped the fake "vs last wk" / "under budget" deltas — no source.
             Avg/session is sessions-weighted across repos; Projected month = weekly × 4.3. */}
@@ -195,7 +203,7 @@ export const CostPage = ({ repos, setRoute }) => {
         <Metric label="Tokens" value={(totalTokens / 1e6).toFixed(2)} unit="M" accent="gold" />
         <Metric
           label="Avg / session"
-          value={`$${(totalCost / Math.max(1, repos.reduce((a, r) => a + r.stats.sessionsWeek, 0))).toFixed(2)}`}
+          value={`$${(totalCost / Math.max(1, totalSessions)).toFixed(2)}`}
           accent="cyan"
         />
         <Metric label="Projected month" value={`$${(totalCost * WEEKS_PER_MONTH).toFixed(0)}`} accent="purple" />
@@ -204,33 +212,39 @@ export const CostPage = ({ repos, setRoute }) => {
       <div className="card-frame">
         <div className="card-frame-head">
           <h2 className="section-title"><Icon name="dollar" />Spend by repo</h2>
-          <span className="frame-meta">{repos.length} repos · this week</span>
+          <span className="frame-meta">{byRepo.length} projects · this week</span>
         </div>
         <div style={{ padding: '.6rem 1rem 1rem' }}>
-          {repos.map((r, i) => (
-            <div key={r.id} style={{ padding: '.6rem 0', borderBottom: i === repos.length - 1 ? 'none' : '1px solid var(--brd2)' }}>
-              <div className="row between mb-2">
-                <div className="row gap-sm">
-                  <span className="sb-repo-dot" style={{ '--accent': r.accent }}></span>
-                  <span className="tb" style={{ fontWeight: 600 }}>{r.name}</span>
-                  <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{r.branch}</span>
+          {byRepo.map((entry, i) => {
+            const meta = reposById.get(entry.repo);
+            const tracked = entry.tracked !== false;
+            const accent = meta?.accent || 'var(--muted)';
+            return (
+              <div key={entry.repo} style={{ padding: '.6rem 0', borderBottom: i === byRepo.length - 1 ? 'none' : '1px solid var(--brd2)' }}>
+                <div className="row between mb-2">
+                  <div className="row gap-sm">
+                    <span className="sb-repo-dot" style={{ '--accent': accent }}></span>
+                    <span className="tb" style={{ fontWeight: 600 }}>{meta?.name || entry.repo}</span>
+                    {meta?.branch && <span className="mono" style={{ fontSize: '.62rem', color: 'var(--muted)' }}>{meta.branch}</span>}
+                    {!tracked && <span className="chip">untracked</span>}
+                  </div>
+                  <div className="row gap-md">
+                    <span className="tg" style={{ fontWeight: 600 }}>${entry.cost.toFixed(2)}</span>
+                    <span style={{ fontSize: '.66rem', color: 'var(--muted)' }}>{(entry.tokens / 1e6).toFixed(2)}M tokens</span>
+                  </div>
                 </div>
-                <div className="row gap-md">
-                  <span className="tg" style={{ fontWeight: 600 }}>${r.stats.costWeek.toFixed(2)}</span>
-                  <span style={{ fontSize: '.66rem', color: 'var(--muted)' }}>{(r.stats.tokensWeek / 1e6).toFixed(2)}M tokens</span>
+                <div style={{ height: 6, borderRadius: 3, background: 'var(--brd2)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${(entry.cost / max) * 100}%`,
+                    background: `linear-gradient(90deg, ${accent}, transparent)`,
+                    transition: 'width .6s var(--ease)'
+                  }}></div>
                 </div>
               </div>
-              <div style={{ height: 6, borderRadius: 3, background: 'var(--brd2)', overflow: 'hidden' }}>
-                <div style={{
-                  height: '100%',
-                  width: `${(r.stats.costWeek / max) * 100}%`,
-                  background: `linear-gradient(90deg, ${r.accent}, transparent)`,
-                  transition: 'width .6s var(--ease)'
-                }}></div>
-              </div>
-            </div>
-          ))}
-          {repos.length === 0 && <div className="empty">No repos tracked yet.</div>}
+            );
+          })}
+          {byRepo.length === 0 && <div className="empty">No cost data yet — run ingest first.</div>}
         </div>
       </div>
 
