@@ -176,6 +176,38 @@ export function retryFetches() {
   _retrySubs.forEach(fn => fn(_retryVersion));
 }
 
+// R-LAT-6: shared visibility gate for every recursive-setTimeout polling loop
+// in this file. While the tab is hidden, no timer is armed at all (zero
+// fetch/render cost); the moment the tab becomes visible again a tick fires
+// immediately instead of waiting up to `intervalMs`, so data is fresh the
+// instant the user looks back.
+function pollWhileVisible(tickFn, intervalMs) {
+  let cancelled = false;
+  let timer;
+  let pendingVisible = false;
+
+  const run = async () => {
+    if (cancelled) return;
+    if (document.hidden) { pendingVisible = true; return; }
+    pendingVisible = false;
+    await tickFn();
+    if (!cancelled) timer = setTimeout(run, intervalMs);
+  };
+
+  const onVisible = () => {
+    if (cancelled || document.hidden || !pendingVisible) return;
+    run();
+  };
+  document.addEventListener('visibilitychange', onVisible);
+  run();
+
+  return () => {
+    cancelled = true;
+    clearTimeout(timer);
+    document.removeEventListener('visibilitychange', onVisible);
+  };
+}
+
 function useFetch(path, fallback) {
   // Initial value priority:
   //  1. sessionStorage cached real response (no flash on reload)
@@ -361,9 +393,8 @@ export function useDashboardStats(intervalMs = 5000) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    if (USE_MOCKS) { setLoading(false); return; }
+    if (USE_MOCKS) { setLoading(false); return undefined; }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch('/api/stats/dashboard');
@@ -373,10 +404,9 @@ export function useDashboardStats(intervalMs = 5000) {
       } catch {
         if (!cancelled) setLoading(false);
       }
-      if (!cancelled) timer = setTimeout(tick, intervalMs);
     };
-    tick();
-    return () => { cancelled = true; clearTimeout(timer); };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [intervalMs]);
   return { data, loading };
 }
@@ -388,9 +418,8 @@ export function useHeatmap(intervalMs = 60000) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
-    if (USE_MOCKS) { setLoading(false); return; }
+    if (USE_MOCKS) { setLoading(false); return undefined; }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch(`/api/stats/heatmap?tz=${encodeURIComponent(tz)}`);
@@ -400,10 +429,9 @@ export function useHeatmap(intervalMs = 60000) {
       } catch {
         if (!cancelled) setLoading(false);
       }
-      if (!cancelled) timer = setTimeout(tick, intervalMs);
     };
-    tick();
-    return () => { cancelled = true; clearTimeout(timer); };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [intervalMs, tz]);
   return { data, loading };
 }
@@ -467,8 +495,17 @@ export async function removeRepo(repoId) {
  * Each row: { sessionId, repo, agent, currentTool, currentTarget, startedAt,
  *             lastSeenAt, elapsedSec, secondsSinceLastEvent }
  */
+// R-LAT-9: fingerprint used to skip a `setAgents` call when the new payload
+// is functionally identical to the last one (same sessions, same tool, same
+// rounded elapsed) — avoids forcing App.jsx's `liveByRepo`/`repos` useMemo
+// (and everything downstream) to recompute on every idle tick.
+function _agentsFingerprint(rows) {
+  return rows.map(r => `${r.sessionId}|${r.currentTool}|${r.secondsSinceLastEvent}`).join(',');
+}
+
 export function useActiveAgents(intervalMs = 1500) {
   const [agents, setAgents] = useState([]);
+  const fingerprintRef = useRef('');
 
   useEffect(() => {
     if (USE_MOCKS) {
@@ -476,7 +513,7 @@ export function useActiveAgents(intervalMs = 1500) {
         const t = Date.now() % 6000;
         const r0 = MOCK.REPOS[0];
         const r1 = MOCK.REPOS[1] || MOCK.REPOS[0];
-        setAgents([
+        const next = [
           {
             sessionId: 'm1',
             repo: r0.id,
@@ -497,29 +534,34 @@ export function useActiveAgents(intervalMs = 1500) {
             elapsedSec: 312,
             startedAt: new Date(Date.now() - 312000).toISOString(),
           },
-        ]);
+        ];
+        const fp = _agentsFingerprint(next);
+        if (fp !== fingerprintRef.current) {
+          fingerprintRef.current = fp;
+          setAgents(next);
+        }
       };
-      cycle();
-      const id = setInterval(cycle, 1000);
-      return () => clearInterval(id);
+      return pollWhileVisible(cycle, 1000);
     }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch('/api/live/agents');
         if (r.ok) {
           const j = await r.json();
-          if (!cancelled) setAgents(Array.isArray(j) ? j : []);
+          const next = Array.isArray(j) ? j : [];
+          if (!cancelled) {
+            const fp = _agentsFingerprint(next);
+            if (fp !== fingerprintRef.current) {
+              fingerprintRef.current = fp;
+              setAgents(next);
+            }
+          }
         }
       } catch { /* ignore */ }
-      if (!cancelled) timer = setTimeout(tick, intervalMs);
     };
-    tick();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [intervalMs]);
 
   return agents;
@@ -536,10 +578,9 @@ export function useActiveAgents(intervalMs = 1500) {
 export function useRepoEvents(repoId, n = 60, intervalMs = 5000) {
   const [events, setEvents] = useState([]);
   useEffect(() => {
-    if (!repoId) { setEvents([]); return; }
-    if (USE_MOCKS) { setEvents(MOCK.LIVE_EVENTS_SEED.filter(e => e.repo === repoId)); return; }
+    if (!repoId) { setEvents([]); return undefined; }
+    if (USE_MOCKS) { setEvents(MOCK.LIVE_EVENTS_SEED.filter(e => e.repo === repoId)); return undefined; }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch(`/api/live/recent?n=${n}&repo=${encodeURIComponent(repoId)}`);
@@ -548,12 +589,10 @@ export function useRepoEvents(repoId, n = 60, intervalMs = 5000) {
         if (!cancelled) setEvents(j);
       } catch {
         /* network blip — keep last good snapshot */
-      } finally {
-        if (!cancelled) timer = setTimeout(tick, intervalMs);
       }
     };
-    tick();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [repoId, n, intervalMs]);
   return events;
 }
@@ -602,9 +641,8 @@ export function useOtelSummary(intervalMs = 10000) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!USE_MOCKS);
   useEffect(() => {
-    if (USE_MOCKS) { setLoading(false); return; }
+    if (USE_MOCKS) { setLoading(false); return undefined; }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch('/api/otel/summary?hours=24');
@@ -614,10 +652,9 @@ export function useOtelSummary(intervalMs = 10000) {
       } catch (e) {
         if (!cancelled) { setError(e); setLoading(false); }
       }
-      if (!cancelled) timer = setTimeout(tick, intervalMs);
     };
-    tick();
-    return () => { cancelled = true; clearTimeout(timer); };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [intervalMs]);
   return { data, error, loading };
 }
@@ -631,9 +668,8 @@ export function useOtelMetrics(intervalMs = 10000) {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!USE_MOCKS);
   useEffect(() => {
-    if (USE_MOCKS) { setLoading(false); return; }
+    if (USE_MOCKS) { setLoading(false); return undefined; }
     let cancelled = false;
-    let timer;
     const tick = async () => {
       try {
         const r = await apiFetch('/api/otel/metrics?hours=24');
@@ -643,10 +679,9 @@ export function useOtelMetrics(intervalMs = 10000) {
       } catch (e) {
         if (!cancelled) { setError(e); setLoading(false); }
       }
-      if (!cancelled) timer = setTimeout(tick, intervalMs);
     };
-    tick();
-    return () => { cancelled = true; clearTimeout(timer); };
+    const cancel = pollWhileVisible(tick, intervalMs);
+    return () => { cancelled = true; cancel(); };
   }, [intervalMs]);
   return { data, error, loading };
 }
@@ -706,7 +741,16 @@ export function useLiveEvents() {
     // Recursive setTimeout (not setInterval) so each tick re-reads
     // window.__tweakSpeed for its own delay -- a speed change from the
     // tweaks panel takes effect on the next tick instead of needing reload.
+    let onVisible;
+    const armNext = (delay) => { timer = setTimeout(tick, delay); };
     const tick = () => {
+      // R-LAT-6: a backgrounded tab has no pixels to update -- wait for
+      // visibilitychange instead of continuing to burn the 900ms-2.4s ticker.
+      if (document.hidden) {
+        onVisible = () => tick();
+        document.addEventListener('visibilitychange', onVisible, { once: true });
+        return;
+      }
       tickRef.current += 1;
       const idx = (tickRef.current - 1) % MOCK.LIVE_EVENTS_FUTURE.length;
       const e = MOCK.LIVE_EVENTS_FUTURE[idx];
@@ -715,11 +759,14 @@ export function useLiveEvents() {
         return next.slice(-60);
       });
       const speed = window.__tweakSpeed || 'normal';
-      timer = setTimeout(tick, speedMap[speed] || 2400);
+      armNext(speedMap[speed] || 2400);
     };
     const initialSpeed = window.__tweakSpeed || 'normal';
-    timer = setTimeout(tick, speedMap[initialSpeed] || 2400);
-    return () => clearTimeout(timer);
+    armNext(speedMap[initialSpeed] || 2400);
+    return () => {
+      clearTimeout(timer);
+      if (onVisible) document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   // Real backend: cold-start + WS.
@@ -729,6 +776,19 @@ export function useLiveEvents() {
     let cancelled = false;
     let backoff = 1000;
     let isFirstOpen = true;
+
+    // R-LAT-9: buffer inbound WS rows in a ref and flush at most once per
+    // ~150ms instead of one setState per message -- decouples render rate
+    // from WS message rate during a burst of tool/agent events.
+    let pending = [];
+    let flushTimer = null;
+    const flushPending = () => {
+      flushTimer = null;
+      if (pending.length === 0) return;
+      const batch = pending;
+      pending = [];
+      setEvents(prev => [...prev, ...batch].slice(-60));
+    };
 
     _setLiveStatus('polling');
 
@@ -773,7 +833,8 @@ export function useLiveEvents() {
           if (seenRef.current.size > 1000) {
             seenRef.current = new Set([...seenRef.current].slice(-300));
           }
-          setEvents(prev => [...prev, data].slice(-60));
+          pending.push(data);
+          if (!flushTimer) flushTimer = setTimeout(flushPending, 150);
         } catch { /* ignore */ }
       };
       ws.onopen = () => {
@@ -815,6 +876,7 @@ export function useLiveEvents() {
 
     return () => {
       cancelled = true;
+      if (flushTimer) clearTimeout(flushTimer);
       try { ws?.close(); } catch { /* ignore */ }
     };
   }, []);

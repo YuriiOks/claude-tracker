@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import Icon from '../icons';
 import { useBackendStatus, useRetrying, retryFetches } from '../api';
 import CommandPalette from './CommandPalette';
@@ -72,7 +72,9 @@ export const BackendStatusPill = () => {
   );
 };
 
-export const Topbar = ({ crumbs, setRoute, theme, setTheme, allLive, onOpenTweaks, repos }) => (
+// R-LAT-9: memoized -- requires `setTheme`/`onOpenTweaks` to be stable
+// callbacks from App.jsx (useCallback), otherwise every render defeats it.
+export const Topbar = memo(({ crumbs, setRoute, theme, setTheme, allLive, onOpenTweaks, repos }) => (
   <div className="topbar">
     <Crumbs items={crumbs} setRoute={setRoute} />
     <BackendStatusPill />
@@ -86,7 +88,7 @@ export const Topbar = ({ crumbs, setRoute, theme, setTheme, allLive, onOpenTweak
     </button>
     <button className="icon-btn" title="Open Tweaks" onClick={onOpenTweaks}><Icon name="settings" /></button>
   </div>
-);
+));
 
 function sparkPoints(seed, n = 14, vol = 0.6) {
   let h = 0;

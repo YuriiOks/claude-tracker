@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import './styles.css';
 
 // Eager: shell + default route. These are needed for first paint.
@@ -188,8 +188,18 @@ function App() {
     document.title = title;
   }, [route, allRepos]);
 
-  const openRepo = (id) => setRoute({ page: 'repo', repoId: id });
-  const openAgent = (name, kind, repoId) => setRoute({ page: 'agent', name, kind: kind || 'agent', repoId: repoId || null });
+  // R-LAT-9: stable callback identities -- otherwise Sidebar/Topbar's
+  // React.memo is defeated by a fresh function prop on every render.
+  const openRepo = useCallback((id) => setRoute({ page: 'repo', repoId: id }), [setRoute]);
+  const openAgent = useCallback(
+    (name, kind, repoId) => setRoute({ page: 'agent', name, kind: kind || 'agent', repoId: repoId || null }),
+    [setRoute],
+  );
+  const setTheme = useCallback((t) => setTweak('theme', t), [setTweak]);
+  const onOpenTweaks = useCallback(
+    () => window.postMessage({ type: '__activate_edit_mode' }, window.location.origin),
+    [],
+  );
 
   // F16 / R-UX-8: crumbs derived from the same ROUTES registry that Sidebar
   // uses. Each item is { label, route } — `route` is null for the current
@@ -293,9 +303,9 @@ function App() {
           setRoute={setRoute}
           repos={repos}
           theme={tweaks.theme}
-          setTheme={(t) => setTweak('theme', t)}
+          setTheme={setTheme}
           allLive={allLive}
-          onOpenTweaks={() => window.postMessage({ type: '__activate_edit_mode' }, window.location.origin)}
+          onOpenTweaks={onOpenTweaks}
         />
         <div className="content" key={routeIdentity(route)}>
           <Suspense fallback={<div className="empty" style={{ padding: '2rem', color: 'var(--muted)' }}>Loading…</div>}>
