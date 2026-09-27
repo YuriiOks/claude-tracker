@@ -13,6 +13,10 @@ services:
       target: prod
     image: claude-tracker-frontend:prod
     environment: {}
-    ports:
-      - "127.0.0.1:47820:80"
+    # `!override` replaces the base file's dev-server port entry instead of
+    # appending to it -- otherwise :5173 and :80 are both published on host
+    # :47820 and the stack fails to start. LAN_BIND mirrors the base file's
+    # LAN gate (loopback-only unless set).
+    ports: !override
+      - "${LAN_BIND:-127.0.0.1}:47820:80"
     volumes: []
