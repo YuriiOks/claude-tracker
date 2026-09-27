@@ -11,7 +11,7 @@ async def test_openapi_response_is_gzip_compressed() -> None:
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/openapi.json", headers={"Accept-Encoding": "gzip"})
 
     assert res.status_code == 200
@@ -27,7 +27,7 @@ async def test_small_response_is_not_gzip_compressed() -> None:
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as client:
         res = await client.get("/api/health", headers={"Accept-Encoding": "gzip"})
 
     assert res.status_code == 200

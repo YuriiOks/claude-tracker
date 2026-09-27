@@ -11,6 +11,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 
 from app.config import get_settings
 from app.db import init_db
+from app.security import SecurityMiddleware
 
 logger = logging.getLogger(__name__)
 
@@ -99,10 +100,15 @@ def create_app() -> FastAPI:
     # CORS headers already set. GZipMiddleware only intercepts scope["type"]
     # == "http", so /ws/live WebSocket traffic passes through untouched.
     app.add_middleware(GZipMiddleware, minimum_size=500)
+    # Added last so it ends up outermost of all — auth/origin checks run
+    # before GZip or CORS see the request at all. Handles both "http" and
+    # "websocket" scopes (see app/security.py).
+    app.add_middleware(SecurityMiddleware)
 
     # Routers
     from app.routers import (
         agents,
+        auth,
         cost,
         diffs,
         files,
@@ -120,6 +126,7 @@ def create_app() -> FastAPI:
         user,
     )
     app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router)
     app.include_router(repos.router, prefix="/api")
     app.include_router(permissions.router, prefix="/api")
     app.include_router(plugins.router, prefix="/api")

@@ -45,7 +45,7 @@ async def client():
     from app.main import create_app
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
 
@@ -94,6 +94,16 @@ async def test_post_metrics_empty_body_still_200(client):
         headers={"Content-Type": "application/json"},
     )
     assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_post_metrics_wrong_content_type_415(client):
+    res = await client.post(
+        "/v1/metrics",
+        content=b"<xml/>",
+        headers={"Content-Type": "text/xml"},
+    )
+    assert res.status_code == 415
 
 
 # ---------------------------------------------------------------------------

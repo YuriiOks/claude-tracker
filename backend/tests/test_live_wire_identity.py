@@ -50,7 +50,7 @@ async def test_recent_endpoint_includes_id_and_absolute_ts_ordered() -> None:
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         res = await c.get("/api/live/recent")
     assert res.status_code == 200
     body = res.json()
@@ -173,7 +173,7 @@ async def test_recent_endpoint_includes_session_id_from_row() -> None:
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         res = await c.get("/api/live/recent")
     assert res.status_code == 200
     body = res.json()

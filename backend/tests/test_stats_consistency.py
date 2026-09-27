@@ -32,7 +32,7 @@ async def client():
     from app.main import create_app
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
 

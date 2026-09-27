@@ -38,6 +38,23 @@ _MAX_BODY_BYTES = 256 * 1024
 _MAX_DECOMPRESSED_BYTES = 4 * 1024 * 1024
 _GZIP_CHUNK = 64 * 1024
 
+# AUTH CONTRACT: only these two content types are accepted -- anything else
+# (e.g. a browser page posting arbitrary form data here) is rejected before
+# we even attempt to parse a body, unlike the "always 200" rule below, which
+# only applies once we've established the payload is at least OTLP-shaped.
+_ALLOWED_CONTENT_TYPES = ("application/json", "application/x-protobuf")
+
+
+def _reject_bad_content_type(request: Request) -> Response | None:
+    ctype = (request.headers.get("content-type") or "").split(";", 1)[0].strip().lower()
+    if ctype not in _ALLOWED_CONTENT_TYPES:
+        return Response(
+            content=json.dumps({"detail": "unsupported content type"}).encode(),
+            media_type="application/json",
+            status_code=415,
+        )
+    return None
+
 
 async def _read_capped_body(request: Request, label: str) -> bytes | None:
     """Read the request body, rejecting anything over `_MAX_BODY_BYTES`.
@@ -153,8 +170,11 @@ async def receive_logs(request: Request) -> Response:
 
     Decodes optional gzip, parses logRecords, bulk-inserts into otel_event
     using INSERT OR IGNORE (via on_conflict_do_nothing) for idempotent
-    re-export dedup. Always returns 200.
+    re-export dedup. Always returns 200 -- except an outright wrong
+    Content-Type (415), which a conforming exporter never sends.
     """
+    if (bad := _reject_bad_content_type(request)) is not None:
+        return bad
     try:
         body = await _read_capped_body(request, "/v1/logs")
         if body is None:
@@ -209,8 +229,11 @@ async def receive_metrics(request: Request) -> Response:
 
     Decodes optional gzip, parses dataPoints from sum/gauge metrics, bulk-inserts
     into otel_metric using INSERT OR IGNORE (on_conflict_do_nothing) for idempotent
-    re-export dedup. Always returns 200.
+    re-export dedup. Always returns 200 -- except an outright wrong
+    Content-Type (415), which a conforming exporter never sends.
     """
+    if (bad := _reject_bad_content_type(request)) is not None:
+        return bad
     try:
         body = await _read_capped_body(request, "/v1/metrics")
         if body is None:

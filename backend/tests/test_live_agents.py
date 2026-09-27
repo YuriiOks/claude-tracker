@@ -50,7 +50,7 @@ async def test_endpoint_returns_active_set(monkeypatch: pytest.MonkeyPatch) -> N
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         res = await c.get("/api/live/agents")
     assert res.status_code == 200
     body = res.json()

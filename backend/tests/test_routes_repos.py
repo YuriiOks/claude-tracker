@@ -23,7 +23,7 @@ async def test_repos_endpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         res = await c.get("/api/repos")
     assert res.status_code == 200
     body = res.json()

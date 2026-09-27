@@ -225,7 +225,7 @@ async def test_dashboard_repo_cost_and_heatmap_include_subagents(tmp_path: Path)
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         dash = (await c.get("/api/stats/dashboard")).json()
         cost = (await c.get("/api/cost", params={"days": 7})).json()
         heat = (await c.get("/api/stats/heatmap")).json()

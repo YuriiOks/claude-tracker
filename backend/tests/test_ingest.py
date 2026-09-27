@@ -67,7 +67,7 @@ async def test_ingest_and_sessions_endpoint(tmp_path: Path, monkeypatch: pytest.
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         sessions_res = await c.get("/api/sessions")
         live_res = await c.get("/api/live/recent")
     assert sessions_res.status_code == 200

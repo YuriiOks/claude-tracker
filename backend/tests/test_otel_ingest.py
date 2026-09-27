@@ -116,7 +116,7 @@ async def client():
     from app.main import create_app
     app = create_app()
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(transport=transport, base_url="http://localhost") as c:
         yield c
 
 
@@ -175,6 +175,32 @@ async def test_post_logs_garbage_body_still_200(client):
 @pytest.mark.asyncio
 async def test_post_logs_empty_body_still_200(client):
     res = await client.post("/v1/logs", content=b"{}", headers={"Content-Type": "application/json"})
+    assert res.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_post_logs_wrong_content_type_415(client):
+    """AUTH CONTRACT: only application/json or application/x-protobuf are
+    accepted -- anything else (e.g. a browser page posting form data here)
+    is rejected before any parsing is attempted."""
+    res = await client.post(
+        "/v1/logs",
+        content=b"resourceLogs=1",
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+    assert res.status_code == 415
+
+
+@pytest.mark.asyncio
+async def test_post_logs_protobuf_content_type_accepted(client):
+    """Not actually parsed as protobuf (json.loads will fail and be
+    swallowed by the tolerant outer try/except), but the content type
+    itself must not be rejected."""
+    res = await client.post(
+        "/v1/logs",
+        content=b"not-real-protobuf",
+        headers={"Content-Type": "application/x-protobuf"},
+    )
     assert res.status_code == 200
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 
 from app.schemas.session import Session
 from app.services.duration import fmt_duration, fmt_started
@@ -12,7 +12,9 @@ router = APIRouter(tags=["sessions"])
 
 
 @router.get("/sessions", response_model=list[Session])
-async def list_sessions(repo: str | None = None, limit: int = 50) -> list[Session]:
+async def list_sessions(
+    repo: str | None = None, limit: int = Query(default=50, ge=1, le=500)
+) -> list[Session]:
     rows = await fetch_recent_summaries(repo=repo, limit=limit)
     # A session's total must include what its direct + workflow subagents
     # spent -- they're not sessions of their own, their spend belongs here.

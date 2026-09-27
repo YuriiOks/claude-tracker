@@ -5,6 +5,7 @@ import json
 import logging
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from app.schemas.inventory import PermissionsDetail
 from app.schemas.permissions_edit import (
@@ -66,11 +67,23 @@ async def put_scoped_permissions(
             target=body.target,
             permissions=perms,
             if_unchanged_since=body.if_unchanged_since,
+            confirm_dangerous=body.confirm_dangerous,
         )
     except pw.ScopeNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except pw.StaleFile as e:
         raise HTTPException(status_code=409, detail=str(e)) from e
+    except pw.InvalidRule as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except pw.ConfirmationRequired as e:
+        # Flat shape (not nested under "detail") -- the frontend reads
+        # payload.dangerous directly. Returned via JSONResponse rather than
+        # HTTPException(detail=...) because HTTPException always nests the
+        # whole `detail` value under a single "detail" key.
+        return JSONResponse(
+            status_code=409,
+            content={"detail": "confirmation required", "dangerous": e.dangerous},
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except json.JSONDecodeError as e:
